@@ -365,9 +365,9 @@ enum TextExpansionSignalSyncError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .vaultKeyMismatch:
-            return "Signal identity and CloudVault resolved different vault keys. Re-verify this device before syncing snippets."
+            return "Device identity and CloudVault resolved different vault keys. Re-verify this device before syncing snippets."
         case .signalFirestoreUnavailable:
-            return "The Firestore gateway does not expose a raw handle for Signal payload sealing. Snippet sync was skipped."
+            return "The Firestore gateway does not expose a raw handle for payload sealing. Snippet sync was skipped."
         }
     }
 }

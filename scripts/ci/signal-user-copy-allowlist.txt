@@ -1,0 +1,53 @@
+# Signal user-copy allowlist (scripts/ci/check-signal-jargon-user-copy.sh).
+#
+# Reviewed occurrences of the standalone word "Signal" inside string literals or
+# rendered markup in shipped source. Format (count-bearing):
+#   <relative-path> ::: <expected-occurrence-count>
+# A NEW literal in the same file — or a removed one — trips the gate and forces
+# re-review.
+#
+# The name "Signal" is accurate for the real library, so it survives ONLY in:
+#   [internal-log]      diagnostics written to logs, never rendered to users.
+#   [internal-proto]    gateway/relay protocol errors read by agent runtimes and
+#                       operators (the wire capability is literally named
+#                       Signal-envelope in the protocol spec these implement).
+#   [internal-policy]   callable-rate-policy reason strings — auditor-facing
+#                       metadata in the policy registry, not rendered copy.
+#   [internal-write]    write-path construction validators (programmer-error
+#                       traps; fire only on malformed code inputs).
+#   [website-honest]    burnbar.ai copy that NAMES the pinned library while
+#                       disclosing status — every claim interpolates
+#                       LIBSIGNAL_ROLLOUT_STATUS ("wired in, not activated in
+#                       production") from crypto-claims.generated.ts, which is
+#                       drift-gated by generate-crypto-claims.mjs --check.
+#   [website-other]     "Signal" meaning the Signal Messenger app (competitor
+#                       comparison) or a data-signal, not our crypto.
+
+# ---- [website-honest] status-disclosed claims ----
+website/src/pages/trust.astro ::: 4
+website/src/pages/security.astro ::: 1
+website/src/pages/legal/source.astro ::: 1
+website/src/data/licensing.ts ::: 1
+website/src/data/memory.ts ::: 1
+# "Signal chips" = benchmark-signal chips row aria-label, unrelated to libsignal.
+# HermesGatewayPromo names Signal Messenger as an adjacent platform a user picks
+# (Telegram/Signal/Slack) — an honest comparison, not a crypto claim.
+website/src/components/RouterRundownReport.astro ::: 1
+website/src/components/HermesGatewayPromo.astro ::: 3
+
+# ---- [internal-log] diagnostic log lines ----
+AgentLens/Services/CloudSync/ConversationCloudVaultPayload.swift ::: 1
+OpenBurnBarMobile/Services/MobileChatHistoryStore.swift ::: 1
+android/app/src/main/java/com/openburnbar/data/assistants/AssistantChatHistoryStore.kt ::: 2
+android/app/src/main/java/com/openburnbar/data/assistants/CLIAgentMissionDispatcher.kt ::: 1
+
+# ---- [internal-proto] Hermes gateway wire-protocol diagnostics ----
+# These errors surface to the agent runtime/operator configuring the relay —
+# "Signal envelope" is the protocol element's spec name there, not marketing.
+packages/functions-shared/src/hermesGatewayEnvelope.ts ::: 7
+
+# ---- [internal-policy] callable policy reasons (audit metadata) ----
+packages/functions-shared/src/callables/callableRatePolicy.ts ::: 7
+
+# ---- [internal-write] AAD binding-segment construction validators ----
+android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSupport.kt ::: 2

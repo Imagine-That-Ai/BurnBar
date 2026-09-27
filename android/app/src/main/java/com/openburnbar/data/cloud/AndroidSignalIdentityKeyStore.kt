@@ -89,7 +89,7 @@ object AndroidSignalIdentityKeyStore {
             // (e.g. prefs wiped but the doc survived) and would silently break decryption — fail
             // loudly, mirroring iOS immutablePublicKeyConflict.
             check(existing.getString("publicKeyData") == CloudVaultCryptoSupport.encodeBase64(identity.publicKeyData)) {
-                "Signal identity public key conflict for ${identity.identityKeyId}: stored key differs from the local key."
+                "Device identity public key conflict for ${identity.identityKeyId}: stored key differs from the local key."
             }
             return
         }

@@ -18,19 +18,19 @@ public enum OBBSignalSessionTransportError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .invalidBase64(let field):
-            return "Invalid base64 in Signal session field \(field)."
+            return "Invalid base64 in secure session field \(field)."
         case .missingSignalCiphertext:
-            return "Signal session frame is missing ciphertext or message type."
+            return "Secure session frame is missing ciphertext or message type."
         case .streamClosed:
-            return "Signal session stream closed before a message frame arrived."
+            return "Secure session stream closed before a message frame arrived."
         case .unexpectedFrameType(let type):
             return "Expected signal.session.message frame, received \(type.rawValue)."
         case .unsupportedSignalMessageType(let type):
-            return "Unsupported Signal session message type \(type)."
+            return "Unsupported secure session message type \(type)."
         case .identityPinMismatch:
             return "Remote identity key does not match the pinned key; refusing to establish a session."
         case .invalidEnvelopeBinding:
-            return "Signal gateway envelope is bound to a different client or slot."
+            return "The gateway envelope is bound to a different client or slot."
         }
     }
 }

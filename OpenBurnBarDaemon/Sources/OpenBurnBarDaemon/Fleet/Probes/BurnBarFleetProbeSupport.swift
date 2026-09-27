@@ -96,12 +96,12 @@ public enum BurnBarFleetProbeJSON {
         if let readError = error as? BurnBarFleetProbeReadError {
             switch readError {
             case .timedOut:
-                return "Signal file read timed out (per-probe timeout)."
+                return "Signal-file read timed out (per-probe timeout)."
             case .unreadable(let code):
-                return "Signal file is not readable (errno \(code))."
+                return "Signal-file unreadable (errno \(code))."
             }
         }
-        return "Signal file is not valid JSON."
+        return "Signal-file data is not valid JSON."
     }
 
     /// Epoch-milliseconds number → Date (nil when absent, null, mistyped,

@@ -54,7 +54,7 @@ extension CursorConnectorManager {
         if normalized.contains("minimax") {
             return .minimax
         }
-        if normalized.contains("ollama") || normalized.contains("localhost:11434") || normalized.contains("127.0.0.1:11434") {
+        if normalized.contains("ollama") || normalized.contains("localhost:\(LocalService.ollama.defaultPort)") || normalized.contains("127.0.0.1:\(LocalService.ollama.defaultPort)") {
             return .ollama
         }
         return nil

@@ -112,11 +112,11 @@ final class TextExpansionSyncServiceTests: XCTestCase {
     func testSignalSyncErrorsCarryOperatorReadableDescriptions() {
         XCTAssertEqual(
             TextExpansionSignalSyncError.vaultKeyMismatch.errorDescription,
-            "Signal identity and CloudVault resolved different vault keys. Re-verify this device before syncing snippets."
+            "Device identity and CloudVault resolved different vault keys. Re-verify this device before syncing snippets."
         )
         XCTAssertEqual(
             TextExpansionSignalSyncError.signalFirestoreUnavailable.errorDescription,
-            "The Firestore gateway does not expose a raw handle for Signal payload sealing. Snippet sync was skipped."
+            "The Firestore gateway does not expose a raw handle for payload sealing. Snippet sync was skipped."
         )
     }
 

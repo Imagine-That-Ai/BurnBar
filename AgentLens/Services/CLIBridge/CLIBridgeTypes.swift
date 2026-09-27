@@ -159,7 +159,7 @@ enum CLIBridgeError: LocalizedError {
         case .hermesUnavailable:
             return "Hermes is not running. Open Settings → Chat Gateway and choose Open Hermes + Gateway, or enable the startup toggle there."
         case .openClawUnavailable:
-            return "OpenClaw gateway is unavailable. Start the OpenClaw gateway (default 127.0.0.1:18789) or check Settings → Chat."
+            return "OpenClaw gateway is unavailable. Start the OpenClaw gateway (default 127.0.0.1:\(LocalService.openClawGateway.defaultPort)) or check Settings → Chat."
         case .piAgentUnavailable:
             return "Pi agent is not running. Open Settings → Chat Gateway and choose Open Pi + Gateway, or enable the startup toggle there."
         case .noSelectedModel(let backend):

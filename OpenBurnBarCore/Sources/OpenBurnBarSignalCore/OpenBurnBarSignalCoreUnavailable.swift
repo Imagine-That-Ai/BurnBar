@@ -13,7 +13,7 @@ import Security
 
 public enum OpenBurnBarSignalCoreAvailability: Sendable {
     public static let isLibSignalBacked = false
-    public static let unavailableReason = "Vendor/libsignal/swift is not present; Signal envelope encryption, opening, and trust signatures are unavailable."
+    public static let unavailableReason = "Vendor/libsignal/swift is not present; sealed-envelope encryption, opening, and trust signatures are unavailable."
 }
 
 public enum OpenBurnBarSignalCoreError: LocalizedError, Sendable, Equatable {
@@ -34,29 +34,29 @@ public enum OpenBurnBarSignalCoreError: LocalizedError, Sendable, Equatable {
     public var errorDescription: String? {
         switch self {
         case .noRecipients:
-            return "At-rest Signal envelopes require at least one recipient."
+            return "At-rest sealed envelopes require at least one recipient."
         case .tooManyRecipients:
-            return "At-rest Signal envelopes exceed the maximum recipient wrap count."
+            return "At-rest sealed envelopes exceed the maximum recipient wrap count."
         case .invalidRecipientKind(let kind):
-            return "Invalid at-rest Signal recipient kind: \(kind)."
+            return "Invalid at-rest recipient kind: \(kind)."
         case .duplicateRecipientIdentityKeyId(let id):
-            return "Duplicate at-rest Signal recipient identity key id: \(id)."
+            return "Duplicate at-rest recipient identity key id: \(id)."
         case .invalidEnvelope:
-            return "The at-rest Signal envelope is invalid."
+            return "The at-rest sealed envelope is invalid."
         case .bindingMismatch:
-            return "The at-rest Signal envelope binding does not match the expected Firestore path."
+            return "The at-rest sealed envelope binding does not match the expected Firestore path."
         case .missingRecipientWrap(let id):
-            return "The at-rest Signal envelope has no wrap for recipient \(id)."
+            return "The at-rest sealed envelope has no wrap for recipient \(id)."
         case .invalidContentKey:
-            return "The at-rest Signal content key is invalid."
+            return "The at-rest content key is invalid."
         case .recipientPrivateKeyMismatch:
-            return "The supplied Signal private key does not match the recipient wrap."
+            return "The supplied identity private key does not match the recipient wrap."
         case .senderAuthMissing:
-            return "The at-rest Signal envelope has no sender authentication block."
+            return "The at-rest sealed envelope has no sender authentication block."
         case .senderNotTrusted(let id):
-            return "The at-rest Signal envelope sender \(id) is not a trusted device."
+            return "The at-rest sealed envelope sender \(id) is not a trusted device."
         case .senderSignatureInvalid:
-            return "The at-rest Signal envelope sender signature failed verification."
+            return "The at-rest sealed envelope sender signature failed verification."
         case .libSignalUnavailable:
             return OpenBurnBarSignalCoreAvailability.unavailableReason
         }

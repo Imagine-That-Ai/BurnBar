@@ -177,6 +177,16 @@ final class SettingsSearchEngineTests: XCTestCase {
         XCTAssertTrue(ids.contains("agents.clis"))
     }
 
+    func test_manifestFindsPopoverLayoutControls() {
+        for term in ["popover layout", "quota space", "menu bar popover"] {
+            let ids = SettingsSearchEngine.search(term, in: SettingsManifest.all).map(\.id)
+            XCTAssertTrue(
+                ids.contains("general.appearance.popoverLayout"),
+                "Search for '\(term)' must surface the popover layout editor (got \(ids.prefix(5)))"
+            )
+        }
+    }
+
     func test_manifestFindsKernelBackdropControls() {
         let windowIDs = SettingsSearchEngine.search("window backdrop", in: SettingsManifest.all).map(\.id)
         XCTAssertEqual(windowIDs.first, "general.appearance.useKernelBackdrop")

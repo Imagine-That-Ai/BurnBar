@@ -119,7 +119,7 @@ struct ChatGatewaySettingsView: View {
                         icon: "antenna.radiowaves.left.and.right",
                         iconTint: DesignSystem.Colors.hermesAureate,
                         title: "Hermes Gateway",
-                        subtitle: "Local webapi on :8642, auto-launch with OpenBurnBar",
+                        subtitle: "Local webapi on :\(LocalService.hermesGateway.defaultPort), auto-launch with OpenBurnBar",
                         value: settingsManager.launchHermesWithOpenBurnBar ? "Auto" : "Manual",
                         valueTint: settingsManager.launchHermesWithOpenBurnBar
                             ? DesignSystem.Colors.success
@@ -154,7 +154,7 @@ struct ChatGatewaySettingsView: View {
                         icon: "network.badge.shield.half.filled",
                         iconTint: DesignSystem.Colors.teal,
                         title: "OpenClaw Gateway",
-                        subtitle: "OpenAI-compatible gateway (default 127.0.0.1:18789)",
+                        subtitle: "OpenAI-compatible gateway (default 127.0.0.1:\(LocalService.openClawGateway.defaultPort))",
                         value: openClawHostDisplay,
                         logoProvider: .openClaw
                     )
@@ -404,7 +404,7 @@ struct HermesGatewayDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Hermes Gateway",
-            subtitle: "OpenBurnBar can start the Hermes Dashboard and local API gateway for you. The gateway defaults to port 8642.",
+            subtitle: "OpenBurnBar can start the Hermes Dashboard and local API gateway for you. The gateway defaults to port \(LocalService.hermesGateway.defaultPort).",
             searchRoute: .hermesGateway
         ) {
             GlassCard {
@@ -476,7 +476,7 @@ struct HermesGatewayDetailView: View {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                         fieldLabel("Base URL")
-                        TextField("http://localhost:8642", text: $settingsManager.hermesGatewayBaseURL)
+                        TextField(LocalService.hermesGateway.defaultBaseURL.absoluteString, text: $settingsManager.hermesGatewayBaseURL)
                             .textFieldStyle(.roundedBorder)
                     }
                     .settingsAnchor(SettingsAnchor.hermesGatewayURL)
@@ -518,7 +518,7 @@ struct HermesGatewayDetailView: View {
 
     private var resolvedBaseURL: URL {
         URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(staticString: "http://127.0.0.1:8642")
+            ?? LocalService.hermesGateway.defaultBaseURL
     }
 
     private var resolvedBearer: String? {
@@ -640,7 +640,7 @@ struct PiAgentDetailView: View {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                         fieldLabel("Base URL")
-                        TextField("http://127.0.0.1:8765", text: $settingsManager.piAgentGatewayBaseURL)
+                        TextField(LocalService.piAgentGateway.defaultBaseURL.absoluteString, text: $settingsManager.piAgentGatewayBaseURL)
                             .textFieldStyle(.roundedBorder)
                     }
                     .settingsAnchor(SettingsAnchor.hermesPiHosts)
@@ -730,7 +730,7 @@ struct PiAgentDetailView: View {
 
     private var resolvedPiBaseURL: URL {
         URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(staticString: "http://127.0.0.1:8765")
+            ?? LocalService.piAgentGateway.defaultBaseURL
     }
 
     private var resolvedPiBearer: String? {
@@ -747,12 +747,12 @@ struct OpenClawGatewayDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "OpenClaw Gateway",
-            subtitle: "OpenAI-compatible gateway, default 127.0.0.1:18789."
+            subtitle: "OpenAI-compatible gateway, default 127.0.0.1:\(LocalService.openClawGateway.defaultPort)."
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     fieldLabel("Base URL")
-                    TextField("http://127.0.0.1:18789", text: $settingsManager.openClawGatewayBaseURL)
+                    TextField(LocalService.openClawGateway.defaultBaseURL.absoluteString, text: $settingsManager.openClawGatewayBaseURL)
                         .textFieldStyle(.roundedBorder)
 
                     fieldLabel("Bearer Token")

@@ -81,7 +81,7 @@ class AndroidSignalSessionManager(
     }
 
     suspend fun receive(stream: IrohRelayStream, remoteAddress: SignalProtocolAddress): AndroidSignalSessionReceivedMessage {
-        val frame = stream.receive() ?: error("Signal session stream closed before a message frame arrived.")
+        val frame = stream.receive() ?: error("Secure session stream closed before a message frame arrived.")
         return decrypt(frame = frame, remoteAddress = remoteAddress)
     }
 
@@ -90,10 +90,10 @@ class AndroidSignalSessionManager(
             "Expected signal.session.message frame, received ${frame.type}."
         }
         val ciphertextB64 = requireNotNull(frame.signalSessionCiphertextB64) {
-            "Signal session frame is missing ciphertext."
+            "Secure session frame is missing ciphertext."
         }
         val messageType = requireNotNull(frame.signalMessageType) {
-            "Signal session frame is missing message type."
+            "Secure session frame is missing message type."
         }
         val ciphertext = Base64.getDecoder().decode(ciphertextB64)
         val cipher = SessionCipher(store, localAddress, remoteAddress)
@@ -101,7 +101,7 @@ class AndroidSignalSessionManager(
             when (messageType) {
                 CiphertextMessage.PREKEY_TYPE -> cipher.decrypt(PreKeySignalMessage(ciphertext))
                 CiphertextMessage.WHISPER_TYPE -> cipher.decrypt(SignalMessage(ciphertext))
-                else -> error("Unsupported Signal session message type $messageType.")
+                else -> error("Unsupported secure session message type $messageType.")
             }
         return AndroidSignalSessionReceivedMessage(frame = frame, plaintext = plaintext, messageType = messageType)
     }

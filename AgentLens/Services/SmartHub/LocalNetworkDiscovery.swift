@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Local Network Discovery
 //
@@ -146,7 +147,7 @@ enum LocalNetworkDiscovery {
         localIPv4Addresses().first
     }
 
-    static func dashboardURLCandidates(port: Int = 8787, path: String = "/render.html") -> [URL] {
+    static func dashboardURLCandidates(port: Int = LocalService.smartHubDashboard.defaultPort, path: String = LocalService.smartHubDashboard.descriptor.defaultPath) -> [URL] {
         var urls: [URL] = []
         if let address = preferredLANIPv4Address(),
            let url = URL(string: "http://\(address):\(port)\(path)") {

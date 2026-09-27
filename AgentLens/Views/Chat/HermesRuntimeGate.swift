@@ -164,7 +164,7 @@ struct HermesRuntimeGate: ViewModifier {
 
     private var resolvedHermesGatewayBaseURL: URL {
         URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(staticString: "http://127.0.0.1:8642")
+            ?? LocalService.hermesGateway.defaultBaseURL
     }
 
     private var resolvedHermesBearerToken: String? {
@@ -174,7 +174,7 @@ struct HermesRuntimeGate: ViewModifier {
 
     private var resolvedPiAgentGatewayBaseURL: URL {
         URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(staticString: "http://127.0.0.1:8765")
+            ?? LocalService.piAgentGateway.defaultBaseURL
     }
 
     private var resolvedPiAgentBearerToken: String? {

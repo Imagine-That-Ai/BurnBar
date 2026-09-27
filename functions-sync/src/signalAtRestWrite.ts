@@ -123,7 +123,7 @@ export class SignalAtRestWriteError extends Error {
   readonly reason: SignalAtRestWriteRejectReason;
 
   constructor(reason: SignalAtRestWriteRejectReason) {
-    super(`Signal at-rest envelope rejected before admin write: ${reason}`);
+    super(`Sealed at-rest envelope rejected before admin write: ${reason}`);
     this.name = "SignalAtRestWriteError";
     this.reason = reason;
   }

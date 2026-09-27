@@ -256,7 +256,7 @@ final class WindowManager: ObservableObject {
         bugReportWindowLifecycleHandler = lifecycle
     }
 
-    func openHelpSupport() {
+    func openHelpSupport(settingsManager: SettingsManager) {
         promoteToRegularActivation()
 
         if let window = helpSupportWindow {
@@ -264,7 +264,9 @@ final class WindowManager: ObservableObject {
             return
         }
 
-        let contentView = HelpSupportHubView()
+        let contentView = HelpSupportHubView(reevaluateLocalServices: {
+            LocalServiceHealth.shared.evaluate(resolved: settingsManager.resolvedLocalServiceEndpoints)
+        })
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         let window = NSWindow(

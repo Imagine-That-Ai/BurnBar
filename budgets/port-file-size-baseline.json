@@ -1,10 +1,5 @@
 {
   "target": 2000,
-  "total": 1,
-  "files": [
-    {
-      "path": "android/app/src/main/java/com/openburnbar/ui/components/SwarmBackground.kt",
-      "lines": 2258
-    }
-  ]
+  "total": 0,
+  "files": []
 }

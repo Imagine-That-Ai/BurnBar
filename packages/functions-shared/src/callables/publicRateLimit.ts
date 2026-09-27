@@ -658,6 +658,32 @@ export function isPublicRateLimitExceeded(err: unknown): boolean {
 }
 
 /**
+ * Central per-caller rate limit for callables declared `limited` in
+ * CALLABLE_RATE_POLICIES (callableRatePolicy.ts) and enforced by
+ * `wrapCallableHandler`. Both windows are keyed per (callable, uid) and
+ * incremented in ONE transaction, so a sustained-window rejection cannot
+ * half-advance the burst window — the same no-half-advance semantics as the
+ * bespoke uid limiters above. Throws `resource-exhausted` when either bound
+ * is hit.
+ */
+export async function checkCallablePolicyRateLimit(
+  name: string,
+  uid: string,
+  windows: { burst: { windowSeconds: number; maxAttempts: number }; sustained: { windowSeconds: number; maxAttempts: number } },
+): Promise<void> {
+  if (typeof uid !== "string" || uid.length === 0) {
+    // Fail closed: a `limited` callable must never degrade to an unkeyed bucket.
+    throw new HttpsError("unauthenticated", "Request must be authenticated with Firebase Auth.");
+  }
+  const burstAction = `callable:${name}:burst`;
+  const sustainedAction = `callable:${name}:sustained`;
+  await incrementRateLimitsAtomically([
+    { docId: rateLimitDocId(uid, burstAction), action: burstAction, limit: windows.burst },
+    { docId: rateLimitDocId(uid, sustainedAction), action: sustainedAction, limit: windows.sustained },
+  ]);
+}
+
+/**
  * Declared set of public HTTPS endpoints with product-layer rate limits.
  * Used by the static inventory test to ensure every public endpoint is bounded.
  */

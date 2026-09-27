@@ -45,7 +45,7 @@ const CALLABLE_OPTIONS = {
 
 function requireUid(request: CallableRequest): string {
   const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Sign in before repairing a Signal identity.");
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in before repairing a device identity.");
   return uid;
 }
 
@@ -119,7 +119,7 @@ function assertTrustedDevice(data: Record<string, unknown> | undefined): {
     typeof publicKeyFingerprint !== "string" ||
     publicKeyFingerprint.length === 0
   ) {
-    throw new HttpsError("permission-denied", "Signal identity repair requires this trusted native device.");
+    throw new HttpsError("permission-denied", "Device identity repair requires this trusted native device.");
   }
   return { platform, keyVersion, publicKeyFingerprint };
 }
@@ -221,7 +221,7 @@ function parseSignalIdentityRepairInput(data: Record<string, unknown>): ParsedSi
   }
   const signalPublicKey = canonicalBase64(data.publicKeyData, "publicKeyData", SIGNAL_DJB_PUBLIC_KEY_BYTES);
   if (signalPublicKey.decoded[0] !== SIGNAL_DJB_TYPE_BYTE) {
-    throw new HttpsError("invalid-argument", "publicKeyData is not a Signal identity key.");
+    throw new HttpsError("invalid-argument", "publicKeyData is not a device identity key.");
   }
   const publicKeyFingerprint = boundedTrimmedString(data.publicKeyFingerprint, "publicKeyFingerprint", 128, true);
   const recomputedFingerprint = createHash("sha256").update(signalPublicKey.decoded).digest("base64");
@@ -251,16 +251,16 @@ function assertValidRepairChallenge(
     challenge?.schemaVersion !== SIGNAL_IDENTITY_REPAIR_CHALLENGE_VERSION ||
     challenge?.consumedAt != null
   ) {
-    throw new HttpsError("failed-precondition", "Signal identity repair challenge is invalid or already used.");
+    throw new HttpsError("failed-precondition", "The device identity repair challenge is invalid or already used.");
   }
   const expiresAt = challenge.expiresAt;
   if (!(expiresAt instanceof Timestamp) || expiresAt.toMillis() <= Date.now()) {
-    throw new HttpsError("failed-precondition", "Signal identity repair challenge expired.");
+    throw new HttpsError("failed-precondition", "The device identity repair challenge expired.");
   }
   const expectedHash = Buffer.from(String(challenge.challengeHash ?? ""), "base64");
   const observedHash = createHash("sha256").update(input.challengePlaintext).digest();
   if (expectedHash.length !== observedHash.length || !timingSafeEqual(expectedHash, observedHash)) {
-    throw new HttpsError("permission-denied", "Signal identity repair challenge proof is invalid.");
+    throw new HttpsError("permission-denied", "The device identity repair challenge proof is invalid.");
   }
 }
 
@@ -331,7 +331,7 @@ export const repairTrustedSignalIdentity = onCallProduction(
     if (getConfig().enforceAppCheck && !nonceConsumed) {
       throw new HttpsError(
         "failed-precondition",
-        "Signal identity repair requires App Check and a fresh high-risk nonce.",
+        "Device identity repair requires App Check and a fresh high-risk nonce.",
       );
     }
 
@@ -363,7 +363,7 @@ export const repairTrustedSignalIdentity = onCallProduction(
       let repaired = false;
       if (identitySnapshot.exists) {
         if (!identityDocumentMatches(identitySnapshot.data(), device.platform, input)) {
-          throw new HttpsError("already-exists", "A different Signal identity already exists for this device version.");
+          throw new HttpsError("already-exists", "A different device identity already exists for this device version.");
         }
       } else {
         const identityDocument: Record<string, unknown> = {

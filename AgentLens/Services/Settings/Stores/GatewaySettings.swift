@@ -17,7 +17,7 @@ final class GatewaySettings {
         didSet { persistence.set(gatewayHost, forKey: "gatewayHost") }
     }
 
-    var gatewayPort: Int = 8317 {
+    var gatewayPort: Int = LocalService.openBurnBarGateway.defaultPort {
         didSet { persistence.set(gatewayPort, forKey: "gatewayPort") }
     }
 
@@ -61,7 +61,7 @@ final class GatewaySettings {
         self.gatewayHost = persistence.string(forKey: "gatewayHost", defaultValue: "127.0.0.1")
         self.gatewayPort = persistence.objectExists(forKey: "gatewayPort")
             ? persistence.integer(forKey: "gatewayPort")
-            : 8317
+            : LocalService.openBurnBarGateway.defaultPort
         let storedAuthToken = secretPersistence.load(
             account: OpenBurnBarCore.OpenBurnBarIdentity.gatewayAuthTokenAccount,
             legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken

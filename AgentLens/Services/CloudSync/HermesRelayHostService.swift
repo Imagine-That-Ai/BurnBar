@@ -973,10 +973,9 @@ final class HermesRelayHostService {
         settingsManager: SettingsManager,
         urlSession: URLSession
     ) async -> Data {
-        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
-        guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else {
-            return primaryBody
-        }
+        let url = LocalService.openBurnBarGateway
+            .baseURL(host: nil, port: settingsManager.gatewayPort)
+            .appendingPathComponent("v1/models")
         var request = URLRequest(url: url, timeoutInterval: 5)
         let token = settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
@@ -996,10 +995,9 @@ final class HermesRelayHostService {
     }
 
     private func enrichedModelsBody(primaryBody: Data) async -> Data {
-        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
-        guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else {
-            return primaryBody
-        }
+        let url = LocalService.openBurnBarGateway
+            .baseURL(host: nil, port: settingsManager.gatewayPort)
+            .appendingPathComponent("v1/models")
         var request = URLRequest(url: url, timeoutInterval: 5)
         let token = settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
@@ -1202,7 +1200,7 @@ final class HermesRelayHostService {
 
     private func hermesBaseURL() -> URL {
         URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(staticString: "http://127.0.0.1:8642")
+            ?? LocalService.hermesGateway.defaultBaseURL
     }
 
     private func hermesBaseURLWithTrailingSlash() -> URL {
@@ -1212,10 +1210,8 @@ final class HermesRelayHostService {
     }
 
     private func burnBarGatewayBaseURLWithTrailingSlash() -> URL {
-        let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
-        let port = max(settingsManager.gatewayPort, 1)
-        let url = URL(string: "http://\(host):\(port)") ?? URL(staticString: "http://127.0.0.1:8317")
+        let url = LocalService.openBurnBarGateway
+            .baseURL(host: settingsManager.gatewayHost, port: settingsManager.gatewayPort)
         if url.absoluteString.hasSuffix("/") { return url }
         return URL(string: "\(url.absoluteString)/") ?? url
     }

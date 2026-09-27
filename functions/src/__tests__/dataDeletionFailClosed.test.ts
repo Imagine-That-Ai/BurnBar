@@ -7,6 +7,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // Silence firebase-functions logger output during the test run.
+// The central callable limiter (wrapCallableHandler) is covered by
+// callableRateLimits / wrapCallableHandlerRatePolicy; stub it so this suite's
+// minimal Firestore double only sees the handler's own reads and writes.
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../packages/functions-shared/src/callables/publicRateLimit.js")>()),
+  checkCallablePolicyRateLimit: vi.fn(async () => undefined),
+}));
+
 vi.mock("firebase-functions/logger", () => ({
   info: vi.fn(),
   error: vi.fn(),
@@ -28,8 +36,9 @@ const emptyCollection = {
 vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     collection: () => emptyCollection,
-    doc: () => ({ get: async () => ({ exists: false }) }),
+    doc: () => ({ get: async () => ({ exists: false }), set: async () => undefined }),
     recursiveDelete: vi.fn(async () => undefined),
+    runTransaction: runFakeFirestoreTransaction,
   },
   auth: {},
 }));
@@ -55,6 +64,8 @@ vi.mock("../../../packages/functions-shared/src/shared/auditLog.js", () => ({
     domainDeleteComplete: "data.delete.complete",
   },
 }));
+
+import { runFakeFirestoreTransaction } from "./fakeFirestoreTransaction.js";
 
 import { deleteDomainData } from "../domains/compliance/dataDeletion.js";
 

@@ -399,15 +399,30 @@ struct RoutingClientWiring {
     let fileManager: FileManager
     let home: URL
     let now: () -> Date
+    /// The user's configured BurnBar gateway port (`GatewaySettings.gatewayPort`
+    /// at the call site that has settings access). Detection accepts both this
+    /// port and the registry default so configs written before a port change
+    /// still read as wired.
+    var gatewayPort: Int
+
+    /// Ports that count as "this config points at the BurnBar gateway":
+    /// the configured port plus the shipped default (configs written before a
+    /// port change still point at it). An out-of-range stored port degrades
+    /// to the default rather than widening detection.
+    var acceptedGatewayPorts: [Int] {
+        LocalService.openBurnBarGateway.acceptedPorts(configured: gatewayPort)
+    }
 
     init(
         fileManager: FileManager = .default,
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
-        now: @escaping () -> Date = { Date() }
+        now: @escaping () -> Date = { Date() },
+        gatewayPort: Int = LocalService.openBurnBarGateway.defaultPort
     ) {
         self.fileManager = fileManager
         self.home = home
         self.now = now
+        self.gatewayPort = gatewayPort
     }
 
     // MARK: - File-mode wiring

@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarProviderModels
+import OpenBurnBarPlatformSupport
 
 public enum BurnBarProviderCredentialSlotStatus: String, Codable, CaseIterable, Hashable, Sendable {
     case ready
@@ -169,7 +170,7 @@ public struct BurnBarOllamaEndpointConfig: Codable, Hashable, Identifiable, Send
     ) -> BurnBarOllamaEndpointConfig {
         let baseURL = normalizedOllamaServerRoot(environment["OLLAMA_HOST"])
             ?? normalizedOllamaServerRoot(providerBaseURL)
-            ?? "http://localhost:11434"
+            ?? LocalService.ollama.defaultBaseURL.absoluteString
         return BurnBarOllamaEndpointConfig(
             id: "default",
             baseURL: baseURL,

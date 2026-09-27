@@ -80,7 +80,7 @@ extension OpenBurnBarApp {
             windowManager.openBugReport()
         }
         router.openHelpSupport = {
-            windowManager.openHelpSupport()
+            windowManager.openHelpSupport(settingsManager: context.settingsManager)
         }
         router.makeMenuBarPopoverContent = { onDismiss in
             AnyView(
@@ -338,7 +338,7 @@ extension OpenBurnBarApp {
                 guard !Task.isCancelled else { return }
                 if context.settingsManager.launchHermesWithOpenBurnBar {
                     let baseURL = URL(string: context.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                        ?? URL(staticString: "http://127.0.0.1:8642")
+                        ?? LocalService.hermesGateway.defaultBaseURL
                     let bearerToken = context.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
                     _ = await HermesRuntimeLauncher().openHermesAndGateway(
                         baseURL: baseURL,
@@ -347,7 +347,7 @@ extension OpenBurnBarApp {
                 }
                 if context.settingsManager.launchPiAgentsWithOpenBurnBar {
                     let baseURL = URL(string: context.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                        ?? URL(staticString: "http://127.0.0.1:8765")
+                        ?? LocalService.piAgentGateway.defaultBaseURL
                     let bearerToken = context.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
                     let preferred = context.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
                     let redisRaw = context.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)

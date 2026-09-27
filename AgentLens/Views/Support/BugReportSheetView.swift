@@ -223,22 +223,34 @@ public struct BugReportSheetView: View {
             VStack(spacing: 6) {
                 Text("Bug Report Filed Successfully")
                     .font(.title2).bold()
-                Text("Your issue is tracked on Linear and ready for resolution.")
+                Text(success.linearIdentifier != nil
+                    ? "Your issue is tracked on Linear and ready for resolution."
+                    : "Your report was filed and is ready for resolution.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
 
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
-                    Text(success.linearIdentifier)
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.blue.opacity(0.15))
-                        .foregroundColor(.blue)
-                        .cornerRadius(6)
+                    if let identifier = success.linearIdentifier {
+                        Text(identifier)
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.15))
+                            .foregroundColor(.blue)
+                            .cornerRadius(6)
+                    } else {
+                        Text("Filed as \(success.reportId)")
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundColor(.orange)
+                            .cornerRadius(6)
+                    }
 
-                    if let url = URL(string: success.linearUrl) {
+                    if let linearUrl = success.linearUrl, let url = URL(string: linearUrl) {
                         Link(destination: url) {
                             HStack(spacing: 4) {
                                 Text("Open in Linear")

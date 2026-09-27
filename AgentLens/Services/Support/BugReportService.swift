@@ -51,22 +51,25 @@ public struct BugReportSubmission: Sendable {
 
 public struct BugReportSubmissionResult: Sendable, Equatable {
     public let reportId: String
-    public let linearIdentifier: String
-    public let linearUrl: String
-    public let isMock: Bool
+    /// Linear issue identifier — nil when Linear is unconfigured or failed
+    /// (the server then reports `linearStatus` "unconfigured"/"failed" and the
+    /// report is tracked solely by `reportId`).
+    public let linearIdentifier: String?
+    public let linearUrl: String?
+    public let linearStatus: String
     public let missionId: String?
 
     public init(
         reportId: String,
-        linearIdentifier: String,
-        linearUrl: String,
-        isMock: Bool = false,
+        linearIdentifier: String?,
+        linearUrl: String?,
+        linearStatus: String = "created",
         missionId: String? = nil
     ) {
         self.reportId = reportId
         self.linearIdentifier = linearIdentifier
         self.linearUrl = linearUrl
-        self.isMock = isMock
+        self.linearStatus = linearStatus
         self.missionId = missionId
     }
 }
@@ -103,18 +106,24 @@ public enum BugReportService {
 
         let reportId = data["reportId"] as? String ?? ""
         let missionId = data["missionId"] as? String
-        let linear = data["linearIssue"] as? [String: Any] ?? [:]
-        let identifier = linear["identifier"] as? String ?? "BB-ISSUE"
-        let url = linear["url"] as? String ?? "https://linear.app"
-        let isMock = linear["mock"] as? Bool ?? false
+        let linearStatus = data["linearStatus"] as? String ?? "created"
+        // linearIssue is null when Linear is unconfigured or the create call
+        // failed — the report is still filed and tracked by reportId.
+        let linear = data["linearIssue"] as? [String: Any]
+        let identifier = linear?["identifier"] as? String
+        let url = linear?["url"] as? String
 
-        logger.info("Bug report submitted successfully. Linear issue: \(identifier, privacy: .public) (reportId: \(reportId, privacy: .public))")
+        if let identifier {
+            logger.info("Bug report submitted successfully. Linear issue: \(identifier, privacy: .public) (reportId: \(reportId, privacy: .public))")
+        } else {
+            logger.info("Bug report submitted successfully without a Linear issue (linearStatus: \(linearStatus, privacy: .public), reportId: \(reportId, privacy: .public))")
+        }
 
         return BugReportSubmissionResult(
             reportId: reportId,
             linearIdentifier: identifier,
             linearUrl: url,
-            isMock: isMock,
+            linearStatus: linearStatus,
             missionId: missionId
         )
     }

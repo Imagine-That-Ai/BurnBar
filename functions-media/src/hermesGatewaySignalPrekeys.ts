@@ -96,7 +96,7 @@ export function parseGatewaySignalPrekeyBundle(
     throwError(`${prefix}SignalPrekeyBundle.identityKeyId must be a safe 8-160 character identifier.`);
   }
   if (!identityKeyB64) {
-    throwError(`${prefix}SignalPrekeyBundle.identityKeyB64 must be canonical base64 for a 33-byte Signal public key.`);
+    throwError(`${prefix}SignalPrekeyBundle.identityKeyB64 must be canonical base64 for a 33-byte identity public key.`);
   }
   if (registrationId === undefined) {
     throwError(`${prefix}SignalPrekeyBundle.registrationId must be an integer from 1 through 16383.`);

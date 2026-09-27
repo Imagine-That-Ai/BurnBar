@@ -315,7 +315,7 @@ class SwarmSimulationTest {
     fun backgroundPrewarmCachesTheExactTablesTheSyncAssignPathServes() {
         val simulation = SwarmSimulation(particleCount = 60, pace = SwarmPace.CINEMATIC)
 
-        val warmedTables = mutableMapOf<AgentProvider, List<SwarmSimulation.ShapePoint>>()
+        val warmedTables = mutableMapOf<AgentProvider, List<ShapePoint>>()
         val prewarmThread =
             Thread {
                 simulation.prewarmShapePointTables()

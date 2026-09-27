@@ -16,17 +16,17 @@ enum MobileCloudVaultSignalPayloadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .signalIdentityUnavailable(let domainID):
-            return "Signal identity is unavailable for \(domainID)."
+            return "This device has no identity key for \(domainID)."
         case .signalEnvelopeRequired(let domainID):
-            return "Signal envelope is required for \(domainID)."
+            return "A sealed envelope is required for \(domainID)."
         case .invalidSignalEnvelope:
-            return "Signal envelope is invalid."
+            return "The sealed envelope is invalid."
         case .signalBindingMismatch:
-            return "Signal envelope binding does not match the Firestore path."
+            return "The sealed envelope does not match the Firestore path it was written to."
         case .trustedDeviceMissingSignalIdentity(let deviceId, let keyVersion):
-            return "Trusted device \(deviceId)_\(keyVersion) has no Signal identity public key."
+            return "Trusted device \(deviceId)_\(keyVersion) has no device identity public key."
         case .trustedDeviceSignalIdentityMismatch(let deviceId, let keyVersion):
-            return "Trusted device \(deviceId)_\(keyVersion) has an invalid Signal identity public key."
+            return "Trusted device \(deviceId)_\(keyVersion) has an invalid device identity public key."
         }
     }
 }

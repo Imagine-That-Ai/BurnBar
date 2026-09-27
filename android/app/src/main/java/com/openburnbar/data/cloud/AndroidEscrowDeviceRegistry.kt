@@ -282,12 +282,12 @@ class AndroidEscrowDeviceRegistry(
             userRef.collection("signal_identity_public_keys").document(targetSignalIdentityKeyId).get().await()
         val targetSignalFingerprint =
             targetIdentity.getString("publicKeyFingerprint")
-                ?: error("Target device Signal identity is not published.")
+                ?: error("The target device has not published its identity key.")
         check(
             targetIdentity.getString("deviceId") == targetDeviceId &&
                 targetIdentity.getString("identityKeyId") == targetSignalIdentityKeyId &&
                 targetIdentity.getLong("keyVersion")?.toInt() == targetKeyVersion,
-        ) { "Target device Signal identity does not match escrow device." }
+        ) { "The target device identity does not match the escrow device." }
 
         val payload =
             CloudVaultDeviceTrustChainPayload(

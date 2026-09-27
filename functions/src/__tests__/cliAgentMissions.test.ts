@@ -119,6 +119,7 @@ import {
   claimCliAgentMission,
   createCliAgentMission,
   isLegalHostStatusTransition,
+  MAX_MISSION_EVENT_SEQUENCE,
   updateCliAgentMissionStatus,
 } from "../../../functions-sync/src/domains/missions/cliAgentMissions.js";
 import { writeSignalAtRestDocument } from "../../../functions-identity/src/domains/devices/writeSignalAtRestDocument.js";
@@ -504,6 +505,26 @@ describe("appendCliAgentMissionEvent", () => {
         }),
       ),
     ).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
+  it("caps the per-mission event sequence and writes nothing past the cap", async () => {
+    const over = MAX_MISSION_EVENT_SEQUENCE + 1;
+    const eventId = String(over).padStart(6, "0");
+    await expect(
+      runAppend(
+        authed({
+          requestId: "ev",
+          deviceId: "mac-winner",
+          nonce: "nonce-append-cap",
+          actionProof: { ok: true },
+          hostWriteNonce,
+          eventId,
+          sealedEvent: sealed(ALICE_UID, "cli_agent_mission_requests/events", `ev/${eventId}`, "sealedPayload"),
+          publicEventShape: { sequence: over, kind: "status", phase: "running", runtime: "kimi", source: "mac" },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "resource-exhausted" });
+    expect([...store.keys()].some((key) => key.endsWith(`/events/${eventId}`))).toBe(false);
   });
 });
 

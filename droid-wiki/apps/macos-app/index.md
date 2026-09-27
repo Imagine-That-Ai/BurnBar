@@ -238,7 +238,7 @@ JSON-RPC server]
 |-------------------|------------|
 | Add a new provider parser | `Services/UsageAggregation/ParserRegistry.swift` to register, then create `Services/LogParser/YourParser.swift` conforming to `LogParser`. |
 | Change the dashboard layout | `Views/Dashboard/DashboardView.swift` (main route shell) + the lane views (`DashboardOverviewView`, `ProjectsView`, `ProviderDashboardView`, etc.). |
-| Change menu bar popover content | `Views/Popover/MenuBarPopoverView.swift`. The popover size is managed by `AppDelegate.showPopover`. |
+| Change menu bar popover content | `Views/Popover/MenuBarPopoverView.swift`. Body layout lives in `OpenBurnBarKernel` `PopoverTrayLayout` (order, hide, collapse, weight, min/max) and is edited in Settings → Appearance → Menu Bar (`PopoverTrayLayoutSettingsPanel`). Window size is still `AppDelegate.showPopover`. |
 | Change settings panes | `Views/Settings/SettingsView.swift` (router + `NavigationSplitView`) + individual detail views (`GeneralSettingsView.swift`, `BudgetSettingsView.swift`, etc.). |
 | Change the design system | `Theme/DesignSystem.swift` for tokens; `Theme/ColorAdaptive.swift` for dynamic color behavior. |
 | Add a new chat backend | `Services/CLIBridge/CLIBridge.swift` and `Views/Chat/ChatSessionController.swift` (backend probe + stream routing). |

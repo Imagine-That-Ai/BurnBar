@@ -98,9 +98,11 @@ class AndroidEscrowDeviceRegistryTest {
         }
     }
 
-    private fun makeFirestore(existingTrustState: String?): FirebaseFirestore {
+    private fun makeFirestore(existingTrustState: String?, signalIdentitySnapshot: DocumentSnapshot? = null): FirebaseFirestore {
         val deviceSnapshot = mockk<DocumentSnapshot> {
             every { getString("trustState") } returns existingTrustState
+            every { getLong("keyVersion") } returns TEST_KEY_VERSION.toLong()
+            every { getString("publicKeyFingerprint") } returns testPublicKey.fingerprint
             every { data } returns mapOf(
                 "trustState" to existingTrustState,
                 "platform" to "Android",
@@ -130,15 +132,72 @@ class AndroidEscrowDeviceRegistryTest {
         val publicKeysCollection = mockk<CollectionReference> {
             every { document("${TEST_DEVICE_ID}_$TEST_KEY_VERSION") } returns publicKeyRef
         }
+        val signalIdentityRef = mockk<DocumentReference> {
+            every { get() } returns Tasks.forResult(signalIdentitySnapshot ?: mockk(relaxed = true))
+        }
+        val signalIdentityCollection = mockk<CollectionReference> {
+            every { document("${TEST_DEVICE_ID}_$TEST_KEY_VERSION") } returns signalIdentityRef
+        }
         val userRef = mockk<DocumentReference> {
             every { collection("escrow_devices") } returns escrowDevicesCollection
             every { collection("escrow_public_keys") } returns publicKeysCollection
+            every { collection("signal_identity_public_keys") } returns signalIdentityCollection
         }
         val usersCollection = mockk<CollectionReference> {
             every { document(TEST_UID) } returns userRef
         }
         return mockk<FirebaseFirestore> {
             every { collection("users") } returns usersCollection
+        }
+    }
+
+    @Test
+    fun trustSelfRefusesATargetWhoseIdentityKeyIsUnpublished() {
+        val unpublished = mockk<DocumentSnapshot> {
+            every { getString("publicKeyFingerprint") } returns null
+        }
+
+        val error = runTrustSelf(targetIdentity = unpublished)
+
+        assertEquals("The target device has not published its identity key.", error?.message)
+    }
+
+    @Test
+    fun trustSelfRefusesATargetIdentityBoundToAnotherDevice() {
+        val mismatched = mockk<DocumentSnapshot> {
+            every { getString("publicKeyFingerprint") } returns "identity-fingerprint"
+            every { getString("deviceId") } returns "some-other-device"
+            every { getString("identityKeyId") } returns "${TEST_DEVICE_ID}_$TEST_KEY_VERSION"
+            every { getLong("keyVersion") } returns TEST_KEY_VERSION.toLong()
+        }
+
+        val error = runTrustSelf(targetIdentity = mismatched)
+
+        assertEquals("The target device identity does not match the escrow device.", error?.message)
+    }
+
+    private fun runTrustSelf(targetIdentity: DocumentSnapshot): Throwable? {
+        val keypair = mockk<AndroidCloudVaultDeviceKeypair> {
+            every { deviceId } returns TEST_DEVICE_ID
+            every { publicKeyFingerprint } returns testPublicKey.fingerprint
+            every { keyVersion } returns TEST_KEY_VERSION
+            every { publicKeyData } returns testPublicKeyBytes
+        }
+        val firestore = makeFirestore(existingTrustState = AndroidEscrowDeviceRegistry.TRUSTED, signalIdentitySnapshot = targetIdentity)
+        mockkObject(AndroidSignalIdentityKeyStore)
+        return try {
+            every {
+                AndroidSignalIdentityKeyStore.loadOrCreate(any(), any())
+            } returns AndroidSignalIdentityKeypair.generate(TEST_DEVICE_ID, TEST_KEY_VERSION)
+            coEvery { AndroidSignalIdentityKeyStore.publishIfNeeded(any(), any(), any(), any(), any()) } just Runs
+            runCatching {
+                runBlocking {
+                    AndroidEscrowDeviceRegistry(firestore = firestore, securityClient = mockk(relaxed = true))
+                        .trustSelf(uid = TEST_UID, keypair = keypair)
+                }
+            }.exceptionOrNull()
+        } finally {
+            unmockkObject(AndroidSignalIdentityKeyStore)
         }
     }
 

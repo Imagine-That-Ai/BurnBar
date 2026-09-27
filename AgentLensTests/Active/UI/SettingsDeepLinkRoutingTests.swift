@@ -104,6 +104,18 @@ final class SettingsDeepLinkRoutingTests: XCTestCase {
         )
     }
 
+    func test_routeToPopoverLayoutUsesTheAppearanceItem() {
+        SettingsDeepLinkRouting.routeToPopoverLayout()
+        XCTAssertEqual(
+            UserDefaults.standard.string(forKey: SettingsDeepLinkRouting.pendingItemKey),
+            SettingsDeepLinkRouting.popoverLayoutItemID
+        )
+        XCTAssertEqual(
+            SettingsDeepLinkRouting.item(matching: SettingsDeepLinkRouting.popoverLayoutItemID)?.anchorID,
+            SettingsAnchor.appearancePopoverLayout
+        )
+    }
+
     // MARK: - Manifest invariants for the new quota-display destination
 
     func test_quotaDisplayManifestItemIsSearchableAndAnchored() throws {
@@ -129,6 +141,10 @@ final class SettingsDeepLinkRoutingTests: XCTestCase {
         )
         XCTAssertEqual(
             AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.appearanceLaunchAtLogin),
+            .menuBar
+        )
+        XCTAssertEqual(
+            AppearanceCorkboardSection.section(containingAnchor: SettingsAnchor.appearancePopoverLayout),
             .menuBar
         )
         XCTAssertEqual(

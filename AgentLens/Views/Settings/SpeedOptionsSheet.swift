@@ -1,3 +1,4 @@
+import OpenBurnBarKernel
 import SwiftUI
 
 // MARK: - Speed Options Sheet
@@ -109,7 +110,7 @@ struct SpeedOptionsSheet: View {
                             .font(DesignSystem.Typography.caption)
                             .fontWeight(.semibold)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        Text("Uses Apple GPU + Neural Engine. Requires mlx_lm.server running on port 8080.")
+                        Text("Uses Apple GPU + Neural Engine. Requires mlx_lm.server running on port \(LocalService.mlxServer.defaultPort).")
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                             .fixedSize(horizontal: false, vertical: true)

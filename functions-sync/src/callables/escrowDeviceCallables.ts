@@ -262,7 +262,7 @@ async function assertTrustChainTargetIdentity(args: {
     targetIdentitySnap.get("keyVersion") !== args.keyVersion ||
     targetIdentitySnap.get("publicKeyFingerprint") !== args.trustChain.targetSignalIdentityPublicKeyFingerprint
   ) {
-    throw new HttpsError("failed-precondition", "Trust-chain target Signal identity is not published.");
+    throw new HttpsError("failed-precondition", "The trust-chain target device has not published its identity key.");
   }
   return targetIdentitySnap;
 }
@@ -310,7 +310,7 @@ async function assertTrustChainApproverIdentity(args: {
     approverIdentitySnap.get("keyVersion") !== approverKeyVersion ||
     approverIdentitySnap.get("publicKeyFingerprint") !== args.trustChain.approverSignalIdentityPublicKeyFingerprint
   ) {
-    throw new HttpsError("failed-precondition", "Trust-chain approver Signal identity is not published.");
+    throw new HttpsError("failed-precondition", "The trust-chain approver device has not published its identity key.");
   }
   return approverIdentitySnap;
 }

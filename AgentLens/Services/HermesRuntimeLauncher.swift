@@ -143,7 +143,7 @@ final class HermesRuntimeLauncher {
     }
 
     func refreshStatus(
-        baseURL: URL = URL(staticString: "http://127.0.0.1:8642"),
+        baseURL: URL = LocalService.hermesGateway.defaultBaseURL,
         bearerToken: String? = nil
     ) async -> HermesRuntimeStatus {
         let key = RefreshKey(baseURL: baseURL, bearerToken: bearerToken)
@@ -207,7 +207,7 @@ final class HermesRuntimeLauncher {
     }
 
     func openHermesAndGateway(
-        baseURL: URL = URL(staticString: "http://127.0.0.1:8642"),
+        baseURL: URL = LocalService.hermesGateway.defaultBaseURL,
         bearerToken: String? = nil,
         launchDashboard: Bool = true
     ) async -> HermesRuntimeStatus {

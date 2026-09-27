@@ -5,7 +5,7 @@
  * The catalog is the single source of matrix rows. Hand-edit overrides in
  * CATALOG_OVERRIDES below when generator defaults are insufficient.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseGeneratedLiteral } from "./generated-literal-parser.mjs";
 
@@ -1672,6 +1672,64 @@ ${indent(level)}}`;
 }
 
 const names = exportedNames();
+
+// ---------------------------------------------------------------------------
+// handlerModule derivation
+//
+// `handlerModule` is the file that actually DEFINES the endpoint, not the file
+// that happens to re-export it — index and domain modules re-export callables
+// across file boundaries (e.g. providerAccounts.js re-exports the
+// callables/providerAccountSnapshots.js definitions), so the re-export chain
+// cannot be trusted. Instead we scan each codebase's src tree once and map
+// every exported name to the file containing `export const|function NAME` or
+// a `wrapCallableHandler("NAME"` / `onCallProduction("NAME"` definition.
+// Entries the scan cannot resolve keep their prior handlerModule.
+// ---------------------------------------------------------------------------
+const HANDLER_SOURCE_DIRS = ["functions/src", "functions-sync/src", "functions-media/src", "functions-identity/src"];
+
+function collectSourceFiles(dirRel) {
+  const root = resolve(repoRoot, dirRel);
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (entry.name === "__tests__" || entry.name === "node_modules") continue;
+        walk(resolve(dir, entry.name));
+      } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+        files.push(resolve(dir, entry.name));
+      }
+    }
+  };
+  walk(root);
+  return files;
+}
+
+const handlerModuleIndex = (() => {
+  // Two passes: a `wrapCallableHandler("NAME"` / `onCallProduction("NAME"`
+  // literal is the deployed-name definition site and wins over a bare
+  // `export const|function NAME` elsewhere (helpers like demoSeed.ts export a
+  // same-named function that a domain module wraps into the callable).
+  const wrapperIndex = new Map();
+  const declIndex = new Map();
+  for (const dirRel of HANDLER_SOURCE_DIRS) {
+    for (const file of collectSourceFiles(dirRel)) {
+      const module = `${dirRel}/${file.slice(resolve(repoRoot, dirRel).length + 1)}`;
+      const source = readFileSync(file, "utf8");
+      for (const match of source.matchAll(
+        /(?:wrapCallableHandler|onCallProduction)\s*(?:<(?:[^<>]|<[^<>]*>)*>)?\s*\(\s*"([^"]+)"/g,
+      )) {
+        if (!wrapperIndex.has(match[1])) wrapperIndex.set(match[1], module);
+      }
+      for (const match of source.matchAll(/export\s+(?:const|function|async\s+function)\s+([A-Za-z_$][\w$]*)/g)) {
+        if (!declIndex.has(match[1])) declIndex.set(match[1], module);
+      }
+    }
+  }
+  const index = new Map(declIndex);
+  for (const [name, module] of wrapperIndex) index.set(name, module);
+  return index;
+})();
+
 const existing = readFileSync(outPath, "utf8");
 const existingJson = existing.match(
   /export const endpointAuthorizationCatalog:\s*EndpointAuthorizationEntry\[\]\s*=\s*(\[[\s\S]*\])\s*as\s*EndpointAuthorizationEntry\[\];/u,
@@ -1688,7 +1746,12 @@ const merged = names
   .map((exportedName) => {
     const base = priorByName[exportedName] ?? defaultEntry(exportedName);
     const override = CATALOG_OVERRIDES[exportedName];
-    return override ? { ...base, ...override, exportedName } : base;
+    const entry = override ? { ...base, ...override, exportedName } : base;
+    const derivedModule = handlerModuleIndex.get(exportedName);
+    if (derivedModule && entry.handlerModule !== derivedModule) {
+      entry.handlerModule = derivedModule;
+    }
+    return entry;
   })
   .map((entry) => {
     const measuredCode = BOLA_MEASURED_EXPECTED_CODES[entry.exportedName];

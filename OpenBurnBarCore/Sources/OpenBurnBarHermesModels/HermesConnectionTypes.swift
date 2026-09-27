@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarAssistantModels
+import OpenBurnBarPlatformSupport
 
 public enum HermesConnectionMode: String, Codable, Sendable, Equatable, CaseIterable {
     case local
@@ -90,7 +91,7 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
         displayName: "Local Hermes",
         mode: .local,
         status: .offline,
-        endpointURL: "http://localhost:8642",
+        endpointURL: LocalService.hermesGateway.defaultBaseURL.absoluteString,
         capabilities: ["chat_completions"]
     )
 }

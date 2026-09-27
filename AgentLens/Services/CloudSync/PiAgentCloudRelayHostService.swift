@@ -629,7 +629,7 @@ final class PiAgentCloudRelayHostService {
 
     private func piAgentBaseURL() -> URL {
         URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(staticString: "http://127.0.0.1:8765")
+            ?? LocalService.piAgentGateway.defaultBaseURL
     }
 
     private func piAgentBaseURLWithTrailingSlash() -> URL {

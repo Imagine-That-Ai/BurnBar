@@ -9,6 +9,9 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
 
   class FakeTimestamp {
     constructor(readonly millis: number) {}
+    static now(): FakeTimestamp {
+      return new FakeTimestamp(Date.now());
+    }
     static fromMillis(millis: number): FakeTimestamp {
       return new FakeTimestamp(millis);
     }

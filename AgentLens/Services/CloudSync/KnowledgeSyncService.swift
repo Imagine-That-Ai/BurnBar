@@ -43,11 +43,11 @@ public enum KnowledgeSyncError: LocalizedError {
         case .commitFailed(let message):
             return message
         case .signalIdentityUnavailable:
-            return "This Mac has no published Signal identity for Pensieve knowledge sealing."
+            return "This Mac has no published device identity for Pensieve knowledge sealing."
         case .trustedDeviceMissingSignalIdentity(let deviceId, let keyVersion):
-            return "Trusted device \(deviceId)_\(keyVersion) is missing its Signal identity public key."
+            return "Trusted device \(deviceId)_\(keyVersion) is missing its device identity public key."
         case .trustedDeviceSignalIdentityMismatch(let deviceId, let keyVersion):
-            return "Trusted device \(deviceId)_\(keyVersion) has an invalid Signal identity public key."
+            return "Trusted device \(deviceId)_\(keyVersion) has an invalid device identity public key."
         }
     }
 }

@@ -40,6 +40,15 @@ import {
   writePendingMissionInTransaction,
 } from "../../callables/cliAgentMissionsSupport.js";
 
+/**
+ * Per-mission ceiling on host-appended events. The Mac host streams a status
+ * event every ~2 s plus one per transcript piece, so a per-uid counter doc
+ * would serialize the stream on one document; this bound caps the event
+ * volume per mission instead (missions themselves are create-rate-limited).
+ * ~11 h of 2 s streaming — far beyond any real mission.
+ */
+export const MAX_MISSION_EVENT_SEQUENCE = 20_000;
+
 const HOST_STATUS_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   accepted: new Set(["starting", "waiting_for_approval", "failed", "canceled"]),
   starting: new Set(["running", "failed", "canceled"]),
@@ -468,6 +477,9 @@ export const appendCliAgentMissionEvent = onCallProduction<
     const sequence = shape.sequence;
     if (typeof sequence !== "number" || !Number.isInteger(sequence) || sequence < 2) {
       throw new HttpsError("invalid-argument", "publicEventShape.sequence must be an integer ≥ 2.");
+    }
+    if (sequence > MAX_MISSION_EVENT_SEQUENCE) {
+      throw new HttpsError("resource-exhausted", "Mission event limit reached.");
     }
     const expectedId = String(sequence).padStart(6, "0");
     if (eventId !== expectedId) {

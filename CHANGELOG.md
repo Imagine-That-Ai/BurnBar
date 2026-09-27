@@ -18,7 +18,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cycle shrank from 37 to 34 components. See
   `docs/SERVICES_DECOMPOSITION_PROGRAM.md` for the remaining waves.
 
+### Added
+- **Menu-bar popover layout** — quotas are a tray section like every other
+  block, not a pinned 340pt bar that crowds the rest of the drop-down. Users
+  can show, hide, collapse, reorder, and size each section (relative weight,
+  min/max, or a drag-fixed height). Choices persist across launches. Hidden
+  sections leave no blank gap; collapsed sections show a labeled strip.
+  Settings → Appearance → Menu Bar, or the existing Quota Popover pane for
+  the quotas block's space. Drag handles and hover controls on the popover
+  itself still move and resize sections.
+
 ### Fixed
+- **Every callable now has a declared rate policy** — a central registry
+  (`CALLABLE_RATE_POLICIES` in `packages/functions-shared`) classifies each
+  of the 166 catalog callables as `limited` (central per-uid burst + sustained
+  windows enforced inside `wrapCallableHandler` before the handler runs),
+  `handler-enforced` (existing bespoke limiter), or `exempt` (read-only /
+  bulk-sync / per-object-bounded / admin-only). Mission event appends are now
+  capped at 20,000 per mission instead of being bounded per account. Missing policies fail closed at callable definition
+  time, so an undeclared endpoint can never deploy unbounded.
+  `submitBugReport` — which creates a Linear issue, posts to Slack, and queues
+  a privileged CLI agent mission — is limited to 3 reports per 10 minutes and
+  10 per day. Rate-limit rejections log a `callable_rate_limited` warning
+  rather than polluting Sentry.
+- **Bug reports no longer fabricate Linear issues** — `submitBugReport`
+  previously invented `BB-###` identifiers and URLs when Linear was
+  unconfigured or the create call failed, and surfaced them to the user, the
+  Slack triage post, and the CLI-agent mission prompt. `LinearClient` now
+  returns an explicit `created | unconfigured | failed` status; the report doc,
+  mission, and Slack post record `linearStatus` honestly (Slack says "Linear:
+  not filed"), reports still save and missions still queue when Linear is down,
+  and a production instance without `LINEAR_API_KEY` logs one
+  `linear_integration_unconfigured` error on its first unconfigured filing. Clients (Mac, iOS, Android) decode
+  `linearIssue` as optional and show "Filed as <reportId>" when no issue
+  exists.
+- **Local-service endpoints are no longer ~90 hardcoded literals** — a new
+  `LocalServiceRegistry` (OpenBurnBarPlatformSupport) owns the default port
+  and loopback rules for the BurnBar gateway, Hermes, Pi Agents, OpenClaw,
+  Ollama, MLX, and SmartHub; every settings default, URL fallback, placeholder,
+  and detection check now reads from it. Wired-client detection (`isWired`,
+  Droid/Factory config sync) now matches the *configured* gateway port plus
+  the shipped 8317 default, so rows no longer flip to "not wired" after the
+  user moves `gatewayPort`; VibeProxy's legacy 8317 stays pinned via
+  `LegacyLocalEndpoint.vibeProxyPort`. The MLX default is unified at 8080
+  (mlx_lm.server's port; the catalog's 8328 was drift). Bootstrap validates
+  endpoint overrides and surfaces collisions in Help & Support; the daemon
+  warns and falls back on an invalid `--gateway-port`; and a CI ratchet
+  (`check-local-service-literals.mjs`) blocks new literals.
+- **User-facing copy no longer names the Signal library** — the Signal
+  at-rest/transport path is wired but not activated in production, so error
+  strings a user can read (thrown errors, alert descriptions, callable error
+  messages across Mac, iOS, Android, and Functions) now say "device identity"
+  / "sealed envelope" instead of internals jargon. Wire constants and
+  identifiers keep the accurate name; a fast-feedback ratchet
+  (`check-signal-jargon-user-copy.sh`) blocks unreviewed `Signal` literals in
+  shipped copy surfaces. SECURITY.md's activation gates now reflect the
+  landed state — the remaining blockers are external review, store/legal
+  approval, physical-device E2E, and the staged Remote Config ramp, not code.
 - **Cloud sync is now opt-in** — the master switch defaults to off and
   persists on-device; nothing leaves the Mac until it is turned on in
   Settings → Devices & Sync, where a real toggle now lives. Fresh installs

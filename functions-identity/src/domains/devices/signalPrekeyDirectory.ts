@@ -107,7 +107,7 @@ function buildPrekeyClaimStamp(sessionId: string): {
 
 function requireUid(request: CallableRequest): string {
   const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Sign in to use the Signal prekey directory.");
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in to use the device prekey directory.");
   enforceAuthAndAppCheck(request, uid);
   return uid;
 }
@@ -130,21 +130,21 @@ async function resolveTrustedIdentity(uid: string, identityKeyIdRaw: unknown): P
   const ref = db.doc(`users/${uid}/signal_identity_public_keys/${identityKeyId}`);
   const snap = await ref.get();
   if (!snap.exists) {
-    throw new HttpsError("failed-precondition", "Publish the Signal identity key before its prekey bundle.");
+    throw new HttpsError("failed-precondition", "Publish the device identity key before its prekey bundle.");
   }
   const data = snap.data();
   if (!data) {
-    throw new HttpsError("failed-precondition", "Stored Signal identity key is malformed.");
+    throw new HttpsError("failed-precondition", "Stored device identity key is malformed.");
   }
   const deviceId = String(data.deviceId ?? "");
   const keyVersion = Number(data.keyVersion ?? 0);
   const identityPublicKeyData = String(data.publicKeyData ?? "");
   if (!deviceId || !Number.isInteger(keyVersion) || keyVersion < 1 || !identityPublicKeyData) {
-    throw new HttpsError("failed-precondition", "Stored Signal identity key is malformed.");
+    throw new HttpsError("failed-precondition", "Stored device identity key is malformed.");
   }
   const deviceSnap = await db.doc(`users/${uid}/escrow_devices/${deviceId}`).get();
   if (!deviceSnap.exists) {
-    throw new HttpsError("failed-precondition", "Signal identity key has no backing escrow device.");
+    throw new HttpsError("failed-precondition", "Device identity key has no backing escrow device.");
   }
   const deviceData = deviceSnap.data();
   if (!deviceData) {

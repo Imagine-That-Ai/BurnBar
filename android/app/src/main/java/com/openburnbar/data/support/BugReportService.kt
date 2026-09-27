@@ -18,7 +18,11 @@ class BugReportService(
         val functions = functionsProvider()
         val result = functions.getHttpsCallable("submitBugReport").call(payload).await()
         val parsed = parseSubmissionResult(result.getData())
-        Log.i(TAG, "Bug report submitted successfully. Linear issue: ${parsed.linearIdentifier}")
+        if (parsed.linearIdentifier != null) {
+            Log.i(TAG, "Bug report submitted successfully. Linear issue: ${parsed.linearIdentifier}")
+        } else {
+            Log.i(TAG, "Bug report submitted without a Linear issue (linearStatus: ${parsed.linearStatus}, reportId: ${parsed.reportId})")
+        }
         parsed
     }
 
@@ -47,15 +51,17 @@ class BugReportService(
             val data = raw as? Map<*, *> ?: error("Invalid response from server.")
             val reportId = data["reportId"] as? String ?: ""
             val missionId = data["missionId"] as? String
-            val linear = data["linearIssue"] as? Map<*, *> ?: emptyMap<String, Any>()
-            val identifier = linear["identifier"] as? String ?: "BB-ISSUE"
-            val url = linear["url"] as? String ?: "https://linear.app"
-            val isMock = linear["mock"] as? Boolean ?: false
+            val linearStatus = data["linearStatus"] as? String ?: "created"
+            // linearIssue is null when Linear is unconfigured or the create call
+            // failed — the report is still filed and tracked by reportId.
+            val linear = data["linearIssue"] as? Map<*, *>
+            val identifier = linear?.get("identifier") as? String
+            val url = linear?.get("url") as? String
             return BugReportSubmissionResult(
                 reportId = reportId,
                 linearIdentifier = identifier,
                 linearUrl = url,
-                isMock = isMock,
+                linearStatus = linearStatus,
                 missionId = missionId,
             )
         }

@@ -143,22 +143,34 @@ public struct MobileBugReportSheetView: View {
             VStack(spacing: 8) {
                 Text("Bug Report Filed")
                     .font(.title2).bold()
-                Text("Issue created on Linear and logged to your account.")
+                Text(success.linearIdentifier != nil
+                    ? "Issue created on Linear and logged to your account."
+                    : "Report filed and logged to your account.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
 
             VStack(spacing: 12) {
-                Text(success.linearIdentifier)
-                    .font(.system(size: 18, weight: .bold, design: .monospaced))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.15))
-                    .foregroundColor(.blue)
-                    .cornerRadius(8)
+                if let identifier = success.linearIdentifier {
+                    Text(identifier)
+                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.15))
+                        .foregroundColor(.blue)
+                        .cornerRadius(8)
+                } else {
+                    Text("Filed as \(success.reportId)")
+                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.15))
+                        .foregroundColor(.orange)
+                        .cornerRadius(8)
+                }
 
-                if let url = URL(string: success.linearUrl) {
+                if let linearUrl = success.linearUrl, let url = URL(string: linearUrl) {
                     Link(destination: url) {
                         HStack(spacing: 4) {
                             Text("View on Linear")

@@ -282,8 +282,8 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         self.resolver = resolver
         self.gatewayProvider = {
             RoutingClientGateway(
-                host: settingsManager.gatewayHost.isEmpty ? "127.0.0.1" : settingsManager.gatewayHost,
-                port: settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317,
+                host: LocalService.openBurnBarGateway.resolvedHost(settingsManager.gatewayHost),
+                port: LocalService.openBurnBarGateway.resolvedPort(settingsManager.gatewayPort),
                 authToken: settingsManager.gatewayAuthToken
             )
         }

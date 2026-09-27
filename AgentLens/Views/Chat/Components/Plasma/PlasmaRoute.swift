@@ -150,9 +150,9 @@ enum PlasmaRouteCatalog {
     /// shipped defaults, shown so a user can tell two local servers apart at a
     /// glance.
     private static let gatewayEndpoints: [ChatBackendID: String] = [
-        .hermes: ":8642",
-        .openclaw: ":18789",
-        .piAgent: ":8765"
+        .hermes: ":\(LocalService.hermesGateway.defaultPort)",
+        .openclaw: ":\(LocalService.openClawGateway.defaultPort)",
+        .piAgent: ":\(LocalService.piAgentGateway.defaultPort)"
     ]
 
     /// The route for a backend. Every backend has exactly one.

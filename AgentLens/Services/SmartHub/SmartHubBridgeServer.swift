@@ -133,7 +133,7 @@ final class SmartHubBridgeServer {
     /// reads `boundPort` to assemble the URL it actually casts.
     private static let portFallbackAttempts: UInt16 = 8
 
-    func start(port: UInt16 = 8787) {
+    func start(port: UInt16 = UInt16(LocalService.smartHubDashboard.defaultPort)) {
         // `isRunning` only flips to true once `NWListener` reaches `.ready`,
         // which is delivered asynchronously on the listener's dispatch
         // queue. During app startup `applySettings()` can fire twice in

@@ -248,9 +248,9 @@ public struct OllamaQuotaAdapter: ProviderQuotaAdapter {
         if !host.isEmpty {
             baseString = host.hasPrefix("http") ? host : "http://\(host)"
         } else {
-            baseString = "http://localhost:11434"
+            baseString = LocalService.ollama.defaultBaseURL.absoluteString
         }
-        return URL(string: baseString) ?? URL(staticString: "http://localhost:11434")
+        return URL(string: baseString) ?? LocalService.ollama.defaultBaseURL
     }
 
     private func buildRequest(url: URL, apiKey: String?) -> URLRequest? {

@@ -451,8 +451,8 @@ extension OpenBurnBarDaemonManager {
         let settings = settingsManager
         if settings.gatewayEnabled {
             programArguments.append(contentsOf: ["--gateway-enable"])
-            programArguments.append(contentsOf: ["--gateway-host", settings.gatewayHost.isEmpty ? "127.0.0.1" : settings.gatewayHost])
-            programArguments.append(contentsOf: ["--gateway-port", "\(settings.gatewayPort > 0 ? settings.gatewayPort : 8317)"])
+            programArguments.append(contentsOf: ["--gateway-host", LocalService.openBurnBarGateway.resolvedHost(settings.gatewayHost)])
+            programArguments.append(contentsOf: ["--gateway-port", "\(LocalService.openBurnBarGateway.resolvedPort(settings.gatewayPort))"])
             // Fail-closed: auto-generate and persist a bearer token unless the
             // user explicitly opted into an unauthenticated loopback bind, so
             // no same-host process can spend the user's provider credits.

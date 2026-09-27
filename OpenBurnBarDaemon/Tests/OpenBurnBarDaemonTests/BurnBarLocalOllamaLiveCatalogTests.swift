@@ -153,7 +153,7 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
                 ]
             )!
             if request.url?.path == "/api/tags" {
-                XCTAssertEqual(request.url?.absoluteString, "http://localhost:11434/api/tags")
+                XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:11434/api/tags")
                 XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
                 return (response, Data(#"{"models":[]}"#.utf8))
             }

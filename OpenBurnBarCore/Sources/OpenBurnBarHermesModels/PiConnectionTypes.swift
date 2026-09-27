@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarPlatformSupport
 
 // MARK: - Pi Connection Types
 //
@@ -121,7 +122,7 @@ public struct PiConnectionRecord: Codable, Identifiable, Sendable, Equatable {
         displayName: "Local Pi",
         mode: .local,
         status: .offline,
-        endpointURL: "http://127.0.0.1:8765",
+        endpointURL: LocalService.piAgentGateway.defaultBaseURL.absoluteString,
         capabilities: ["chat_completions"]
     )
 }

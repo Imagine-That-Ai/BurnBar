@@ -18,7 +18,7 @@ import org.junit.Test
  * key-binding negative, not a sender-auth negative (sender-auth is verified before wrap lookup).
  *
  * Platform asymmetry vs iOS: Android has no typed `recipientPrivateKeyMismatch` guard — a missing
- * wrap surfaces as `IllegalStateException("Missing Signal recipient wrap")`, and a wrong private
+ * wrap surfaces as `IllegalStateException("Missing recipient wrap")`, and a wrong private
  * key for a present wrap surfaces as the libsignal HPKE open failure. iOS additionally distinguishes
  * `recipientPrivateKeyMismatch`; both platforms fail closed.
  */
@@ -49,6 +49,14 @@ class CloudVaultSignalFanOutTest {
     )
 
     private val trusted = mapOf(deviceA.identityKeyId to deviceA.publicKeyData)
+
+    @Test
+    fun unknownRecipientKindIsRejectedBeforeSealing() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            seal(listOf(CloudVaultSignalRecipient("mailbox", deviceB.identityKeyId, deviceB.publicKeyData)))
+        }
+        assertEquals("Invalid recipient kind", error.message)
+    }
 
     @Test
     fun fanOutSealsEveryRecipientAndEachOpens() {
@@ -93,7 +101,7 @@ class CloudVaultSignalFanOutTest {
                     trusted,
                 )
             }
-        assertEquals("Missing Signal recipient wrap", error.message)
+        assertEquals("Missing recipient wrap", error.message)
 
         // The surviving devices still open the post-revocation envelope.
         assertArrayEquals(
@@ -117,7 +125,7 @@ class CloudVaultSignalFanOutTest {
                     trusted,
                 )
             }
-        assertEquals("Missing Signal recipient wrap", error.message)
+        assertEquals("Missing recipient wrap", error.message)
     }
 
     @Test
@@ -145,7 +153,7 @@ class CloudVaultSignalFanOutTest {
         )
         assertNotEquals(
             "must reach the HPKE open, not the missing-wrap path",
-            "Missing Signal recipient wrap",
+            "Missing recipient wrap",
             error.message,
         )
     }

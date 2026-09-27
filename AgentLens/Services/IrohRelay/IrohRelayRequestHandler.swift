@@ -930,10 +930,7 @@ final class IrohRelayRequestHandler: Sendable {
     @MainActor
     private func burnBarGatewayBaseURLWithTrailingSlash() -> URL {
         let settings = settingsManager as? SettingsManager
-        let rawHost = settings?.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines) ?? "127.0.0.1"
-        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
-        let port = max(settings?.gatewayPort ?? 8317, 1)
-        let base = URL(string: "http://\(host):\(port)") ?? URL(staticString: "http://127.0.0.1:8317")
+        let base = LocalService.openBurnBarGateway.baseURL(host: settings?.gatewayHost, port: settings?.gatewayPort)
         if base.absoluteString.hasSuffix("/") { return base }
         return URL(string: "\(base.absoluteString)/") ?? base
     }
@@ -947,7 +944,7 @@ final class IrohRelayRequestHandler: Sendable {
     @MainActor
     private func hermesBaseURLWithTrailingSlash() -> URL {
         let base = URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(staticString: "http://127.0.0.1:8642")
+            ?? LocalService.hermesGateway.defaultBaseURL
         if base.absoluteString.hasSuffix("/") { return base }
         return URL(string: "\(base.absoluteString)/") ?? base
     }
@@ -955,7 +952,7 @@ final class IrohRelayRequestHandler: Sendable {
     @MainActor
     private func enrichedModelsBody(primaryBody: Data) async -> Data {
         let settings = settingsManager as? SettingsManager
-        let port = settings?.gatewayPort ?? 8317
+        let port = settings?.gatewayPort ?? LocalService.openBurnBarGateway.defaultPort
         guard port > 0,
               let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else {
             return primaryBody

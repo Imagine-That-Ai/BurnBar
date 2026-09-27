@@ -301,8 +301,7 @@ struct VibeProxyMigrationService: Sendable {
         let lowercased = text.lowercased()
         return lowercased.contains("vibeproxy")
             || lowercased.contains("cli-proxy-api")
-            || lowercased.contains("http://localhost:8317")
-            || lowercased.contains("http://127.0.0.1:8317")
+            || LocalService.matchesLoopbackHTTPEndpoint(lowercased, port: LegacyLocalEndpoint.vibeProxyPort)
     }
 
     private func stringValue(_ object: [String: Any], keys: [String]) -> String? {

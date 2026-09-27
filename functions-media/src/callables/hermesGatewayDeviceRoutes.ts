@@ -161,7 +161,7 @@ export async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Pr
     throw httpError(
       400,
       "missing_agent_signal_prekey_bundle",
-      "A client advertising Signal v4 must publish an official-libsignal PQXDH prekey bundle.",
+      "A client advertising sealed-envelope v4 must publish an official-libsignal PQXDH prekey bundle.",
     );
   }
   if (gatewaySignalRequiredMode() && agentCapabilities?.supportsSignalEnvelope !== true) {

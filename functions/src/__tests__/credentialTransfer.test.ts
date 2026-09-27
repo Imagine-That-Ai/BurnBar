@@ -104,7 +104,8 @@ describe("credential transfer v2 callables", () => {
       }),
       "invalid-argument",
     );
-    expect(store.size).toBe(0);
+    // Only the central per-uid rate-limit counters may exist; no transfer state was touched.
+    expect([...store.keys()].filter((key) => !key.startsWith("public_rate_limits/"))).toEqual([]);
   });
 
   it("claims, completes, and idempotently re-completes after local decrypt succeeds", async () => {

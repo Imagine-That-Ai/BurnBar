@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 extension RoutingClientWiring {
 
@@ -297,7 +298,8 @@ extension RoutingClientWiring {
         guard let components = URLComponents(string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
               let host = components.host?.lowercased(),
               host == "127.0.0.1" || host == "localhost",
-              components.port == 8317 else {
+              let port = components.port,
+              acceptedGatewayPorts.contains(port) else {
             return false
         }
         return true

@@ -25,7 +25,7 @@ public struct OllamaInsightAdapter: InsightModelGateway {
     public let modelCatalog: [InsightCatalogModel]
     public let numPredict: Int
 
-    public init(baseURL: URL = URL(staticString: "http://127.0.0.1:11434"),
+    public init(baseURL: URL = LocalService.ollama.defaultBaseURL,
                 urlSession: URLSession = .shared,
                 modelCatalog: [InsightCatalogModel] = [],
                 numPredict: Int = 1400) {

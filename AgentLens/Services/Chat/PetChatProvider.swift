@@ -285,13 +285,13 @@ final class CLIBridgeChatProvider: AgentChatProvider {
         if let raw = try? keychain.get(.openclaw, account: "baseURL"), let url = URL(string: raw) { // try?-ok(unreadable entry falls through to the localhost default)
             return url
         }
-        return URL(staticString: "http://localhost:8642")
+        return LocalService.hermesGateway.defaultBaseURL
     }
 
     private func piAgentBaseURL() -> URL {
         if let raw = try? keychain.get(.piAgent, account: "baseURL"), let url = URL(string: raw) { // try?-ok(unreadable entry falls through to the localhost default)
             return url
         }
-        return URL(staticString: "http://127.0.0.1:8765")
+        return LocalService.piAgentGateway.defaultBaseURL
     }
 }

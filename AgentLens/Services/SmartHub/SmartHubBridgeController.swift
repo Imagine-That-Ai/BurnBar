@@ -28,7 +28,7 @@ final class SmartHubBridgeController {
     private var settingsObserver: Task<Void, Never>?
     private var castWatchdog: Task<Void, Never>?
     private var lastEnabledState: Bool = false
-    private var lastConfiguredPort: UInt16 = 8787
+    private var lastConfiguredPort = UInt16(LocalService.smartHubDashboard.defaultPort)
     private var lastTimePeriod: SmartHubTimePeriod = .rolling5h
     private var lastDisplayConfig: SmartHubDisplayConfig?
     private var lastCastReassertedAt: Date = .distantPast
@@ -353,7 +353,7 @@ final class SmartHubBridgeController {
         guard let url = URL(string: raw),
               let port = url.port,
               (1024...65_535).contains(port) else {
-            return 8787
+            return UInt16(LocalService.smartHubDashboard.defaultPort)
         }
         return UInt16(port)
     }

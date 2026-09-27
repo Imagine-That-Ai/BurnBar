@@ -337,10 +337,8 @@ final class ControlDeckModel {
         let authToken: String
 
         var baseURL: String {
-            let resolvedHost = host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? "127.0.0.1"
-                : host
-            return "http://\(resolvedHost):\(port > 0 ? port : 8317)"
+            let resolvedHost = LocalService.openBurnBarGateway.resolvedHost(host)
+            return "http://\(resolvedHost):\(LocalService.openBurnBarGateway.resolvedPort(port))"
         }
     }
 

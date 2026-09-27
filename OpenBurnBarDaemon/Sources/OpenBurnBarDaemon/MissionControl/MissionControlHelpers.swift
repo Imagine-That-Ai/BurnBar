@@ -153,7 +153,7 @@ extension BurnBarMissionControlService {
         if lowered.contains("why")
             || lowered.contains("what happened")
             || lowered.contains("investigate") {
-            return "Clarify Signal"
+            return "Clarify Findings"
         }
         if lowered.contains("when")
             || lowered.contains("follow up") {

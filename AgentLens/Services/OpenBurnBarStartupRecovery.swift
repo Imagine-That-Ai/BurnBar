@@ -317,7 +317,29 @@ final class OpenBurnBarRuntimeContext {
         CLIAgentSessionMirror.configureShared(accountManager: accountManager)
     }
 
+    /// Bootstrap check that every registered loopback service resolves to a
+    /// sane endpoint: the registry itself is consistent (`programmerError` —
+    /// asserted in DEBUG, logged in release) and the user's configured URLs
+    /// parse, are unique per host:port, and keep the BurnBar gateway on
+    /// loopback (`configuration` — surfaced in Help & Support).
+    private func checkLocalServiceInvariants() {
+        for violation in LocalServiceInvariants.staticViolations() {
+            assertionFailure(violation.message)
+            AppLogger.shared.error(
+                "local_service_registry_violation",
+                metadata: ["message": violation.message]
+            )
+        }
+        for violation in LocalServiceHealth.shared.evaluate(resolved: settingsManager.resolvedLocalServiceEndpoints) {
+            AppLogger.shared.error(
+                "local_service_configuration_violation",
+                metadata: ["message": violation.message]
+            )
+        }
+    }
+
     func startRelayServices() {
+        checkLocalServiceInvariants()
         startRoutedClientWiringSentry()
 
         guard accountManager.isFirebaseAvailable else {
@@ -455,7 +477,7 @@ final class OpenBurnBarRuntimeContext {
         managedRuntimeProbeTask = Task {
             if self.settingsManager.launchHermesWithOpenBurnBar {
                 let baseURL = URL(string: self.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                    ?? URL(staticString: "http://127.0.0.1:8642")
+                    ?? LocalService.hermesGateway.defaultBaseURL
                 let bearerToken = self.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
                 _ = await HermesRuntimeLauncher().openHermesAndGateway(
                     baseURL: baseURL,
@@ -465,7 +487,7 @@ final class OpenBurnBarRuntimeContext {
             }
             if self.settingsManager.launchPiAgentsWithOpenBurnBar {
                 let baseURL = URL(string: self.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                    ?? URL(staticString: "http://127.0.0.1:8765")
+                    ?? LocalService.piAgentGateway.defaultBaseURL
                 let bearerToken = self.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
                 let preferred = self.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
                 let redisRaw = self.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -903,5 +925,23 @@ final class OpenBurnBarRuntimeContext {
             registry: registry,
             uidProvider: { manager.userID }
         )
+    }
+}
+
+extension SettingsManager {
+    /// The configured endpoint for every registered local service. The single
+    /// place the settings → `LocalServiceHealth` resolved map is built.
+    var resolvedLocalServiceEndpoints: [LocalService: String] {
+        let gatewayHost = gatewayHost.isEmpty ? "127.0.0.1" : gatewayHost
+        let gatewayPort = gatewayPort > 0 ? gatewayPort : LocalService.openBurnBarGateway.defaultPort
+        return [
+            .openBurnBarGateway: "http://\(gatewayHost):\(gatewayPort)",
+            .hermesGateway: hermesGatewayBaseURL,
+            .piAgentGateway: piAgentGatewayBaseURL,
+            .openClawGateway: openClawGatewayBaseURL,
+            .ollama: summaryOllamaBaseURL,
+            .mlxServer: summaryMLXBaseURL,
+            .smartHubDashboard: smartHubQuotaDashboardURL
+        ]
     }
 }

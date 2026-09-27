@@ -84,6 +84,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/scheduled.ts",
   },
   {
     exportedName: "appendCliAgentMissionEvent",
@@ -114,7 +115,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/computer-use/computerUseSecurity.ts",
+    handlerModule: "functions-sync/src/callables/escrowDeviceCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -135,7 +136,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "attachmentId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-media/src/domains/hermes/hermesGateway.ts",
+    handlerModule: "functions-media/src/callables/hermesGatewayApprove.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/hermesGateway.bola.test.ts",
@@ -198,6 +199,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     publicJustification:
       "Provider webhook endpoints are internet-facing by design and authenticated by provider signatures.",
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/appstore/notifications.ts",
   },
   {
     exportedName: "arenaMatchup",
@@ -315,6 +317,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/compliance/privacyBackfill.ts",
   },
   {
     exportedName: "backfillPrivacyPlaintextScheduled",
@@ -333,6 +336,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/compliance/privacyBackfill.ts",
   },
   {
     exportedName: "backfillProviderAccountDeviceLinks",
@@ -353,6 +357,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/devices/deviceLinks.ts",
   },
   {
     exportedName: "backfillProviderAccountDeviceLinksScheduled",
@@ -371,6 +376,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/devices/deviceLinks.ts",
   },
   {
     exportedName: "beginBurnbarAttachment",
@@ -433,6 +439,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/appstore/callable.ts",
   },
   {
     exportedName: "beginPasskeyAssertion",
@@ -453,6 +460,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/identity/passkey.ts",
   },
   {
     exportedName: "benchAssistant",
@@ -494,6 +502,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/callables/escrowDeviceCallables.ts",
   },
   {
     exportedName: "burnBarHermesGateway",
@@ -503,7 +512,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "token index resolves uid and clientId",
     objectIdsFromClient: ["messageId", "eventId", "attachmentId", "clientId", "destinationId"],
     ownershipCheck: "resolveGatewayGrant checks active client, scope, expiry, PoP, and uid/client namespace",
-    handlerModule: "functions-media/src/domains/hermes/hermesGateway.ts",
+    handlerModule: "functions-media/src/callables/hermesGatewayRoutes.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/hermesGateway.bola.test.ts",
@@ -609,7 +618,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["documentID", "deviceId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/search/encryptedSearch.ts",
+    handlerModule: "functions-sync/src/callables/encryptedProjectMemory.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/encryptedSearch.bola.test.ts",
@@ -715,7 +724,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["pairingId", "code", "sessionId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-identity/src/domains/devices/cliLink.ts",
+    handlerModule: "functions-media/src/domains/hermes/hermes.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/pairing.bola.test.ts",
@@ -743,7 +752,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["pairingId", "code", "sessionId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-identity/src/domains/devices/cliLink.ts",
+    handlerModule: "functions-identity/src/domains/identity/piAgent.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/pairing.bola.test.ts",
@@ -801,6 +810,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/tierCogs.ts",
   },
   {
     exportedName: "configureKnowledgeSource",
@@ -880,7 +890,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["sourceManifestId", "repoId", "deviceId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/knowledge/knowledgeMemory.ts",
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeSync.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/knowledge.bola.test.ts",
@@ -947,6 +957,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "provider_credential_connect",
+    handlerModule: "functions-identity/src/domains/identity/providerAccounts.ts",
   },
   {
     exportedName: "connectSelfHostedQuotaAccount",
@@ -1070,7 +1081,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["pairingId", "code", "sessionId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-identity/src/domains/devices/cliLink.ts",
+    handlerModule: "functions-media/src/domains/hermes/hermes.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/pairing.bola.test.ts",
@@ -1091,7 +1102,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["pairingId", "code", "sessionId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-identity/src/domains/devices/cliLink.ts",
+    handlerModule: "functions-identity/src/domains/identity/piAgent.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/pairing.bola.test.ts",
@@ -1123,6 +1134,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/stripe.ts",
   },
   {
     exportedName: "createStripeBurnBarProPortalSession",
@@ -1143,6 +1155,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/stripe.ts",
   },
   {
     exportedName: "createTeam",
@@ -1235,6 +1248,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "data_domain_delete",
+    handlerModule: "functions/src/domains/compliance/dataDeletion.ts",
   },
   {
     exportedName: "deleteEncryptedProjectMemorySnapshot",
@@ -1342,7 +1356,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["accountID"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-identity/src/domains/identity/providerAccounts.ts",
+    handlerModule: "functions-identity/src/callables/providerAccountSnapshots.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/providerAccounts.bola.test.ts",
@@ -1380,6 +1394,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "user_cloud_data_delete",
+    handlerModule: "functions-identity/src/domains/identity/providerAccounts.ts",
   },
   {
     exportedName: "detectStalePendingCloudVaultRotations",
@@ -1398,6 +1413,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/devices/cloudVaultRotationResilience.ts",
   },
   {
     exportedName: "disconnectKnowledgeRepo",
@@ -1407,7 +1423,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["sourceManifestId", "repoId", "deviceId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/knowledge/knowledgeMemory.ts",
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeSync.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/knowledge.bola.test.ts",
@@ -1428,7 +1444,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "attachmentId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-media/src/domains/hermes/hermesGateway.ts",
+    handlerModule: "functions-media/src/callables/hermesGatewayEnqueue.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/hermesGateway.bola.test.ts",
@@ -1458,6 +1474,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/computer-use/computerUseBudget.ts",
   },
   {
     exportedName: "evaluateMediaBudget",
@@ -1476,6 +1493,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/usage/mediaBudget.ts",
   },
   {
     exportedName: "exportUserData",
@@ -1503,6 +1521,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "data_export",
+    handlerModule: "functions/src/domains/compliance/dataExport.ts",
   },
   {
     exportedName: "finalizeBurnbarAttachment",
@@ -1544,6 +1563,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/audit/auditLog.ts",
   },
   {
     exportedName: "getDataDomainUsage",
@@ -1564,6 +1584,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/usage/dataDomainUsage.ts",
   },
   {
     exportedName: "getEncryptedProjectMemorySnapshot",
@@ -1573,7 +1594,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["documentID", "deviceId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/search/encryptedSearch.ts",
+    handlerModule: "functions-sync/src/callables/encryptedProjectMemory.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/encryptedSearch.bola.test.ts",
@@ -1615,7 +1636,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "attachmentId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-media/src/domains/hermes/hermesGateway.ts",
+    handlerModule: "functions-media/src/callables/hermesGatewayRoutes.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/hermesGateway.bola.test.ts",
@@ -1647,6 +1668,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/support/profileAvatar.ts",
   },
   {
     exportedName: "getWindowsRuntimeSafetyConfig",
@@ -1711,6 +1733,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/usage/mediaSku.ts",
   },
   {
     exportedName: "healthCheck",
@@ -1730,6 +1753,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     publicJustification: "Read-only health endpoints expose no user objects.",
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/ops/health.ts",
   },
   {
     exportedName: "healthLive",
@@ -1749,6 +1773,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     publicJustification: "Read-only health endpoints expose no user objects.",
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/ops/health.ts",
   },
   {
     exportedName: "healthReady",
@@ -1768,6 +1793,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     publicJustification: "Read-only health endpoints expose no user objects.",
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/ops/health.ts",
   },
   {
     exportedName: "insightsHostedAnswer",
@@ -1788,6 +1814,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/search/insightsHostedAnswer.ts",
   },
   {
     exportedName: "inviteTeamMember",
@@ -1830,6 +1857,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/callables/escrowDeviceCallables.ts",
   },
   {
     exportedName: "issueIrohControllerRouteChallenge",
@@ -1919,6 +1947,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/identity/remoteMcp.ts",
   },
   {
     exportedName: "issueTrustedSignalIdentityRepairChallenge",
@@ -2007,6 +2036,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/callables/encryptedProjectMemory.ts",
   },
   {
     exportedName: "listHermesConnections",
@@ -2027,6 +2057,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-media/src/domains/hermes/hermes.ts",
   },
   {
     exportedName: "listHermesGatewayClients",
@@ -2047,6 +2078,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-media/src/callables/hermesGatewayCallables.ts",
   },
   {
     exportedName: "listKnowledgeChunks",
@@ -2088,6 +2120,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeSync.ts",
   },
   {
     exportedName: "listLinuxAppCheckDevices",
@@ -2130,6 +2163,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/devices/cloudVaultRotationResilience.ts",
   },
   {
     exportedName: "listPiAgentConnections",
@@ -2150,6 +2184,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/identity/piAgent.ts",
   },
   {
     exportedName: "listRecovery",
@@ -2170,6 +2205,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/ops/recovery.ts",
   },
   {
     exportedName: "markIrohAuditEventRollupEligible",
@@ -2188,6 +2224,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-media/src/domains/relay/irohMonitoring.ts",
   },
   {
     exportedName: "meterComputerUseAction",
@@ -2304,7 +2341,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     objectIdsFromClient: [],
     ownershipCheck:
       "handler derives uid from request.auth.uid only; the minted App Check app id comes from the server config allowlist, never client-supplied tenant object ids",
-    handlerModule: "",
+    handlerModule: "functions-identity/src/domains/app-check/windowsAppCheck.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -2356,6 +2393,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/notify/agentNotificationTriggers.ts",
   },
   {
     exportedName: "onComputerUseActionLiveActivity",
@@ -2436,6 +2474,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/notify/agentNotificationTriggers.ts",
   },
   {
     exportedName: "onSignalMigrationAgentIdentityWritten",
@@ -2644,6 +2683,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/triggers.ts",
   },
   {
     exportedName: "performElderWandHostedSearch",
@@ -2718,7 +2758,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/computer-use/computerUseSecurity.ts",
+    handlerModule: "functions-sync/src/callables/agentGrantAuthorityCallable.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -2802,7 +2842,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/computer-use/computerUseSecurity.ts",
+    handlerModule: "functions-sync/src/callables/phoneControlCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -2823,7 +2863,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/computer-use/computerUseSecurity.ts",
+    handlerModule: "functions-sync/src/callables/phoneControlRelaySenderKeyCallable.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -2898,6 +2938,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeMemory.ts",
   },
   {
     exportedName: "purgeLegacyKnowledgeVectors",
@@ -2918,6 +2959,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeMemory.ts",
   },
   {
     exportedName: "purgeLegacyKnowledgeVectorsScheduled",
@@ -2936,6 +2978,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeMemory.ts",
   },
   {
     exportedName: "pushLinuxCloudReplicas",
@@ -2988,7 +3031,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/computer-use/computerUseSecurity.ts",
+    handlerModule: "functions-sync/src/callables/agentGrantCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -3056,6 +3099,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-media/src/callables/hermesGatewayCallables.ts",
   },
   {
     exportedName: "rebuildRollups",
@@ -3074,6 +3118,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/scheduled.ts",
   },
   {
     exportedName: "rebuildUsageRollups",
@@ -3094,6 +3139,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/ops/misc.ts",
   },
   {
     exportedName: "recomputeComputerUseQuotaUsage",
@@ -3112,6 +3158,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/computer-use/computerUseQuota.ts",
   },
   {
     exportedName: "recomputeMediaQuotaUsage",
@@ -3130,6 +3177,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/usage/mediaQuota.ts",
   },
   {
     exportedName: "reconcileAccountErasures",
@@ -3189,6 +3237,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/appstore/scheduled.ts",
   },
   {
     exportedName: "reconcileKnowledgeMemoryDaily",
@@ -3207,6 +3256,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeSync.ts",
   },
   {
     exportedName: "recordSignalRotation",
@@ -3281,7 +3331,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     objectIdsFromClient: ["teamId"],
     ownershipCheck:
       "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and records the founding slug-key fingerprint write-once, refusing any second, different value",
-    handlerModule: "functions-identity/src/teamSlugKeyRecord.ts",
+    handlerModule: "functions-identity/src/domains/identity/teamRosterCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
@@ -3353,6 +3403,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/scheduled.ts",
   },
   {
     exportedName: "refreshModelLandscapeBenchmarks",
@@ -3371,6 +3422,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/scheduled.ts",
   },
   {
     exportedName: "refreshProviderAccountQuota",
@@ -3380,7 +3432,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["accountID"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-identity/src/domains/identity/providerAccounts.ts",
+    handlerModule: "functions-identity/src/callables/providerQuotaRefresh.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/providerAccounts.bola.test.ts",
@@ -3412,6 +3464,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/callables/providerQuotaRefresh.ts",
   },
   {
     exportedName: "registerBrowserEscrowDevice",
@@ -3432,6 +3485,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/app-check/webAppCheck.ts",
   },
   {
     exportedName: "registerEscrowDevice",
@@ -3441,7 +3495,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/computer-use/computerUseSecurity.ts",
+    handlerModule: "functions-sync/src/callables/escrowDeviceCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -3521,6 +3575,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/identity/passkey.ts",
   },
   {
     exportedName: "removeTeamMember",
@@ -3585,6 +3640,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeSync.ts",
   },
   {
     exportedName: "reserveAgentControlActionBudget",
@@ -3605,6 +3661,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/cloudProAllowance.ts",
   },
   {
     exportedName: "reserveFlooRelayBudget",
@@ -3625,6 +3682,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/cloudProAllowance.ts",
   },
   {
     exportedName: "resolveActiveIrohControllerRoutes",
@@ -3656,7 +3714,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "attachmentId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-media/src/domains/hermes/hermesGateway.ts",
+    handlerModule: "functions-media/src/callables/hermesGatewayCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/hermesGateway.bola.test.ts",
@@ -3677,7 +3735,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/computer-use/computerUseSecurity.ts",
+    handlerModule: "functions-sync/src/callables/agentGrantCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -3709,6 +3767,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/appstore/callable.ts",
   },
   {
     exportedName: "retryStuckAgentReplyEvents",
@@ -3727,6 +3786,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/notify/agentNotificationTriggers.ts",
   },
   {
     exportedName: "retryStuckFcmPushes",
@@ -3745,6 +3805,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-media/src/domains/push/fcmAndroidSender.ts",
   },
   {
     exportedName: "retryStuckVoIPPushes",
@@ -3763,6 +3824,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-media/src/domains/push/apnsSender.ts",
   },
   {
     exportedName: "revokeAllAccess",
@@ -3790,6 +3852,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "revoke_all_access",
+    handlerModule: "functions/src/domains/ops/panic.ts",
   },
   {
     exportedName: "revokeEscrowDeviceTrust",
@@ -3799,7 +3862,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/computer-use/computerUseSecurity.ts",
+    handlerModule: "functions-sync/src/callables/escrowDeviceRevoke.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -3841,7 +3904,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "attachmentId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-media/src/domains/hermes/hermesGateway.ts",
+    handlerModule: "functions-media/src/callables/hermesGatewayCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/hermesGateway.bola.test.ts",
@@ -4007,6 +4070,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/computer-use/computerUseMonitoring.ts",
   },
   {
     exportedName: "rollupIrohTransportDaily",
@@ -4025,6 +4089,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-media/src/domains/relay/irohMonitoring.ts",
   },
   {
     exportedName: "rollupMediaSessionDaily",
@@ -4043,6 +4108,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/usage/mediaMonitoring.ts",
   },
   {
     exportedName: "rollupUserRebuild",
@@ -4093,7 +4159,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "attachmentId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-media/src/domains/hermes/hermesGateway.ts",
+    handlerModule: "functions-media/src/callables/hermesGatewayCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/hermesGateway.bola.test.ts",
@@ -4158,7 +4224,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["documentID", "deviceId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-sync/src/domains/search/encryptedSearch.ts",
+    handlerModule: "functions-sync/src/callables/encryptedSearchQuery.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/encryptedSearch.bola.test.ts",
@@ -4190,6 +4256,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeSearch.ts",
   },
   {
     exportedName: "searchStreams",
@@ -4210,6 +4277,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/identity/remoteMcp.ts",
   },
   {
     exportedName: "seedAndroidDemoAccount",
@@ -4230,6 +4298,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/ops/misc.ts",
   },
   {
     exportedName: "sendFcmOutbound",
@@ -4277,7 +4346,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "attachmentId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-media/src/domains/hermes/hermesGateway.ts",
+    handlerModule: "functions-media/src/callables/hermesGatewayCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/hermesGateway.bola.test.ts",
@@ -4309,6 +4378,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/ops/recovery.ts",
   },
   {
     exportedName: "signalActivationReadiness",
@@ -4329,6 +4399,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/devices/signalActivationReadiness.ts",
   },
   {
     exportedName: "signalPrekeyWatermark",
@@ -4391,6 +4462,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     publicJustification:
       "Provider webhook endpoints are internet-facing by design and authenticated by provider signatures.",
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/stripe.ts",
   },
   {
     exportedName: "submitAgentNotificationReply",
@@ -4596,7 +4668,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["accountID"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "functions-identity/src/domains/identity/providerAccounts.ts",
+    handlerModule: "functions-identity/src/callables/providerAccountSnapshots.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/providerAccounts.bola.test.ts",
@@ -4628,6 +4700,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-sync/src/domains/usage/mediaSku.ts",
   },
   {
     exportedName: "validateOpenTimestampsProof",
@@ -4669,6 +4742,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions/src/domains/audit/auditLog.ts",
   },
   {
     exportedName: "verifyCloudProTopUp",
@@ -4689,6 +4763,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/appstore/callable.ts",
   },
   {
     exportedName: "verifyGooglePlayBurnBarProSubscription",
@@ -4709,6 +4784,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/stripe.ts",
   },
   {
     exportedName: "verifyGooglePlayCloudProTopUp",
@@ -4729,6 +4805,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/stripe.ts",
   },
   {
     exportedName: "verifyHostedQuotaEntitlement",
@@ -4749,6 +4826,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/billing/appstore/callable.ts",
   },
   {
     exportedName: "verifyPasskeyAssertion",
@@ -4769,6 +4847,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/identity/passkey.ts",
   },
   {
     exportedName: "verifyPasskeyRegistration",
@@ -4789,6 +4868,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "functions-identity/src/domains/identity/passkey.ts",
   },
   {
     exportedName: "writeSignalAtRestDocument",

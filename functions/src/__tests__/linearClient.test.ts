@@ -50,7 +50,7 @@ describe("LinearClient", () => {
     expect(markdown).toContain("QuotaSyncWorker: Socket timed out");
   });
 
-  it("returns a mock issue when no API key is configured", async () => {
+  it("reports unconfigured without fabricating an issue when no API key is configured", async () => {
     const client = new LinearClient();
     const result = await client.createIssue({
       title: "Test Bug",
@@ -58,9 +58,7 @@ describe("LinearClient", () => {
       platform: "macOS",
     });
 
-    expect(result.mock).toBe(true);
-    expect(result.identifier).toMatch(/^BB-\d+/);
-    expect(result.url).toContain("https://linear.app/openburnbar/issue/");
+    expect(result).toEqual({ status: "unconfigured" });
     expect(mocks.resilientFetch).not.toHaveBeenCalled();
   });
 
@@ -111,14 +109,17 @@ describe("LinearClient", () => {
       platform: "macOS",
     });
 
-    expect(result.mock).toBe(false);
-    expect(result.id).toBe("issue-123");
-    expect(result.identifier).toBe("BB-42");
-    expect(result.url).toBe("https://linear.app/openburnbar/issue/BB-42");
+    expect(result).toEqual({
+      status: "created",
+      id: "issue-123",
+      identifier: "BB-42",
+      title: "Fix crash in menu bar",
+      url: "https://linear.app/openburnbar/issue/BB-42",
+    });
     expect(mocks.resilientFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("handles GraphQL errors gracefully and falls back to structured mock", async () => {
+  it("reports a GraphQL failure without fabricating a fallback issue", async () => {
     mocks.resilientFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -138,8 +139,9 @@ describe("LinearClient", () => {
       platform: "Android",
     });
 
-    expect(result.mock).toBe(true);
-    expect(result.identifier).toMatch(/^BB-FALLBACK-\d+/);
-    expect(result.error).toContain("Unauthorized token");
+    expect(result.status).toBe("failed");
+    expect(result).not.toHaveProperty("identifier");
+    expect(result).not.toHaveProperty("url");
+    expect(result.status === "failed" && result.error).toContain("Unauthorized token");
   });
 });

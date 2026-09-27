@@ -2,11 +2,25 @@ import { describe, expect, it, vi } from "vitest";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: { doc: () => ({ get: async () => ({ exists: false }) }) } }));
+// The central callable limiter (wrapCallableHandler) is covered by
+// callableRateLimits / wrapCallableHandlerRatePolicy; stub it so this suite's
+// minimal Firestore double only sees the handler's own reads and writes.
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../packages/functions-shared/src/callables/publicRateLimit.js")>()),
+  checkCallablePolicyRateLimit: vi.fn(async () => undefined),
+}));
+
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
+  db: {
+    doc: () => ({ get: async () => ({ exists: false }), set: async () => undefined }),
+    runTransaction: runFakeFirestoreTransaction,
+  },
+}));
 vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ enforceAppCheck: false }),
 }));
 
+import { runFakeFirestoreTransaction } from "./fakeFirestoreTransaction.js";
 import { callableRunner } from "./bola/callableBolaHarness.js";
 import { writeSignalAtRestDocument } from "../../../functions-identity/src/domains/devices/writeSignalAtRestDocument.js";
 

@@ -294,7 +294,7 @@ enum ComputerUseSecurityCallableClient {
               targetIdentityData["identityKeyId"] as? String == targetSignalIdentityKeyId,
               targetIdentityData["keyVersion"] as? Int == targetKeyVersion,
               let targetSignalFingerprint = targetIdentityData["publicKeyFingerprint"] as? String else {
-            throw ClientError.invalidResponse("Target device Signal identity is not published.")
+            throw ClientError.invalidResponse("The target device has not published its identity key.")
         }
 
         let payload = CloudVaultDeviceTrustChainPayload(

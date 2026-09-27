@@ -53,7 +53,7 @@ enum SignalIdentityPublicKeyPublishError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .immutablePublicKeyConflict(let deviceId, let keyVersion):
-            return "Signal identity public key conflict for \(deviceId)_\(keyVersion)."
+            return "Device identity public key conflict for \(deviceId)_\(keyVersion)."
         }
     }
 }

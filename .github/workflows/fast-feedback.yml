@@ -142,6 +142,9 @@ jobs:
           node --test scripts/ci/check-callable-validation.test.mjs
           node scripts/ci/check-callable-validation.mjs
 
+      - name: Local-service endpoint literals ratchet
+        run: node scripts/ci/check-local-service-literals.mjs
+
       - name: Guard parser regressions (test-guards.mjs)
         run: npm run test:guards --prefix functions
 
@@ -1258,6 +1261,15 @@ jobs:
 
       - name: Verify no un-reviewed over-claim copy
         run: bash scripts/ci/verify-signal-honesty-copy.sh
+
+      # Companion ratchet: the Signal name stays out of user-visible copy
+      # (thrown errors, errorDescriptions, rendered markup) while the feature
+      # is wired-but-not-activated. Self-test first — a broken matcher would
+      # pass everything.
+      - name: Verify no un-reviewed Signal jargon in user-facing copy
+        run: |
+          bash scripts/ci/check-signal-jargon-user-copy.sh --self-test
+          bash scripts/ci/check-signal-jargon-user-copy.sh
 
       # The in-process mirror of the gate above (TeamMemoryCopyGateTests) walks
       # `TeamMemoryCopy.allCopy`, a hand-maintained list. This proves the list is

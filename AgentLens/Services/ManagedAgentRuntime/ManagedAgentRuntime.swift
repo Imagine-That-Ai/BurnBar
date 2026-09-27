@@ -21,8 +21,8 @@ enum ManagedAgentRuntimeKind: String, Hashable, CaseIterable, Sendable {
     /// configured a custom endpoint.
     var defaultGatewayBaseURL: URL {
         switch self {
-        case .hermes: return URL(staticString: "http://127.0.0.1:8642")
-        case .piAgent: return URL(staticString: "http://127.0.0.1:8765")
+        case .hermes: return LocalService.hermesGateway.defaultBaseURL
+        case .piAgent: return LocalService.piAgentGateway.defaultBaseURL
         }
     }
 

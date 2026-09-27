@@ -224,8 +224,8 @@ class CloudVaultSignalSenderAuthTest {
 
     @Test
     fun fallbackPolicyPreservesLegacyForStructuralErrors() {
-        // A structural error (e.g. "Missing Signal recipient wrap") is not a sender downgrade.
-        assertTrue(SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback(IllegalStateException("Missing Signal recipient wrap"), true))
+        // A structural error (e.g. "Missing recipient wrap") is not a sender downgrade.
+        assertTrue(SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback(IllegalStateException("Missing recipient wrap"), true))
     }
 
     private fun identity(): AndroidSignalIdentityKeypair {

@@ -1,4 +1,5 @@
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -158,7 +159,7 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
     public var isEnabled: Bool
     /// Host to bind (default 127.0.0.1).
     public var host: String
-    /// Port to bind (default 8317).
+    /// Port to bind (default `LocalService.openBurnBarGateway.defaultPort`).
     public var port: Int
     /// Optional bearer token for authentication. Required whenever the gateway
     /// is enabled — including loopback binds — unless `allowUnauthenticatedLoopback`
@@ -211,7 +212,7 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
     public init(
         isEnabled: Bool = false,
         host: String = "127.0.0.1",
-        port: Int = 8317,
+        port: Int = LocalService.openBurnBarGateway.defaultPort,
         authToken: String? = nil,
         allowUnauthenticatedLoopback: Bool = false,
         rateLimit: BurnBarRateLimitConfiguration? = nil,

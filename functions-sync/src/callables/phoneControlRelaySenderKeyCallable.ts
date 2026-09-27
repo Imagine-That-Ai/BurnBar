@@ -122,7 +122,7 @@ export const publishRelaySenderKey = onCallProduction(
       boundedInteger(request.data.signalIdentityKeyVersion, "signalIdentityKeyVersion", 1, 100, true) ?? 1;
     const expectedSignalIdentityKeyId = `${deviceId}_${signalIdentityKeyVersion}`;
     if (signalIdentityKeyId !== expectedSignalIdentityKeyId) {
-      throw new HttpsError("permission-denied", "Relay sender key must bind to this device's current Signal identity.");
+      throw new HttpsError("permission-denied", "Relay sender key must bind to this device's current identity key.");
     }
     const signalIdentityPublicKeyFingerprint = boundedTrimmedString(
       request.data.signalIdentityPublicKeyFingerprint,
@@ -141,7 +141,7 @@ export const publishRelaySenderKey = onCallProduction(
     ) {
       throw new HttpsError(
         "permission-denied",
-        "Relay sender key requires a published Signal identity for this trusted device.",
+        "Relay sender key requires a published device identity key for this trusted device.",
       );
     }
     await requireTrustedDeviceActionProof({

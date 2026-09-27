@@ -17,6 +17,14 @@ const state = vi.hoisted(
   }),
 );
 
+// The central callable limiter (wrapCallableHandler) is covered by
+// callableRateLimits / wrapCallableHandlerRatePolicy; stub it so this suite's
+// minimal Firestore double only sees the handler's own reads and writes.
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../packages/functions-shared/src/callables/publicRateLimit.js")>()),
+  checkCallablePolicyRateLimit: vi.fn(async () => undefined),
+}));
+
 vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {

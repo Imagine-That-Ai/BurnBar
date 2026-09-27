@@ -464,31 +464,31 @@ struct GlassIconButton<Label: View>: View {
     }
 }
 
-enum PopoverTraySection: String, CaseIterable, Identifiable {
-    case insights
-    case summary
-    case providers
-    case mercury
-    case chat
-    case quickSwitch
+struct CollapsedPopoverTraySectionHeader: View {
+    let title: String
+    let onExpand: () -> Void
 
-    var id: String { rawValue }
-
-    var accessibilityLabel: String {
-        switch self {
-        case .insights:
-            return "Insights"
-        case .summary:
-            return "Summary"
-        case .providers:
-            return "Providers"
-        case .mercury:
-            return "Mercury"
-        case .chat:
-            return "Chat"
-        case .quickSwitch:
-            return "Quick Switch"
+    var body: some View {
+        Button(action: onExpand) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Text(title)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text("Collapsed")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityHint("Expands this section")
     }
 }
 

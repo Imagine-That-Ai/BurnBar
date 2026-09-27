@@ -242,15 +242,25 @@ struct RoutedClientConfigSyncService {
     private let fileManager: FileManager
     private let homeDirectory: URL
     private let now: () -> Date
+    /// The user's configured BurnBar gateway port. Detection accepts it plus
+    /// the registry default so configs written before a port change (and the
+    /// legacy VibeProxy endpoint on the shared default) still count.
+    private let gatewayPort: Int
+
+    private var acceptedGatewayPorts: [Int] {
+        LocalService.openBurnBarGateway.acceptedPorts(configured: gatewayPort)
+    }
 
     init(
         fileManager: FileManager = .default,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        gatewayPort: Int = LocalService.openBurnBarGateway.defaultPort
     ) {
         self.fileManager = fileManager
         self.homeDirectory = homeDirectory
         self.now = now
+        self.gatewayPort = gatewayPort
     }
 
     @discardableResult
@@ -412,7 +422,8 @@ struct RoutedClientConfigSyncService {
         guard let components = URLComponents(string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
               let host = components.host?.lowercased(),
               host == "127.0.0.1" || host == "localhost",
-              components.port == 8317 else {
+              let port = components.port,
+              acceptedGatewayPorts.contains(port) else {
             return false
         }
         return true

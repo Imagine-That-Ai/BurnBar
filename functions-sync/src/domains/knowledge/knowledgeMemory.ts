@@ -128,7 +128,7 @@ function requireOptionalSignalEnvelopeForKnowledgeVector(
   if (!result.ok) {
     throw new HttpsError(
       "invalid-argument",
-      `${fieldName} is not a valid path-bound Signal at-rest envelope (${result.reason}).`,
+      `${fieldName} is not a valid path-bound sealed at-rest envelope (${result.reason}).`,
     );
   }
   return result.envelope;

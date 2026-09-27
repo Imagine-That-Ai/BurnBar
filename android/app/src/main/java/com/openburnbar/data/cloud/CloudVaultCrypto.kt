@@ -163,12 +163,12 @@ data class CloudVaultSignalEnvelope(
  * the unauthenticated legacy `sealedPayload`.
  */
 sealed class CloudVaultSignalSenderAuthException(message: String) : IllegalStateException(message) {
-    class SenderAuthMissing : CloudVaultSignalSenderAuthException("The at-rest Signal envelope has no sender authentication block.")
+    class SenderAuthMissing : CloudVaultSignalSenderAuthException("The at-rest sealed envelope has no sender authentication block.")
 
     class SenderNotTrusted(val senderIdentityKeyId: String) :
-        CloudVaultSignalSenderAuthException("The at-rest Signal envelope sender $senderIdentityKeyId is not a trusted device.")
+        CloudVaultSignalSenderAuthException("The at-rest sealed envelope sender $senderIdentityKeyId is not a trusted device.")
 
-    class SenderSignatureInvalid : CloudVaultSignalSenderAuthException("The at-rest Signal envelope sender signature failed verification.")
+    class SenderSignatureInvalid : CloudVaultSignalSenderAuthException("The at-rest sealed envelope sender signature failed verification.")
 }
 
 data class CloudVaultSignalRecipient(
@@ -508,13 +508,13 @@ object CloudVaultCrypto {
         expectedBinding: CloudVaultSignalBinding,
         trustedSenderPublicKeys: Map<String, ByteArray>,
     ): ByteArray {
-        require(envelope.signalEnvelopeFormatVersion == SIGNAL_ENVELOPE_FORMAT_VERSION) { "Invalid Signal envelope version" }
-        require(envelope.mode == SIGNAL_AT_REST_MODE) { "Invalid Signal envelope mode" }
-        require(envelope.relayEncryption == SIGNAL_AT_REST_ENCRYPTION) { "Invalid Signal envelope scheme" }
-        require(envelope.keyDelivery.scheme == SIGNAL_AT_REST_ENCRYPTION) { "Invalid Signal key-delivery scheme" }
-        require(envelope.keyDelivery.contentKeyLength == SIGNAL_AT_REST_CONTENT_KEY_LENGTH) { "Invalid Signal content-key length" }
-        require(envelope.ciphertextLayer.schemaVersion == SIGNAL_PAYLOAD_SCHEMA_VERSION) { "Invalid Signal payload schema" }
-        require(envelope.binding == expectedBinding) { "Signal envelope binding mismatch" }
+        require(envelope.signalEnvelopeFormatVersion == SIGNAL_ENVELOPE_FORMAT_VERSION) { "Invalid sealed envelope version" }
+        require(envelope.mode == SIGNAL_AT_REST_MODE) { "Invalid sealed envelope mode" }
+        require(envelope.relayEncryption == SIGNAL_AT_REST_ENCRYPTION) { "Invalid sealed envelope scheme" }
+        require(envelope.keyDelivery.scheme == SIGNAL_AT_REST_ENCRYPTION) { "Invalid sealed key-delivery scheme" }
+        require(envelope.keyDelivery.contentKeyLength == SIGNAL_AT_REST_CONTENT_KEY_LENGTH) { "Invalid sealed content-key length" }
+        require(envelope.ciphertextLayer.schemaVersion == SIGNAL_PAYLOAD_SCHEMA_VERSION) { "Invalid sealed payload schema" }
+        require(envelope.binding == expectedBinding) { "Sealed envelope binding mismatch" }
         val canonicalAAD = CloudVaultCryptoSupport.bindingToAAD(expectedBinding.aadBinding)
         // Sender authentication (fail-closed): the envelope MUST carry a sender-auth block whose
         // sender is pinned-trusted and whose signature verifies — so a server-forged envelope
@@ -522,10 +522,10 @@ object CloudVaultCrypto {
         verifySenderAuth(envelope, canonicalAAD, trustedSenderPublicKeys)
         val wrap =
             envelope.keyDelivery.wraps.firstOrNull { it.recipientIdentityKeyId == recipientIdentityKeyId }
-                ?: error("Missing Signal recipient wrap")
+                ?: error("Missing recipient wrap")
         val sealedContentKey = CloudVaultCryptoSupport.decodeBase64(wrap.sealedContentKeyB64)
         val contentKey = CloudVaultCryptoSupport.atRestOpen(sealedContentKey, recipientIdentityPrivateKey, expectedBinding.aadBinding)
-        require(contentKey.size == SIGNAL_AT_REST_CONTENT_KEY_LENGTH) { "Invalid Signal content key" }
+        require(contentKey.size == SIGNAL_AT_REST_CONTENT_KEY_LENGTH) { "Invalid sealed content key" }
         val payload = CloudVaultCryptoSupport.decodeBase64(envelope.ciphertextLayer.payloadCiphertextB64)
         return CloudVaultCryptoSupport.openAesGcm(
             contentKey,
@@ -1012,14 +1012,14 @@ object CloudVaultCrypto {
     )
 
     private fun validateSignalRecipients(recipients: List<CloudVaultSignalRecipient>) {
-        require(recipients.isNotEmpty()) { "Signal envelopes require at least one recipient" }
-        require(recipients.size <= SIGNAL_MAX_RECIPIENT_WRAPS) { "Too many Signal recipients" }
+        require(recipients.isNotEmpty()) { "Sealed envelopes require at least one recipient" }
+        require(recipients.size <= SIGNAL_MAX_RECIPIENT_WRAPS) { "Too many recipients" }
         val seen = mutableSetOf<String>()
         recipients.forEach { recipient ->
             require(recipient.recipientKind == "device" || recipient.recipientKind == "escrow" || recipient.recipientKind == "recovery") {
-                "Invalid Signal recipient kind"
+                "Invalid recipient kind"
             }
-            require(seen.add(recipient.recipientIdentityKeyId)) { "Duplicate Signal recipient id" }
+            require(seen.add(recipient.recipientIdentityKeyId)) { "Duplicate recipient id" }
         }
     }
 

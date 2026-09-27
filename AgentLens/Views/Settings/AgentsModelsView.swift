@@ -190,7 +190,7 @@ struct AgentsModelsView: View {
         default:
             host = configuredHost
         }
-        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        let port = LocalService.openBurnBarGateway.resolvedPort(settingsManager.gatewayPort)
         return "http://\(host):\(port)/v1/models"
     }
 

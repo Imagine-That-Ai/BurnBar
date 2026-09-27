@@ -47,7 +47,38 @@ node functions/scripts/sync-bola-test-payloads.mjs
 node functions/scripts/sync-bola-firestore-mocks.mjs
 ```
 
-Do not hand-edit `endpointAuthorizationCatalog.generated.ts`; override fields via the generator's catalog merge tables.
+Do not hand-edit `endpointAuthorizationCatalog.generated.ts`; override fields via the generator's catalog merge tables. `handlerModule` is derived by the generator from the file that actually defines each export (the wrapper-name literal wins over a bare `export` re-export helper), so stale module paths self-correct on regen.
+
+## Callable rate-policy registry
+
+Every catalog callable (`trigger: "callable"`) must declare a rate policy in
+`packages/functions-shared/src/callables/callableRatePolicy.ts`
+(`CALLABLE_RATE_POLICIES`). `wrapCallableHandler` / `onCallProduction` resolve
+the entry by exported name at module load — a callable with no entry throws at
+definition time, so an undeclared endpoint can never run unbounded.
+
+Policy kinds:
+
+| Kind               | Meaning                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `limited`          | Central per-uid limiter (`checkCallablePolicyRateLimit`) enforces the tier's burst + sustained windows before the handler runs.                      |
+| `handler-enforced` | The handler already calls a bespoke volume limiter (e.g. `checkVoIPCallRateLimit`); the wrapper adds no second limiter. Entries name the checker + module and are inventory-tested. |
+| `exempt`           | `read-only` (no writes besides logging), `bulk-sync` (bounded by a per-request batch cap, not a counter doc — see the entry's reason), `per-object-bounded` (each call is capped against a server-owned object whose creation is itself rate-limited — e.g. mission claim/status/event appends, capped by `MAX_MISSION_EVENT_SEQUENCE`), or `admin-only`. |
+
+Tier defaults live in `CALLABLE_RATE_TIERS` (`external-side-effect`,
+`destructive`, `security`, `mutation`); a `limited` entry may override
+`limits` (e.g. `submitBugReport` uses 3 per 10 min / 10 per day).
+
+Rate-limit rejections are `resource-exhausted` and are logged as a structured
+`callable_rate_limited` warn event instead of going to Sentry as exceptions —
+expected control flow, not an incident. Both windows are incremented in a
+single Firestore transaction, so a sustained-window rejection cannot
+half-advance the burst window.
+
+The registry is asserted by `functions/src/__tests__/callableRatePolicyInventory.test.ts`:
+keys match the catalog in both directions, reasons are real one-line justifications,
+handler-enforced modules import and call their checker, and every callable
+passes its exact exported name to the wrapper.
 
 ## Running security tests
 

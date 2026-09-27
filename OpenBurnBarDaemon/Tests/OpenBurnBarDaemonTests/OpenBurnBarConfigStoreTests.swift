@@ -127,7 +127,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let localOllama = try XCTUnwrap(snapshot.providerSettings(id: "ollama-local"))
         XCTAssertEqual(localOllama.ollamaEndpoints.map(\.id), ["default"])
         XCTAssertEqual(localOllama.credentialSlots.map(\.slotID), ["default"])
-        XCTAssertEqual(localOllama.ollamaEndpoints.first?.baseURL, "http://localhost:11434")
+        XCTAssertEqual(localOllama.ollamaEndpoints.first?.baseURL, "http://127.0.0.1:11434")
     }
 
     func testOnboardingRoutingProviderIDsExcludeDisabledRoutes() async throws {

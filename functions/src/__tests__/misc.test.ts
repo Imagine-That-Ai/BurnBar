@@ -32,6 +32,14 @@ const { refreshUserRollupsMock, seedDemoMock, enforceMock, logInfoMock, logError
   },
 }));
 
+// The central callable limiter (wrapCallableHandler) is covered by
+// callableRateLimits / wrapCallableHandlerRatePolicy; stub it so this suite's
+// minimal Firestore double only sees the handler's own reads and writes.
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../packages/functions-shared/src/callables/publicRateLimit.js")>()),
+  checkCallablePolicyRateLimit: vi.fn(async () => undefined),
+}));
+
 vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbStub }));
 vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: enforceMock }));
 vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => ({ enforceAppCheck: false }) }));
@@ -149,9 +157,8 @@ describe("rebuildUsageRollups force gating", () => {
   });
 
   it("rejects unauthenticated requests before touching the rollup engine", async () => {
-    await expect(invokeCallable(rebuildUsageRollups, {}, null)).rejects.toThrow(
-      /Sign in before rebuilding usage rollups/,
-    );
+    // `limited` callables fail closed in wrapCallableHandler before the handler runs.
+    await expect(invokeCallable(rebuildUsageRollups, {}, null)).rejects.toMatchObject({ code: "unauthenticated" });
     expect(refreshUserRollupsMock).not.toHaveBeenCalled();
   });
 
@@ -245,7 +252,7 @@ describe("seedAndroidDemoAccount", () => {
   });
 
   it("rejects unauthenticated requests without seeding anything", async () => {
-    await expect(invokeCallable(seedAndroidDemoAccount, {}, null)).rejects.toThrow(/Sign in before loading demo data/);
+    await expect(invokeCallable(seedAndroidDemoAccount, {}, null)).rejects.toMatchObject({ code: "unauthenticated" });
     expect(seedDemoMock).not.toHaveBeenCalled();
   });
 });

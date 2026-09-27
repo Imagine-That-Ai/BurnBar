@@ -140,7 +140,7 @@ vi.mock("../../../packages/functions-shared/src/callables/computerUseSecurityFir
   requireTrustedDeviceActionProof: actionProof,
   requireTrustedEscrowDevice: trustedDevice,
 }));
-vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: rateLimit }));
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({ checkCallablePolicyRateLimit: vi.fn(async () => undefined), checkPublicHttpEndpointRateLimit: rateLimit }));
 
 import {
   approveLinuxAppCheckDevice,

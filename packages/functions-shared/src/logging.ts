@@ -10,8 +10,14 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { onCall, type CallableOptions, type CallableRequest, type Request } from "firebase-functions/v2/https";
+import { HttpsError, onCall, type CallableOptions, type CallableRequest, type Request } from "firebase-functions/v2/https";
 import type { Response } from "express";
+
+import {
+  CALLABLE_RATE_TIERS,
+  resolveCallableRatePolicy,
+  type CallableRatePolicy,
+} from "./callables/callableRatePolicy.js";
 
 // Patterns for PII and sensitive data scrubbing
 const SCRUB_PATTERNS: Array<[RegExp, string]> = [
@@ -247,6 +253,28 @@ export function logCallableFailure(name: string, traceId: string, error: unknown
   });
 }
 
+/**
+ * Marker on `resource-exhausted` errors thrown by the central callable rate
+ * limiter. `withCallableLogging` treats marked rejections as expected control
+ * flow: they are logged as a `callable_rate_limited` warning by
+ * `wrapCallableHandler` and skip Sentry capture + the ERROR-severity
+ * `callable_error` log.
+ */
+const CALLABLE_RATE_LIMITED_MARKER = Symbol.for("openburnbar.callableRateLimited");
+
+function markCallableRateLimited(error: unknown): void {
+  if (error instanceof Error) {
+    Reflect.set(error, CALLABLE_RATE_LIMITED_MARKER, true);
+  }
+}
+
+function isCallableRateLimited(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    Reflect.get(error, CALLABLE_RATE_LIMITED_MARKER) === true
+  );
+}
+
 export async function withCallableLogging<T>(
   name: string,
   request: { rawRequest?: { headers?: Record<string, unknown> } },
@@ -260,6 +288,11 @@ export async function withCallableLogging<T>(
     logCallableSuccess(name, traceId, uid);
     return result;
   } catch (error) {
+    if (isCallableRateLimited(error)) {
+      // Expected control flow: the caller-side rejection was already logged as
+      // a `callable_rate_limited` warning with this trace id.
+      throw error;
+    }
     const { captureException, setSentryUser } = await import("./sentry.js");
     if (uid) setSentryUser(uid);
     captureException(error, {
@@ -273,13 +306,28 @@ export async function withCallableLogging<T>(
 }
 
 /**
- * Wraps a v2 `onCall` handler with callable_start / callable_success / callable_error logs.
+ * Wraps a v2 `onCall` handler with callable_start / callable_success / callable_error logs
+ * and the central per-caller rate policy from CALLABLE_RATE_POLICIES.
  * Use as the second argument to `onCall(options, wrapCallableHandler("name", handler))`.
+ *
+ * `policy` defaults to the registry entry for `name`; pass an explicit policy
+ * in tests or for callables outside the endpoint catalog. A `limited` policy
+ * requires an authenticated uid and enforces burst + sustained windows through
+ * `checkCallablePolicyRateLimit` before the handler runs. `handler-enforced`
+ * and `exempt` policies skip the central check entirely (no double counting).
  */
 export function wrapCallableHandler<Data, R>(
   name: string,
   handler: (request: CallableRequest<Data>) => Promise<R>,
+  policy: CallableRatePolicy | undefined = resolveCallableRatePolicy(name),
 ): (request: CallableRequest<Data>) => Promise<R> {
+  if (policy === undefined) {
+    throw new Error(
+      `No callable rate policy declared for "${name}". Add an entry to ` +
+        "CALLABLE_RATE_POLICIES in packages/functions-shared/src/callables/callableRatePolicy.ts " +
+        "or pass an explicit policy; undeclared callables must not run unbounded.",
+    );
+  }
   return async (request: CallableRequest<Data>) => {
     const uid = request.auth?.uid;
     if (uid) {
@@ -288,20 +336,44 @@ export function wrapCallableHandler<Data, R>(
       const { assertAccountErasureAllowsCallable } = await import("./accountErasureBarrier.js");
       await assertAccountErasureAllowsCallable(uid, name);
     }
-    return withCallableLogging(name, request, uid, () => handler(request));
+    if (policy.kind === "limited" && !uid) {
+      throw new HttpsError("unauthenticated", "Authentication is required.");
+    }
+    return withCallableLogging(name, request, uid, async (traceId) => {
+      if (policy.kind === "limited" && uid) {
+        const { checkCallablePolicyRateLimit } = await import("./callables/publicRateLimit.js");
+        try {
+          await checkCallablePolicyRateLimit(name, uid, policy.limits ?? CALLABLE_RATE_TIERS[policy.tier]);
+        } catch (error) {
+          if (error instanceof HttpsError && error.code === "resource-exhausted") {
+            markCallableRateLimited(error);
+            logWarn({
+              event: "callable_rate_limited",
+              callable: name,
+              trace_id: traceId,
+              user_id_hash: uid.slice(0, 8),
+            });
+          }
+          throw error;
+        }
+      }
+      return handler(request);
+    });
   };
 }
 
 /**
- * Production callable factory: v2 onCall + structured logs + Sentry capture.
+ * Production callable factory: v2 onCall + structured logs + Sentry capture +
+ * the central callable rate policy from CALLABLE_RATE_POLICIES.
  * Prefer for new exports; existing exports can keep onCall(..., wrapCallableHandler(...)).
  */
 export function onCallProduction<Data, R>(
   name: string,
   options: CallableOptions,
   handler: (request: CallableRequest<Data>) => Promise<R>,
+  policy?: CallableRatePolicy,
 ) {
-  return onCall(options, wrapCallableHandler(name, handler));
+  return onCall(options, wrapCallableHandler(name, handler, policy));
 }
 
 function traceIdFromHttpRequest(req: Request): string {

@@ -278,17 +278,17 @@ struct NestHubSettingsCard: View {
             urlField(
                 title: "Dashboard URL",
                 text: $settingsManager.smartHubQuotaDashboardURL,
-                placeholder: "http://127.0.0.1:8787/render.html"
+                placeholder: LocalService.smartHubDashboard.defaultEndpointURL.absoluteString
             )
             urlField(
                 title: "Refresh endpoint",
                 text: $settingsManager.smartHubQuotaRefreshURL,
-                placeholder: "http://127.0.0.1:8787/refresh"
+                placeholder: LocalService.smartHubDashboard.defaultBaseURL.appendingPathComponent("refresh").absoluteString
             )
             urlField(
                 title: "Voice routine endpoint",
                 text: $settingsManager.smartHubQuotaVoiceRefreshURL,
-                placeholder: "http://127.0.0.1:8787/voice-refresh"
+                placeholder: LocalService.smartHubDashboard.defaultBaseURL.appendingPathComponent("voice-refresh").absoluteString
             )
         }
     }
@@ -616,7 +616,7 @@ struct NestHubSettingsCard: View {
         let url = settingsManager.smartHubQuotaVoiceRefreshURL
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !url.isEmpty else {
-            return "curl -X POST http://127.0.0.1:8787/voice-refresh"
+            return "curl -X POST \(LocalService.smartHubDashboard.defaultBaseURL.appendingPathComponent("voice-refresh").absoluteString)"
         }
         return "curl -X POST \(url)"
     }

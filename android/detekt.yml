@@ -55,7 +55,6 @@ complexity:
       # Narrowed from blanket '**/ui/**' (367 files) to named offenders only.
       - '**/ui/components/DotConstellationBackground.kt'
       - '**/ui/components/EasterEggOverlay.kt'
-      - '**/ui/components/SwarmBackground.kt'
   ComplexCondition:
     active: true
     allowedConditions: 4
@@ -76,7 +75,6 @@ complexity:
       # Narrowed from blanket '**/ui/**' (367 files) to named offenders only.
       - '**/ui/components/DotConstellationBackground.kt'
       - '**/ui/components/EasterEggOverlay.kt'
-      - '**/ui/components/SwarmBackground.kt'
   LabeledExpression:
     active: false
   LargeClass:
@@ -87,9 +85,6 @@ complexity:
       - '**/*Test.kt'
       - '**/*Spec.kt'
       - '**/data/models/generated/**'
-      # Per-file: UI file exceeding 600 lines.
-      # Narrowed from blanket '**/ui/**' (367 files) to named offender only.
-      - '**/ui/components/SwarmBackground.kt'
   LongMethod:
     active: true
     allowedLines: 60
@@ -110,10 +105,6 @@ complexity:
       - '**/ui/components/AuroraButtonSections.kt'
       - '**/ui/components/DotConstellationBackground.kt'
       - '**/ui/components/EasterEggOverlay.kt'
-      - '**/ui/components/SwarmBackground.kt'
-      # Hermes logo point table extracted from SwarmBackground.kt; a generated
-      # coordinate list, not a long method in the maintainable sense.
-      - '**/ui/components/SwarmHermesLogoPoints.kt'
       - '**/ui/components/aurora/AuroraNavGlyphs.kt'
       - '**/ui/computeruse/ComputerUseAgentWatchScreen.kt'
       - '**/ui/control/ControlCenterScreen.kt'
@@ -183,8 +174,7 @@ complexity:
       - '**/data/computeruse/PhoneControlP256.kt'
       - '**/data/computeruse/PhoneControlSignerSign.kt'
       # Per-file: UI files exceeding 30 functions per file.
-      # Narrowed from blanket '**/ui/**' (367 files) to 5 named offenders.
-      - '**/ui/components/SwarmBackground.kt'
+      # Narrowed from blanket '**/ui/**' (367 files) to 4 named offenders.
       - '**/ui/insights/renderers/InsightWidgetRenderer.kt'
       - '**/ui/media/PairedMacControlsScreenSections.kt'
       - '**/ui/media/ScreenShareViewerScreenMainSections.kt'
@@ -586,9 +576,8 @@ style:
     maxJumpCount: 1
     excludes:
       # Per-file: UI files with too many jump statements.
-      # Narrowed from blanket '**/ui/**' (367 files) to 2 named offenders.
+      # Narrowed from blanket '**/ui/**' (367 files) to 1 named offender.
       - '**/ui/components/DotConstellationBackground.kt'
-      - '**/ui/components/SwarmBackground.kt'
       - '**/data/hermes/PiServiceChatStreamSupport.kt'
       - '**/data/cloud/CloudVaultRotationRewrapWorker.kt'
   MagicNumber:
@@ -654,7 +643,6 @@ style:
       - '**/data/domains/**'
       - '**/data/models/generated/**'
       - '**/ui/components/SwarmTextCoordinates.kt'
-      - '**/ui/components/SwarmBackground.kt'
       - '**/data/cloud/CloudVaultCrypto.kt'
   MayBeConstant:
     active: false
@@ -705,7 +693,6 @@ style:
     excludes:
       - '**/data/models/generated/**'
       - '**/ui/components/SwarmTextCoordinates.kt'
-      - '**/ui/components/SwarmBackground.kt'
       - '**/ui/components/aurora/AuroraNavGlyphs.kt'
   StringShouldBeRawString:
     active: false

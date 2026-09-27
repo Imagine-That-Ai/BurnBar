@@ -296,7 +296,7 @@ final class HermesSetupWizardController {
     /// Overridden in tests via `dependencies.gatewayBaseURLProvider`; in
     /// production this reads `SettingsManager.hermesGatewayBaseURL`.
     var resolvedGatewayBaseURL: URL {
-        dependencies.gatewayBaseURLProvider() ?? URL(staticString: "http://127.0.0.1:8642")
+        dependencies.gatewayBaseURLProvider() ?? LocalService.hermesGateway.defaultBaseURL
     }
 
     var resolvedBearerToken: String? {

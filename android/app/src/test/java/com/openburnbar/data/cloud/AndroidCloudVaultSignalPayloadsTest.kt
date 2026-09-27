@@ -14,6 +14,20 @@ import org.junit.Test
 
 class AndroidCloudVaultSignalPayloadsTest {
     @Test
+    fun openSignalPayloadRejectsAMalformedEnvelope() {
+        val error = assertThrows(IllegalStateException::class.java) {
+            AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                mapOf<String, Any?>("signalEnvelope" to mapOf("signalEnvelopeFormatVersion" to "garbage")),
+                uid = "user-1",
+                collection = "mobile_assistant_chats",
+                docId = "thread-1",
+                localIdentity = AndroidSignalIdentityKeypair.generate("local", 1),
+            )
+        }
+        assertEquals("The sealed envelope is invalid.", error.message)
+    }
+
+    @Test
     fun gateDefaultsOff() {
         AndroidCloudVaultSignalPayloads.signalActivationOverrideProvider = null
         // The Signal-scheme domain remains fail-closed until the activation provider is wired.

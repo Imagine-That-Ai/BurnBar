@@ -157,13 +157,13 @@ private suspend fun loadSignalIdentityMaterial(userRef: DocumentReference, devic
         userRef.collection("signal_identity_public_keys").document(signalIdentityKeyId).get().await()
     val signalPublicKeyB64 =
         signalDoc.getString("publicKeyData")
-            ?: error("Trusted device $signalIdentityKeyId has no Signal identity public key.")
+            ?: error("Trusted device $signalIdentityKeyId has no device identity public key.")
     val signalFingerprint =
         signalDoc.getString("publicKeyFingerprint")
-            ?: error("Trusted device $signalIdentityKeyId has no Signal identity fingerprint.")
+            ?: error("Trusted device $signalIdentityKeyId has no device identity fingerprint.")
     val signalPublicKeyData =
         runCatching { CloudVaultCryptoSupport.decodeBase64(signalPublicKeyB64) }
-            .getOrElse { error("Trusted device $signalIdentityKeyId has an invalid Signal identity.") }
+            .getOrElse { error("Trusted device $signalIdentityKeyId has an invalid device identity.") }
     val derivedSignalFingerprint = CloudVaultCrypto.sha256Base64(signalPublicKeyData)
     check(
         signalDoc.getString("deviceId") == deviceId &&
@@ -171,7 +171,7 @@ private suspend fun loadSignalIdentityMaterial(userRef: DocumentReference, devic
             signalDoc.getLong("keyVersion")?.toInt() == keyVersion &&
             signalDoc.getString("algorithm") == CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION &&
             derivedSignalFingerprint == signalFingerprint,
-    ) { "Trusted device $signalIdentityKeyId has an invalid Signal identity." }
+    ) { "Trusted device $signalIdentityKeyId has an invalid device identity." }
     return TrustedSignalIdentityMaterial(
         identityKeyId = signalIdentityKeyId,
         fingerprint = signalFingerprint,
@@ -217,10 +217,10 @@ private suspend fun verifyTrustedDeviceApprover(
         device.getString("approvedByDeviceId") ?: error("Trusted device ${material.deviceId} has no approver.")
     val approvedBySignalIdentityKeyId =
         device.getString("approvedBySignalIdentityKeyId")
-            ?: error("Trusted device ${material.deviceId} has no approver Signal identity.")
+            ?: error("Trusted device ${material.deviceId} has no approver device identity.")
     val approvedBySignalFingerprint =
         device.getString("approvedBySignalIdentityPublicKeyFingerprint")
-            ?: error("Trusted device ${material.deviceId} has no approver Signal fingerprint.")
+            ?: error("Trusted device ${material.deviceId} has no approver device fingerprint.")
     val signature =
         device.getString("trustChainSignature")
             ?: error("Trusted device ${material.deviceId} has no trust-chain signature.")

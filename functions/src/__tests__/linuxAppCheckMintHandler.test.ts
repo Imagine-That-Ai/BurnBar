@@ -33,7 +33,7 @@ vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logInfo: vi.fn(),
   wrapCallableHandler: (_name: string, handler: (request: unknown) => Promise<unknown>) => handler,
 }));
-vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: vi.fn(async () => undefined) }));
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({ checkCallablePolicyRateLimit: vi.fn(async () => undefined), checkPublicHttpEndpointRateLimit: vi.fn(async () => undefined) }));
 
 import { mintLinuxAppCheckToken } from "../../../functions-identity/src/domains/app-check/linuxAppCheck.js";
 import { callableRunner, tier2CallableProof } from "./bola/callableBolaHarness.js";

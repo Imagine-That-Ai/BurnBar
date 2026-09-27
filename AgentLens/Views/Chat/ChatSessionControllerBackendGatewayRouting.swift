@@ -610,7 +610,7 @@ extension ChatSessionController {
 
     var piAgentGatewayBaseURL: URL {
         URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(staticString: "http://127.0.0.1:8765")
+            ?? LocalService.piAgentGateway.defaultBaseURL
     }
 
     var hermesBearerToken: String? {
@@ -655,7 +655,7 @@ extension ChatSessionController {
 
     var hermesGatewayBaseURL: URL {
         URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(staticString: "http://127.0.0.1:8642")
+            ?? LocalService.hermesGateway.defaultBaseURL
     }
 
     /// Base URL of the BurnBar **daemon** gateway (default port 8317). The Elder
@@ -663,10 +663,7 @@ extension ChatSessionController {
     /// when a fusion preset is active the chat send path redirects here instead of
     /// `hermesGatewayBaseURL` (8642). Host/port mirror the daemon launch config.
     var burnBarGatewayBaseURL: URL {
-        let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
-        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
-        return URL(string: "http://\(host):\(port)") ?? URL(staticString: "http://127.0.0.1:8317")
+        LocalService.openBurnBarGateway.baseURL(host: settingsManager.gatewayHost, port: settingsManager.gatewayPort)
     }
 
     /// Bearer token the daemon gateway enforces (fail-closed by default). Used

@@ -78,7 +78,10 @@ vi.mock("firebase-admin/firestore", () => ({
     delete: () => FIELD_DELETE,
     serverTimestamp: () => ({ __serverTimestamp: true }),
   },
-  Timestamp: { fromMillis: (millis: number) => ({ toMillis: () => millis }) },
+  Timestamp: {
+    now: () => ({ toMillis: () => Date.now() }),
+    fromMillis: (millis: number) => ({ toMillis: () => millis }),
+  },
 }));
 
 vi.mock("../../../packages/functions-shared/src/config.js", () => ({

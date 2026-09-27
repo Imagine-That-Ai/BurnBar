@@ -8,15 +8,10 @@
  *
  * Closes codex-gpt-5 FINDING-005 / kimi FINDING-012.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { endpointAuthorizationCatalog } from "../security/endpointAuthorizationCatalog.generated.js";
 import { RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS } from "../../../packages/functions-shared/src/callables/publicRateLimit.js";
-
-// Tests run from functions/; module paths are repo-relative (3.5 codebases).
-const REPO_DIR = resolve(process.cwd(), "..");
 
 const RATE_LIMITED_NAMES = new Set(RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS);
 
@@ -72,32 +67,6 @@ describe("public endpoint rate-limit inventory", () => {
   });
 });
 
-describe("per-uid rate limit call-site coverage", () => {
-  /**
-   * onCall callables that must enforce a per-uid (or per-IP, for the public
-   * benchAssistant) rate limit. Each entry asserts the callable imports its
-   * checker from publicRateLimit.js AND actually calls it, so a regression
-   * that drops the wiring fails the build rather than silently re-opening
-   * the abuse vector.
-   */
-  const CALLABLES_REQUIRING_UID_RATE_LIMIT: Array<{ exportedName: string; checker: string; module: string }> = [
-    { exportedName: "triggerVoIPCall", checker: "checkVoIPCallRateLimit", module: "functions-media/src/domains/push/voipPush.ts" },
-    { exportedName: "searchKnowledge", checker: "checkKnowledgeSearchRateLimit", module: "functions-sync/src/domains/knowledge/knowledgeSearch.ts" },
-    { exportedName: "listKnowledgeChunks", checker: "checkKnowledgeSearchRateLimit", module: "functions-sync/src/domains/knowledge/knowledgeSearch.ts" },
-    { exportedName: "submitAgentNotificationReply", checker: "checkAgentNotificationReplyRateLimit", module: "functions-sync/src/domains/notify/agentNotifications.ts" },
-    { exportedName: "insightsHostedAnswer", checker: "checkHostedInsightsAnswerRateLimit", module: "functions-sync/src/domains/search/insightsHostedAnswer.ts" },
-    { exportedName: "benchAssistant", checker: "checkBenchAssistantRateLimit", module: "functions-sync/src/domains/telemetry/benchAssistant.ts" },
-  ];
-
-  for (const entry of CALLABLES_REQUIRING_UID_RATE_LIMIT) {
-    it(`${entry.exportedName} imports and calls ${entry.checker}`, () => {
-      const source = readFileSync(resolve(REPO_DIR, entry.module), "utf8");
-
-      const importPattern = new RegExp(`import.*${entry.checker}.*from.*publicRateLimit`);
-      expect(importPattern.test(source), `${entry.module} must import ${entry.checker} from publicRateLimit`).toBe(true);
-
-      const callPattern = new RegExp(`(?:await\\s+)?${entry.checker}\\(`);
-      expect(callPattern.test(source), `${entry.module} must call ${entry.checker}`).toBe(true);
-    });
-  }
-});
+// Per-uid callable limiter call-site coverage moved to the registry-driven
+// inventory in callableRatePolicyInventory.test.ts — CALLABLE_RATE_POLICIES
+// handler-enforced entries are asserted to import AND call their checker.

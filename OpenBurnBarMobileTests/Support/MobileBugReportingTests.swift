@@ -41,14 +41,13 @@ final class MobileBugReportingTests: XCTestCase {
             reportId: "rep_12345",
             linearIdentifier: "BB-55",
             linearUrl: "https://linear.app/openburnbar/issue/BB-55",
-            isMock: true,
             missionId: "mission_bug_rep_12345"
         )
 
         XCTAssertEqual(result.reportId, "rep_12345")
         XCTAssertEqual(result.linearIdentifier, "BB-55")
         XCTAssertEqual(result.linearUrl, "https://linear.app/openburnbar/issue/BB-55")
-        XCTAssertTrue(result.isMock)
+        XCTAssertEqual(result.linearStatus, "created")
         XCTAssertEqual(result.missionId, "mission_bug_rep_12345")
     }
 }

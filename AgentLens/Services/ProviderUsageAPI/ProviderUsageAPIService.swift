@@ -184,7 +184,7 @@ final class ProviderUsageAPIService {
 
         // Ollama local probe — always attempt if server is running.
         let ollamaHost = environment["OLLAMA_HOST"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let ollamaBase = ollamaHost.isEmpty ? "http://localhost:11434" : (ollamaHost.hasPrefix("http") ? ollamaHost : "http://\(ollamaHost)")
+        let ollamaBase = ollamaHost.isEmpty ? LocalService.ollama.defaultBaseURL.absoluteString : (ollamaHost.hasPrefix("http") ? ollamaHost : "http://\(ollamaHost)")
         active.append(OllamaUsageProbe(baseURL: ollamaBase, apiKey: resolvedAPIKey(for: "ollama")))
 
         apis = active

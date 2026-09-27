@@ -202,7 +202,7 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .aiInbox:
             return ["inbox", "analyst", "brief", "triage", "digest", "egress", "budget", "founder lens"]
         case .modelRouter:
-            return ["proxy", "gateway", "router", "openai compatible", "cursor", "vs code", "endpoint", "port", "8317"]
+            return ["proxy", "gateway", "router", "openai compatible", "cursor", "vs code", "endpoint", "port", "\(LocalService.openBurnBarGateway.defaultPort)"]
         case .wand:
             return ["wand", "cast", "fan out", "parallel", "workers", "mission", "swarm"]
         case .memoryMCP:

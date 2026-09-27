@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarPlatformSupport
 
 /// Hard-coded deny defaults that every Computer Use session inherits.
 /// These cannot be removed via the scope-rule editor (Decision 1
@@ -199,7 +200,7 @@ public enum ComputerUseDenyRegistry {
             bundleId: "com.google.Chrome"
         ),
         ComputerUseScopeContext(url: "file:///etc/passwd", bundleId: "com.google.Chrome"),
-        ComputerUseScopeContext(url: "http://127.0.0.1:11434/api/tags", bundleId: "com.google.Chrome"),
+        ComputerUseScopeContext(url: LocalService.ollama.defaultBaseURL.appendingPathComponent("api/tags").absoluteString, bundleId: "com.google.Chrome"),
         ComputerUseScopeContext(
             url: "http://metadata.google.internal/computeMetadata/v1",
             bundleId: "com.google.Chrome"

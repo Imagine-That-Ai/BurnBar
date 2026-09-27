@@ -582,7 +582,7 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         XCTAssertEqual(
             SignalIdentityPublicKeyPublishError.immutablePublicKeyConflict(deviceId: "mac-1", keyVersion: 3)
                 .errorDescription,
-            "Signal identity public key conflict for mac-1_3."
+            "Device identity public key conflict for mac-1_3."
         )
 
         XCTAssertTrue(EscrowPublicKeyPublisher.matchesExistingPublicKey(

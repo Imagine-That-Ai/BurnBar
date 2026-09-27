@@ -318,7 +318,7 @@ final class CLIAgentMissionDispatcher {
             case .tooFewRuntimes:
                 return "The Wand needs at least 1 agent."
             case .tooManyRuntimes:
-                return "Signal fan-out supports at most 100 agents per dispatch."
+                return "Private fan-out supports at most 100 agents per dispatch."
             case let .wandRoutingUnavailable(message):
                 return message
             case let .missionSnapshotUnavailable(requestID):

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 extension RoutingClientWiring {
 
@@ -59,14 +60,18 @@ extension RoutingClientWiring {
             guard fileManager.fileExists(atPath: url.path),
                   let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)
             return text.contains(Self.sentinelStart)
-                || (text.contains("[model_providers.openburnbar]") && text.contains("base_url") && text.contains(":8317"))
-                || text.range(of: #"base_url\s*=\s*"https?://(127\.0\.0\.1|localhost):8317(/v1)?/?.*""#, options: .regularExpression) != nil
+                || acceptedGatewayPorts.contains { port in
+                    (text.contains("[model_providers.openburnbar]") && text.contains("base_url") && text.contains(":\(port)"))
+                        || text.range(of: #"base_url\s*=\s*"https?://(127\.0\.0\.1|localhost):\#(port)(/v1)?/?.*""#, options: .regularExpression) != nil
+                }
         case .forge:
             guard fileManager.fileExists(atPath: url.path),
                   let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)
             return text.contains(Self.sentinelStart)
-                || (text.contains(#"id = "openburnbar""#) && text.contains(":8317"))
-                || text.range(of: #"url\s*=\s*"https?://(127\.0\.0\.1|localhost):8317(/v1)?/chat/completions""#, options: .regularExpression) != nil
+                || acceptedGatewayPorts.contains { port in
+                    (text.contains(#"id = "openburnbar""#) && text.contains(":\(port)"))
+                        || text.range(of: #"url\s*=\s*"https?://(127\.0\.0\.1|localhost):\#(port)(/v1)?/chat/completions""#, options: .regularExpression) != nil
+                }
         case .grok:
             guard fileManager.fileExists(atPath: url.path),
                   let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)

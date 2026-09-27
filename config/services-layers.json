@@ -19,6 +19,7 @@
 
     { "name": "Services/Analytics", "layer": "platform", "paths": ["AgentLens/Services/Analytics"] },
     { "name": "Services/Diagnostics", "layer": "platform", "paths": ["AgentLens/Services/Diagnostics"] },
+    { "name": "Services/LocalServices", "layer": "platform", "paths": ["AgentLens/Services/LocalServices"] },
     { "name": "Services/Performance", "layer": "platform", "paths": ["AgentLens/Services/Performance"] },
     { "name": "Services/Telemetry", "layer": "platform", "paths": ["AgentLens/Services/Telemetry"] },
 

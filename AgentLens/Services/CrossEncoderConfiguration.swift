@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
     case codexCLI = "codex_cli"
@@ -63,9 +64,9 @@ enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
         case .openrouter:
             return "https://openrouter.ai/api/v1"
         case .ollama:
-            return "http://localhost:11434/v1"
+            return LocalService.ollama.defaultBaseURL.appendingPathComponent("v1").absoluteString
         case .hermes:
-            return "http://localhost:8642/v1"
+            return LocalService.hermesGateway.defaultBaseURL.appendingPathComponent("v1").absoluteString
         case .codexCLI, .claudeCLI:
             return nil
         }
@@ -90,7 +91,7 @@ enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
         case .ollama:
             return "Local Ollama server. Ensure `ollama serve` is running on the configured host."
         case .hermes:
-            return "Hermes gateway on `http://localhost:8642`. OpenBurnBar can enable API_SERVER_ENABLED and start `hermes gateway run` for you."
+            return "Hermes gateway on `\(LocalService.hermesGateway.defaultBaseURL.absoluteString)`. OpenBurnBar can enable API_SERVER_ENABLED and start `hermes gateway run` for you."
         }
     }
 }

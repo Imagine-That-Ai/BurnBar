@@ -459,7 +459,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
         await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
         throw new HttpsError(
           "failed-precondition",
-          "signal_pairing_required: the agent must advertise Signal v4 and publish an official-libsignal PQXDH bundle (and a Signal-capable phone must publish its own).",
+          "signal_pairing_required: the agent must advertise sealed-envelope v4 and publish an official-libsignal PQXDH bundle (and a Signal-capable phone must publish its own).",
         );
       }
       // A pairing that cannot seal in BOTH directions is refused so no plaintext-

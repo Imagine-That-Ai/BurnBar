@@ -41,14 +41,12 @@ class BugReportServiceTest {
                 reportId = "rep_abc123",
                 linearIdentifier = "BB-88",
                 linearUrl = "https://linear.app/openburnbar/issue/BB-88",
-                isMock = false,
                 missionId = "mission_bug_rep_abc123",
             )
 
         assertEquals("rep_abc123", result.reportId)
         assertEquals("BB-88", result.linearIdentifier)
         assertEquals("https://linear.app/openburnbar/issue/BB-88", result.linearUrl)
-        assertFalse(result.isMock)
         assertEquals("mission_bug_rep_abc123", result.missionId)
     }
 
@@ -143,17 +141,19 @@ class BugReportServiceTest {
         assertEquals("rep_abc123", result.reportId)
         assertEquals("BB-88", result.linearIdentifier)
         assertEquals("https://linear.app/openburnbar/issue/BB-88", result.linearUrl)
-        assertFalse(result.isMock)
         assertEquals("mission_bug_rep_abc123", result.missionId)
     }
 
     @Test
     fun `parseSubmissionResult uses defaults when linear issue is missing`() {
-        val result = BugReportService.parseSubmissionResult(mapOf("reportId" to "rep_1"))
+        val result =
+            BugReportService.parseSubmissionResult(
+                mapOf("reportId" to "rep_1", "linearStatus" to "unconfigured"),
+            )
         assertEquals("rep_1", result.reportId)
-        assertEquals("BB-ISSUE", result.linearIdentifier)
-        assertEquals("https://linear.app", result.linearUrl)
-        assertFalse(result.isMock)
+        assertEquals(null, result.linearIdentifier)
+        assertEquals(null, result.linearUrl)
+        assertEquals("unconfigured", result.linearStatus)
         assertEquals(null, result.missionId)
     }
 

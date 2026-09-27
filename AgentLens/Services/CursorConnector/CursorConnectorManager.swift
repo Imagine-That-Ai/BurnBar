@@ -249,7 +249,7 @@ final class CursorConnectorManager {
     func syncRoutedClient(_ target: RoutedClientTarget) {
         do {
             let syncConfig = try routedClientGatewayConfig()
-            let syncService = RoutedClientConfigSyncService()
+            let syncService = RoutedClientConfigSyncService(gatewayPort: settingsManager.gatewayPort)
             switch target {
             case .factory:
                 let urls = try syncService.applyFactoryGatewayConfig(syncConfig)
@@ -332,12 +332,10 @@ final class CursorConnectorManager {
                 NSLocalizedDescriptionKey: "Choose at least one routed model before syncing external clients."
             ])
         }
-        let host = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "127.0.0.1"
-            : settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        let baseURL = LocalService.openBurnBarGateway
+            .baseURL(host: settingsManager.gatewayHost, port: settingsManager.gatewayPort)
         return RoutedClientGatewayConfig(
-            baseURL: "http://\(host):\(port)/v1",
+            baseURL: "\(baseURL.absoluteString)/v1",
             bearerToken: settingsManager.gatewayAuthToken,
             models: models
         )

@@ -13,8 +13,9 @@ import { randomUUID } from "node:crypto";
 import { db } from "@openburnbar/functions-shared/adminRuntime.js";
 import { getConfig } from "@openburnbar/functions-shared/config.js";
 import { isRecord } from "@openburnbar/functions-shared/guards.js";
-import { LinearClient } from "../../linear/linearClient.js";
-import { logInfo, logWarn, onCallProduction } from "@openburnbar/functions-shared/logging.js";
+import { LinearClient, type LinearCreateIssueResult } from "../../linear/linearClient.js";
+import { logError, logInfo, logWarn, onCallProduction } from "@openburnbar/functions-shared/logging.js";
+import { isProductionFunctionsRuntime } from "@openburnbar/functions-shared/remoteMcpGrant.js";
 import { resilientFetch } from "@openburnbar/functions-shared/resilienceHelpers.js";
 import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
 import { boundedTrimmedString } from "@openburnbar/functions-shared/shared/validators.js";
@@ -81,8 +82,9 @@ interface FormatPromptParams {
   platform: string;
   rawTitle: string;
   rawDescription: string;
-  linearIdentifier: string;
-  linearUrl: string;
+  reportId: string;
+  linearIdentifier?: string;
+  linearUrl?: string;
   appVersion?: string;
   osVersion?: string;
   deviceModel?: string;
@@ -92,12 +94,16 @@ interface FormatPromptParams {
 }
 
 function formatBugInvestigationPrompt(params: FormatPromptParams): string {
+  const filedAs =
+    params.linearIdentifier && params.linearUrl
+      ? `tracked in Linear as [${params.linearIdentifier}](${params.linearUrl})`
+      : `filed as report \`${params.reportId}\` (no Linear issue was created)`;
   const sections = [
-    `You are investigating a bug report filed on ${params.platform} and tracked in Linear as [${params.linearIdentifier}](${params.linearUrl}).`,
+    `You are investigating a bug report filed on ${params.platform} and ${filedAs}.`,
     ``,
     `### Issue Details`,
     `- **Title:** ${params.rawTitle}`,
-    `- **Linear Key:** ${params.linearIdentifier}`,
+    params.linearIdentifier ? `- **Linear Key:** ${params.linearIdentifier}` : `- **Report ID:** ${params.reportId}`,
     `- **Platform:** ${params.platform}`,
     params.appVersion ? `- **App Version:** ${params.appVersion}` : null,
     params.osVersion ? `- **OS Version:** ${params.osVersion}` : null,
@@ -126,8 +132,9 @@ function formatBugInvestigationPrompt(params: FormatPromptParams): string {
 
 async function notifySlackBugReport(params: {
   reportId: string;
-  linearIdentifier: string;
-  linearUrl: string;
+  linearStatus: LinearCreateIssueResult["status"];
+  linearIdentifier?: string;
+  linearUrl?: string;
   title: string;
   description: string;
   platform: string;
@@ -138,9 +145,13 @@ async function notifySlackBugReport(params: {
     return;
   }
 
+  const linearLine =
+    params.linearStatus === "created"
+      ? `*Issue:* <${params.linearUrl}|${params.linearIdentifier}> — ${params.title}`
+      : `*Linear:* not filed (${params.linearStatus}) — report \`${params.reportId}\``;
   const text =
     `🚨 *New Bug Report Filed* [${params.platform}]\n` +
-    `*Issue:* <${params.linearUrl}|${params.linearIdentifier}> — ${params.title}\n` +
+    `${linearLine}\n` +
     `*Details:* ${params.description.slice(0, 300)}\n` +
     (params.missionId
       ? `*CLI Agent:* Dispensed mission \`${params.missionId}\` on Mac`
@@ -163,6 +174,38 @@ async function notifySlackBugReport(params: {
       error: String(err),
     });
   }
+}
+
+type LinearIssueRef = { id: string; identifier: string; url: string };
+
+let linearUnconfiguredReported = false;
+
+/**
+ * Linear is an optional coupling: the report and mission are still filed when
+ * it is unconfigured or failing — but nothing downstream may carry a
+ * fabricated issue identifier.
+ */
+async function fileLinearIssue(input: Parameters<LinearClient["createIssue"]>[0]): Promise<{
+  linearIssue: LinearIssueRef | null;
+  linearStatus: LinearCreateIssueResult["status"];
+  linearError: string | null;
+}> {
+  const apiKey = resolveSecret(LINEAR_API_KEY, process.env.LINEAR_API_KEY || process.env.LINEAR_TOKEN);
+  const result = await new LinearClient({ apiKey }).createIssue(input);
+  if (result.status === "unconfigured" && !linearUnconfiguredReported && isProductionFunctionsRuntime()) {
+    // Surface a production deploy missing LINEAR_API_KEY once per instance
+    // instead of letting silent no-op filing look healthy.
+    linearUnconfiguredReported = true;
+    logError({
+      event: "linear_integration_unconfigured",
+      message: "LINEAR_API_KEY is empty; bug reports are being filed without a Linear issue.",
+    });
+  }
+  return {
+    linearIssue: result.status === "created" ? { id: result.id, identifier: result.identifier, url: result.url } : null,
+    linearStatus: result.status,
+    linearError: result.status === "failed" ? result.error.slice(0, 300) : null,
+  };
 }
 
 export const submitBugReport = onCallProduction(
@@ -203,9 +246,7 @@ export const submitBugReport = onCallProduction(
 
     const reportId = `rep_${Date.now()}_${randomUUID().slice(0, 8)}`;
 
-    const apiKey = resolveSecret(LINEAR_API_KEY, process.env.LINEAR_API_KEY || process.env.LINEAR_TOKEN);
-    const linearClient = new LinearClient({ apiKey });
-    const linearResult = await linearClient.createIssue({
+    const { linearIssue, linearStatus, linearError } = await fileLinearIssue({
       title: rawTitle,
       description: rawDescription,
       platform,
@@ -229,13 +270,9 @@ export const submitBugReport = onCallProduction(
       deviceModel: deviceModel ?? null,
       diagnostics,
       hasLogs: !!logsSnippet,
-      linearIssue: {
-        id: linearResult.id,
-        identifier: linearResult.identifier,
-        url: linearResult.url,
-        mock: !!linearResult.mock,
-        error: linearResult.error ?? null,
-      },
+      linearIssue,
+      linearStatus,
+      linearError,
       status: "submitted",
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -250,8 +287,9 @@ export const submitBugReport = onCallProduction(
         platform,
         rawTitle,
         rawDescription,
-        linearIdentifier: linearResult.identifier,
-        linearUrl: linearResult.url,
+        reportId,
+        linearIdentifier: linearIssue?.identifier,
+        linearUrl: linearIssue?.url,
         appVersion,
         osVersion,
         deviceModel,
@@ -267,14 +305,10 @@ export const submitBugReport = onCallProduction(
         missionKind: "bug_investigation",
         source: `${platform.toLowerCase()}-bug-report`,
         requestedRuntime,
-        title: `[Bug ${linearResult.identifier}] ${rawTitle}`,
+        title: `[Bug ${linearIssue?.identifier ?? reportId}] ${rawTitle}`,
         prompt,
         targetProject: targetProject ?? "Mac current workspace",
-        linearIssue: {
-          id: linearResult.id,
-          identifier: linearResult.identifier,
-          url: linearResult.url,
-        },
+        linearIssue,
         reportId,
         commandsAllowed: true,
         fileEditsAllowed: true,
@@ -285,20 +319,22 @@ export const submitBugReport = onCallProduction(
       logInfo({
         event: "bug_report_mission_queued",
         mission_id: missionId,
-        linear_identifier: linearResult.identifier,
+        linear_identifier: linearIssue?.identifier,
       });
     }
 
     logInfo({
       event: "bug_report_created",
       report_id: reportId,
-      linear_identifier: linearResult.identifier,
+      linear_status: linearStatus,
+      linear_identifier: linearIssue?.identifier,
     });
 
     await notifySlackBugReport({
       reportId,
-      linearIdentifier: linearResult.identifier,
-      linearUrl: linearResult.url,
+      linearStatus,
+      linearIdentifier: linearIssue?.identifier,
+      linearUrl: linearIssue?.url,
       title: rawTitle,
       description: rawDescription,
       platform,
@@ -308,12 +344,8 @@ export const submitBugReport = onCallProduction(
     return {
       ok: true as const,
       reportId,
-      linearIssue: {
-        id: linearResult.id,
-        identifier: linearResult.identifier,
-        url: linearResult.url,
-        mock: linearResult.mock,
-      },
+      linearIssue,
+      linearStatus,
       missionId,
     };
   },

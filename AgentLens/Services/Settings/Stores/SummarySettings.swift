@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Summary Settings
 
@@ -47,7 +48,7 @@ final class SummarySettings {
         didSet { persistence.set(summaryOllamaModel, forKey: "summaryOllamaModel") }
     }
 
-    var summaryOllamaBaseURL: String = "http://127.0.0.1:11434" {
+    var summaryOllamaBaseURL: String = LocalService.ollama.defaultBaseURL.absoluteString {
         didSet { persistence.set(summaryOllamaBaseURL, forKey: "summaryOllamaBaseURL") }
     }
 
@@ -55,7 +56,7 @@ final class SummarySettings {
         didSet { persistence.set(summaryLocalModel, forKey: "summaryLocalModel") }
     }
 
-    var summaryLocalBaseURL: String = "http://127.0.0.1:11434" {
+    var summaryLocalBaseURL: String = LocalService.ollama.defaultBaseURL.absoluteString {
         didSet { persistence.set(summaryLocalBaseURL, forKey: "summaryLocalBaseURL") }
     }
 
@@ -70,7 +71,7 @@ final class SummarySettings {
         didSet { persistence.set(summaryMLXModel, forKey: "summaryMLXModel") }
     }
 
-    var summaryMLXBaseURL: String = "http://127.0.0.1:8080" {
+    var summaryMLXBaseURL: String = LocalService.mlxServer.defaultBaseURL.absoluteString {
         didSet { persistence.set(summaryMLXBaseURL, forKey: "summaryMLXBaseURL") }
     }
 
@@ -147,12 +148,12 @@ final class SummarySettings {
         self.summaryMiniMaxModel = persistence.string(forKey: "summaryMiniMaxModel", defaultValue: "gpt-5.5")
         self.summaryZaiModel = persistence.string(forKey: "summaryZaiModel", defaultValue: "glm-5-turbo")
         self.summaryOllamaModel = persistence.string(forKey: "summaryOllamaModel", defaultValue: "llama3.2")
-        self.summaryOllamaBaseURL = persistence.string(forKey: "summaryOllamaBaseURL", defaultValue: "http://127.0.0.1:11434")
+        self.summaryOllamaBaseURL = persistence.string(forKey: "summaryOllamaBaseURL", defaultValue: LocalService.ollama.defaultBaseURL.absoluteString)
         self.summaryLocalModel = persistence.string(forKey: "summaryLocalModel", defaultValue: "qwen3.5:9b")
-        self.summaryLocalBaseURL = persistence.string(forKey: "summaryLocalBaseURL", defaultValue: "http://127.0.0.1:11434")
+        self.summaryLocalBaseURL = persistence.string(forKey: "summaryLocalBaseURL", defaultValue: LocalService.ollama.defaultBaseURL.absoluteString)
         self.usageMemoryLocalVLModel = persistence.string(forKey: "usageMemoryLocalVLModel", defaultValue: "qwen3-vl:8b")
         self.summaryMLXModel = persistence.string(forKey: "summaryMLXModel", defaultValue: "mlx-community/Qwen3-4B-4bit")
-        self.summaryMLXBaseURL = persistence.string(forKey: "summaryMLXBaseURL", defaultValue: "http://127.0.0.1:8080")
+        self.summaryMLXBaseURL = persistence.string(forKey: "summaryMLXBaseURL", defaultValue: LocalService.mlxServer.defaultBaseURL.absoluteString)
         if persistence.objectExists(forKey: "summaryMaxPromptChars") {
             let stored = persistence.integer(forKey: "summaryMaxPromptChars")
             self.summaryMaxPromptChars = stored >= 4_000 ? stored : 60_000

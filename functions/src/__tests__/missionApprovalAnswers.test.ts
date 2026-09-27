@@ -63,6 +63,7 @@ vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async (
   return { ...actual, assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined) };
 });
 vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
+  checkCallablePolicyRateLimit: vi.fn(async () => undefined), // central limiter is covered by wrapCallableHandlerRatePolicy.test.ts
   recordCallableApprovalFailure: vi.fn(async () => undefined),
   assertCallableApprovalNotLocked: vi.fn(async () => undefined),
 }));

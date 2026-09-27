@@ -2,7 +2,8 @@
  * @fileoverview Linear GraphQL API Client for OpenBurnBar Bug Reporting.
  *
  * Handles issue creation, markdown formatting, team/label resolution,
- * and resilient network calls with SSRF protection and mock fallbacks.
+ * and resilient network calls with SSRF protection. Unconfigured or failed
+ * creates return an explicit status, never a fabricated identifier.
  */
 
 import { errorMessage, isRecord } from "@openburnbar/functions-shared/guards.js";
@@ -27,6 +28,16 @@ interface LinearCreatedIssue {
   title: string;
   url: string;
 }
+
+/**
+ * Honest result of a Linear issue-create attempt. Linear is an optional
+ * coupling for bug reporting: when the API key is absent or the call fails the
+ * caller must surface that state, never a fabricated `BB-###` identifier.
+ */
+export type LinearCreateIssueResult =
+  | { status: "created"; id: string; identifier: string; url: string; title: string }
+  | { status: "unconfigured" }
+  | { status: "failed"; error: string };
 
 const DEFAULT_LINEAR_API_URL = "https://api.linear.app/graphql";
 const DEFAULT_TEAM_KEY = "IMA";
@@ -179,7 +190,9 @@ export class LinearClient {
   }
 
   /**
-   * Creates a new issue on Linear or returns a mock issue if Linear is unconfigured.
+   * Creates a new issue on Linear. Returns `{ status: "unconfigured" }` when no
+   * API key is configured and `{ status: "failed" }` when the API rejects the
+   * call — never a fabricated identifier or URL.
    */
   public async createIssue(input: {
     title: string;
@@ -193,27 +206,13 @@ export class LinearClient {
     priority?: number;
     teamKey?: string;
     labels?: string[];
-  }): Promise<{
-    id: string;
-    identifier: string;
-    title: string;
-    url: string;
-    mock?: boolean;
-    error?: string;
-  }> {
+  }): Promise<LinearCreateIssueResult> {
     if (!this.apiKey) {
-      const mockIdentifier = `BB-${Math.floor(100 + Math.random() * 900)}`;
       logInfo({
-        event: "linear_unconfigured_mock",
-        message: `Linear unconfigured. Generated mock issue ${mockIdentifier}`,
+        event: "linear_unconfigured",
+        message: "Linear unconfigured; bug report will be filed without a Linear issue.",
       });
-      return {
-        id: `mock-linear-${Date.now()}`,
-        identifier: mockIdentifier,
-        title: input.title,
-        url: `https://linear.app/openburnbar/issue/${mockIdentifier}`,
-        mock: true,
-      };
+      return { status: "unconfigured" };
     }
 
     try {
@@ -274,11 +273,11 @@ export class LinearClient {
         message: `Created Linear issue ${issue.identifier}: ${issue.url}`,
       });
       return {
+        status: "created",
         id: issue.id,
         identifier: issue.identifier,
         title: issue.title,
         url: issue.url,
-        mock: false,
       };
     } catch (error) {
       const message = errorMessage(error);
@@ -286,15 +285,7 @@ export class LinearClient {
         event: "linear_create_failed",
         error: message,
       });
-      const fallbackId = `BB-FALLBACK-${Math.floor(100 + Math.random() * 900)}`;
-      return {
-        id: `fallback-${Date.now()}`,
-        identifier: fallbackId,
-        title: input.title,
-        url: `https://linear.app/openburnbar/issue/${fallbackId}`,
-        mock: true,
-        error: message,
-      };
+      return { status: "failed", error: message };
     }
   }
 }

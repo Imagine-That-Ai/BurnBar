@@ -215,9 +215,8 @@ struct RouterDeckFacts: Equatable, Sendable {
         allowsUnauthenticatedLoopback: Bool,
         probe: Probe?
     ) {
-        let resolvedHost = host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "127.0.0.1" : host
-        let resolvedPort = port > 0 ? port : 8317
-        endpoint = "http://\(resolvedHost):\(resolvedPort)/v1"
+        let resolvedPort = port > 0 ? port : LocalService.openBurnBarGateway.defaultPort
+        endpoint = "\(LocalService.openBurnBarGateway.baseURL(host: host, port: port).absoluteString)/v1"
         isEnabled = enabled
 
         posture = {

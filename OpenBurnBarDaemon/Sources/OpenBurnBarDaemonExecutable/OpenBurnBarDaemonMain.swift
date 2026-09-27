@@ -1,5 +1,6 @@
 import OpenBurnBarDaemon
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -228,9 +229,11 @@ private enum BurnBarDaemonCommandLine {
         var gatewayHost = environment["OPENBURNBAR_GATEWAY_HOST"]
             ?? environment["BURNBAR_GATEWAY_HOST"]
             ?? "127.0.0.1"
-        var gatewayPort = Int(environment["OPENBURNBAR_GATEWAY_PORT"]
-            ?? environment["BURNBAR_GATEWAY_PORT"]
-            ?? "8317") ?? 8317
+        var gatewayPort = LocalService.openBurnBarGateway.defaultPort
+        if let rawGatewayPort = environment["OPENBURNBAR_GATEWAY_PORT"]
+            ?? environment["BURNBAR_GATEWAY_PORT"] {
+            gatewayPort = normalizedGatewayPort(rawGatewayPort, source: "gateway port environment variable")
+        }
         var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]
             ?? environment["BURNBAR_GATEWAY_AUTH_TOKEN"]
         #if DEBUG
@@ -277,7 +280,7 @@ private enum BurnBarDaemonCommandLine {
                 guard index < arguments.count else {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
-                gatewayPort = Int(arguments[index]) ?? 8317
+                gatewayPort = normalizedGatewayPort(arguments[index], source: "--gateway-port")
             case "--gateway-auth-token":
                 index += 1
                 guard index < arguments.count else {
@@ -334,6 +337,21 @@ private enum BurnBarDaemonCommandLine {
         )
     }
 
+    /// Shared `--gateway-port` / `OPENBURNBAR_GATEWAY_PORT` validation: accepts
+    /// only a real TCP port, warns on stderr otherwise, and falls back to the
+    /// registry default so a typo can never bind an arbitrary port silently.
+    private static func normalizedGatewayPort(_ raw: String, source: String) -> Int {
+        let defaultPort = LocalService.openBurnBarGateway.defaultPort
+        guard let parsed = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              (1...65_535).contains(parsed) else {
+            FileHandle.standardError.write(Data(
+                "error: \(source) '\(raw)' is not a valid TCP port (1-65535); using the OpenBurnBar gateway default \(defaultPort)\n".utf8
+            ))
+            return defaultPort
+        }
+        return parsed
+    }
+
     private static var helpText: String {
         #if DEBUG
         let debugOptions = """
@@ -356,7 +374,7 @@ private enum BurnBarDaemonCommandLine {
           --version VERSION            Daemon version string
           --gateway-enable             Enable the HTTP gateway
           --gateway-host HOST          Gateway bind host (default 127.0.0.1)
-          --gateway-port PORT          Gateway port (default 8317)
+          --gateway-port PORT          Gateway port (default \(LocalService.openBurnBarGateway.defaultPort))
           --gateway-auth-token TOKEN   Bearer token for gateway auth
           --gateway-auth-token-file PATH
                                        Read gateway auth token from file (avoids ps exposure)

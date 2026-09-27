@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 // MARK: - Daemon Settings (iOS-style landing)
 
@@ -291,7 +292,7 @@ struct HTTPGatewayDetailView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer(minLength: DesignSystem.Spacing.sm)
-                            TextField("8317", value: $settingsManager.gatewayPort, format: .number)
+                            TextField("\(LocalService.openBurnBarGateway.defaultPort)", value: $settingsManager.gatewayPort, format: .number)
                                 .textFieldStyle(.roundedBorder)
                                 .font(DesignSystem.Typography.monoSmall)
                                 .frame(minWidth: 64, idealWidth: 80, maxWidth: 80)

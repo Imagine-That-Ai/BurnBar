@@ -1,6 +1,7 @@
 #if os(Linux)
 import Foundation
 import Glibc
+import OpenBurnBarKernel
 
 /// Linux discovery/control adapters for PixelClock, Cast, SmartHub bridge, and Home Assistant.
 public enum BurnBarLinuxDeviceAdapters {
@@ -246,7 +247,7 @@ public enum BurnBarLinuxDeviceAdapters {
                 "control_probe": endpoint.map { "\($0.baseURL)/setup/eureka_info" } ?? "",
                 "control_response": String((probe ?? "").prefix(240)),
                 "blocker": probe == nil ? (discovery.instances.isEmpty ? discovery.rawTranscript : "Discovered Cast endpoint did not answer /setup/eureka_info.") : "",
-                "bridge_default_port": "8787"
+                "bridge_default_port": String(LocalService.smartHubDashboard.defaultPort)
             ]
         case "homeassistant", "home-assistant":
             payload = homeAssistantStatus()
@@ -673,7 +674,7 @@ public enum BurnBarLinuxDeviceAdapters {
     }
 
     private static func smartHubStatus() -> [String: String] {
-        let port = ProcessInfo.processInfo.environment["OPENBURNBAR_SMARTHUB_BRIDGE_PORT"] ?? "8787"
+        let port = ProcessInfo.processInfo.environment["OPENBURNBAR_SMARTHUB_BRIDGE_PORT"] ?? String(LocalService.smartHubDashboard.defaultPort)
         let probe = runCommand(path: which("curl") ?? "/usr/bin/curl", arguments: [
             "-fsS",
             "--max-time",

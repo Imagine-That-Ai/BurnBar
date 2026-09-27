@@ -65,7 +65,13 @@ function remoteMcpHashPepperValue(): string {
   return process.env.REMOTE_MCP_TOKEN_HASH_PEPPER ?? "";
 }
 
-function isProductionFunctionsRuntime(env: Record<string, string | undefined> = process.env): boolean {
+/**
+ * True when this process is a deployed Cloud Functions/Cloud Run runtime
+ * (`K_SERVICE` is set) — false under the emulator, unit tests, and deploy-time
+ * function discovery. Use for cold-start honesty checks that must not fire
+ * during local development or deploy analysis.
+ */
+export function isProductionFunctionsRuntime(env: Record<string, string | undefined> = process.env): boolean {
   if (env.NODE_ENV === "test") return false;
   return typeof env.K_SERVICE === "string" && env.K_SERVICE.length > 0;
 }

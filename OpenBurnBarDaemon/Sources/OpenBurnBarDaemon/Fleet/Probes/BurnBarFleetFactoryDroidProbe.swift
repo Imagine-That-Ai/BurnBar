@@ -362,7 +362,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
                     confidence: .activeSessionFile,
                     lastActivityAt: freshest,
                     signals: evidence.signals,
-                    note: "Signal files present but no active work.",
+                    note: "Signal-file evidence present but no active work.",
                     healthState: evidence.healthState
                 )
             }
@@ -374,7 +374,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
                     status: .unknown,
                     confidence: .unsupported,
                     signals: evidence.signals,
-                    note: "Signal files present but malformed; status unknown.",
+                    note: "Signal-file evidence present but malformed; status unknown.",
                     healthState: evidence.healthState
                 )
             }
@@ -389,7 +389,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
                     status: .idle,
                     confidence: .activeSessionFile,
                     signals: evidence.signals,
-                    note: "Signal files present but no timestamped evidence; installed but inactive.",
+                    note: "Signal-file evidence present but no timestamped data; installed but inactive.",
                     healthState: evidence.healthState
                 )
             }

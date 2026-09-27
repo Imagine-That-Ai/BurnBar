@@ -5,6 +5,32 @@ so supported clients can share the same provider rotation policy. The gateway
 runs on `127.0.0.1:8317` by default and appears in the app as the local
 OpenBurnBar gateway.
 
+## Local service registry
+
+Every loopback service the Mac app and daemon talk to — the BurnBar gateway
+(8317, user-configurable via `GatewaySettings.gatewayPort`), Hermes (8642),
+Pi Agents (8765), OpenClaw (18789), Ollama (11434), MLX (8080), and the
+SmartHub dashboard (8787) — is declared once in
+`OpenBurnBarCore/Sources/OpenBurnBarPlatformSupport/LocalServiceRegistry.swift`.
+Callers resolve endpoints through `LocalService.<service>.defaultBaseURL` /
+`baseURL(host:port:)`. "Is this config wired to our gateway" checks stay
+anchored to the client's real assignment key (Codex `base_url =`, Forge
+`url =`) or parsed `baseURL` values, tried against both the configured
+gateway port and the shipped default so configs written before a port change
+still detect as wired. `LocalService.matchesLoopbackEndpoint(_:port:)` is a
+"mentions" matcher for bare `host:port` text;
+`LocalService.matchesLoopbackHTTPEndpoint(_:port:)` adds the `http(s)://`
+scheme requirement and backs VibeProxy legacy-endpoint detection, which stays
+pinned to `LegacyLocalEndpoint.vibeProxyPort` — it shares the 8317 default
+but must not follow a user's gateway-port change.
+
+`LocalServiceInvariants` runs at Mac app bootstrap: registry self-checks trip
+`assertionFailure` in DEBUG, and configuration violations (unparseable
+override URLs, two services on the same host:port, a non-loopback BurnBar
+gateway) surface in Help & Support → System Health. The daemon validates
+`--gateway-port` the same way. `scripts/ci/check-local-service-literals.mjs`
+rejects new `127.0.0.1:<registered port>` literals in Swift sources.
+
 ## Router modes
 
 OpenBurnBar now has a persisted router mode. Existing installs default to

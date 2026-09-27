@@ -527,7 +527,7 @@ enum ComputerUseSecurityCallableClient {
     ) async throws {
         let user = try requireSignedInUser()
         guard user.uid == uid else {
-            throw ClientError.invalidResponse("Signal identity repair user mismatch.")
+            throw ClientError.invalidResponse("The device identity repair response was for a different account.")
         }
         try await bindAppCheckAttestation()
 
@@ -537,18 +537,18 @@ enum ComputerUseSecurityCallableClient {
         let challenge = try decodeCallableResponse(
             challengeResult.data,
             as: TrustedSignalIdentityRepairChallengeResponse.self,
-            invalidMessage: "Signal identity repair challenge was invalid."
+            invalidMessage: "The device identity repair challenge was invalid."
         )
         guard challenge.ok,
               challenge.challengeId.isEmpty == false,
               let ciphertext = Data(base64Encoded: challenge.challengeCiphertextBase64),
               challenge.schemaVersion == MobileTrustedSignalIdentityRepairContract.challengeVersion else {
-            throw ClientError.invalidResponse("Signal identity repair challenge was invalid.")
+            throw ClientError.invalidResponse("The device identity repair challenge was invalid.")
         }
 
         let escrowKeypair = try iOSDeviceKeypair()
         guard escrowKeypair.keyVersion == identity.keyVersion else {
-            throw ClientError.invalidResponse("Signal identity and escrow key versions do not match.")
+            throw ClientError.invalidResponse("The device identity and escrow key versions do not match.")
         }
         let plaintext = try escrowKeypair.decrypt(
             ciphertext,
@@ -572,10 +572,10 @@ enum ComputerUseSecurityCallableClient {
         let response = try decodeCallableResponse(
             repairResult.data,
             as: TrustedSignalIdentityRepairResponse.self,
-            invalidMessage: "Signal identity repair failed."
+            invalidMessage: "Device identity repair failed."
         )
         guard response.ok, response.reapprovalRequired else {
-            throw ClientError.invalidResponse("Signal identity repair failed.")
+            throw ClientError.invalidResponse("Device identity repair failed.")
         }
     }
 
@@ -617,7 +617,7 @@ enum ComputerUseSecurityCallableClient {
               targetIdentityData["identityKeyId"] as? String == targetSignalIdentityKeyId,
               targetIdentityData["keyVersion"] as? Int == targetKeyVersion,
               let targetSignalFingerprint = targetIdentityData["publicKeyFingerprint"] as? String else {
-            throw ClientError.invalidResponse("Target device Signal identity is not published.")
+            throw ClientError.invalidResponse("The target device has not published its identity key.")
         }
 
         let payload = CloudVaultDeviceTrustChainPayload(

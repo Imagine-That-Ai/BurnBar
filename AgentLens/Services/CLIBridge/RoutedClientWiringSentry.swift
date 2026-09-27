@@ -1,4 +1,5 @@
 @preconcurrency import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Routed Client Wiring Sentry
 
@@ -231,8 +232,18 @@ final class RoutedClientWiringSentry {
         }
     }
 
+    /// Builds a wiring helper seeded with the user's configured gateway port
+    /// so detection keeps working after `GatewaySettings.gatewayPort` moves.
+    private func makeWiring() -> RoutingClientWiring {
+        var wiring = wiringFactory()
+        if let port = settingsManager?.gateway.gatewayPort, port > 0 {
+            wiring.gatewayPort = port
+        }
+        return wiring
+    }
+
     private func armWatcher(for target: RoutingClientWiringTarget) {
-        let wiring = wiringFactory()
+        let wiring = makeWiring()
         let url = wiring.configURL(for: target)
         do {
             try FileManager.default.createDirectory(
@@ -363,7 +374,7 @@ final class RoutedClientWiringSentry {
             return
         }
         let gateway = Self.makeGateway(from: settingsManager.gateway)
-        let wiring = wiringFactory()
+        let wiring = makeWiring()
         let advertisedModels: [RoutingClientAdvertisedModel]
         if Self.targetRequiresAdvertisedModels(target) {
             advertisedModels = await advertisedModelsProvider(gateway, target)
@@ -464,8 +475,8 @@ final class RoutedClientWiringSentry {
     // MARK: - Helpers
 
     private static func makeGateway(from settings: GatewaySettings) -> RoutingClientGateway {
-        let host = settings.gatewayHost.isEmpty ? "127.0.0.1" : settings.gatewayHost
-        let port = settings.gatewayPort > 0 ? settings.gatewayPort : 8317
+        let host = LocalService.openBurnBarGateway.resolvedHost(settings.gatewayHost)
+        let port = LocalService.openBurnBarGateway.resolvedPort(settings.gatewayPort)
         return RoutingClientGateway(
             host: host,
             port: port,

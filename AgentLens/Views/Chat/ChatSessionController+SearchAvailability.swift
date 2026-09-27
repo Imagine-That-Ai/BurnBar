@@ -60,7 +60,7 @@ extension ChatSessionController {
             }
             if !openClawAvailable {
                 await appendAndPersistAssistantError(
-                    "OpenClaw gateway is unavailable. Start the gateway (default 127.0.0.1:18789) and set the URL/token in Settings → Chat.",
+                    "OpenClaw gateway is unavailable. Start the gateway (default 127.0.0.1:\(LocalService.openClawGateway.defaultPort)) and set the URL/token in Settings → Chat.",
                     logContext: "OpenClaw unavailable"
                 )
                 return false

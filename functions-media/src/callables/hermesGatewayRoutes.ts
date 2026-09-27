@@ -455,7 +455,7 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
   ) {
     throw new HttpsError(
       "failed-precondition",
-      "signal_runtime_required: the agent runtime must advertise Signal v4 with a pinned PQXDH bundle (and a Signal-capable phone must have one pinned).",
+      "signal_runtime_required: the agent runtime must advertise sealed-envelope v4 with a pinned PQXDH bundle (and a Signal-capable phone must have one pinned).",
     );
   }
   await db.doc(`users/${grant.uid}/hermes_gateway_clients/${grant.client.id}`).set(

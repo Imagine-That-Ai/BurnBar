@@ -1,6 +1,15 @@
 package com.openburnbar.data.cloud
 
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -43,5 +52,35 @@ class AndroidSignalIdentityKeyStoreTest {
     @Test
     fun identityKeyIdBindsDeviceAndVersion() {
         assertEquals("android-abc_2", AndroidSignalIdentityKeypair.identityKeyId("android-abc", 2))
+    }
+
+    @Test
+    fun publishIfNeededRefusesAStoredKeyThatDiffersFromTheLocalKey() {
+        val identity = AndroidSignalIdentityKeypair.generate("android-testdevice", 1)
+        val stored = mockk<DocumentSnapshot> {
+            every { exists() } returns true
+            every { getString("publicKeyData") } returns "c3RhbGUta2V5"
+        }
+        val identityRef = mockk<DocumentReference> { every { get() } returns Tasks.forResult(stored) }
+        val identities = mockk<CollectionReference> { every { document(identity.identityKeyId) } returns identityRef }
+        val userRef = mockk<DocumentReference> { every { collection("signal_identity_public_keys") } returns identities }
+        val users = mockk<CollectionReference> { every { document("uid-1") } returns userRef }
+        val firestore = mockk<FirebaseFirestore> { every { collection("users") } returns users }
+
+        val error = assertThrows(IllegalStateException::class.java) {
+            runBlocking {
+                AndroidSignalIdentityKeyStore.publishIfNeeded(
+                    uid = "uid-1",
+                    deviceId = "android-testdevice",
+                    identity = identity,
+                    firestore = firestore,
+                )
+            }
+        }
+
+        assertEquals(
+            "Device identity public key conflict for android-testdevice_1: stored key differs from the local key.",
+            error.message,
+        )
     }
 }

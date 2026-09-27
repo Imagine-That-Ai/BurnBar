@@ -24,9 +24,11 @@ data class BugReportSubmission(
 @Serializable
 data class BugReportSubmissionResult(
     val reportId: String,
-    val linearIdentifier: String,
-    val linearUrl: String,
-    val isMock: Boolean = false,
+    /** Linear issue identifier — null when Linear is unconfigured or failed
+     *  (`linearStatus` then reports "unconfigured"/"failed"). */
+    val linearIdentifier: String?,
+    val linearUrl: String?,
+    val linearStatus: String = "created",
     val missionId: String? = null,
 )
 

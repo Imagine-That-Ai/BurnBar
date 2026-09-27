@@ -97,20 +97,22 @@ remains the only at-rest path until activation; producers fail **open** to legac
 Signal seal cannot be produced, so confidentiality never regresses.
 
 A prepared activation diff exists for the `conversations_chat` domain only. **It MUST NOT be
-deployed until every remaining gate below is cleared** (these were confirmed by an adversarial
-review; ✅ items have since landed):
+deployed until every remaining gate below is cleared.** Every code gate has landed on Apple
+and Android; what remains are process gates that no commit can close:
 
-1. **Sender authentication — ✅ LANDED on Apple (Swift), Android parity REMAINING.** The
-   at-rest envelope now carries a `senderAuth` block: the writing device signs the envelope
+1. **Sender authentication — ✅ LANDED on Apple (Swift) and Android (Kotlin).** The
+   at-rest envelope carries a `senderAuth` block: the writing device signs the envelope
    (domain-separated over the HPKE info/binding + ciphertext + sorted wraps) with its identity
-   PRIVATE key, and `OpenBurnBarSignalAtRest.openPayload` REQUIRES it and verifies the
-   signature against the reader's PINNED trusted-device public key (never the wire field) —
-   so a server holding only public keys cannot forge an accepted envelope (proven by
-   `testServerForgedEnvelopeIsRejectedBySenderAuth`). Apple producers sign and readers verify
-   (self-authored docs fully, cross-device falls back to legacy until the trusted-sender set
-   is resolved on the read path). REMAINING before flip: (a) Android (Kotlin) must sign on
-   write AND verify on read with the identical canonical signed-message + a Swift↔Android
-   signature KAT; (b) wire cross-device trusted-sender resolution into the Apple readers.
+   PRIVATE key, and readers REQUIRE it, verifying the signature against the reader's PINNED
+   trusted-device public key (never the wire field) — so a server holding only public keys
+   cannot forge an accepted envelope. Both platforms sign on write and verify on read with
+   the identical canonical signed message, pinned by a committed Kotlin KAT
+   (`CloudVaultSignalSenderAuthTest`) mirroring `SignalAtRestSealerTests`. Cross-device
+   trusted-sender resolution is wired into the readers (Mac `DownloadSyncService` /
+   `TextExpansionSyncService`, iOS `MobileChatHistoryStore` / `AgentSubscriptionTopicStore`,
+   Android `AndroidCloudVaultSignalPayloads`), and `SignalAtRestFallbackPolicy` (Swift +
+   Kotlin) fails closed on a forged, stripped, or relocated envelope while still tolerating
+   an unrecognized sender only until the trusted-sender set is fully resolved.
 2. **Per-collection coverage.** The gate is domain-keyed but producers are per-collection.
    `signalSealedCollections` in the registry records the EXACT collections that emit an
    envelope (today: `conversations`, `chat_threads`, `mobile_assistant_chats`,
@@ -118,26 +120,35 @@ review; ✅ items have since landed):
    end-to-end). The scheme codename is internal/non-websited, so this is not a user-facing
    claim, but do not advertise whole-domain Signal coverage. Pensieve is intentionally NOT in
    the activation diff — its daemon/iOS/MCP ingest paths do not yet emit envelopes.
-3. **Staged rollout / kill switch — ✅ LANDED (Apple), Android RC bootstrap REMAINING.**
-   `signalSealingIsEnabled` now requires BOTH the registry scheme AND a per-domain runtime
-   flag `signal_at_rest_<domainID>_enabled` (default OFF), so a deployed-but-unramped flip is
+3. **Staged rollout / kill switch — ✅ LANDED on Apple and Android.** `signalSealingIsEnabled`
+   requires BOTH the registry scheme AND a per-domain runtime flag
+   `signal_at_rest_<domainID>_enabled` (default OFF), so a deployed-but-unramped flip is
    inert and activation is a console flip with staged % rollout + instant revert. iOS/Mac read
-   it from Firebase Remote Config directly; Android reads it from an injected
-   `signalAtRestActivationProvider` (fail-closed false) — wiring that provider to Firebase
-   Remote Config (add `firebase-config`, bootstrap in `BurnBarApplication`) is the REMAINING
-   one-line step before Android can be ramped.
+   it from Firebase Remote Config directly; Android's injected `signalAtRestActivationProvider`
+   is wired to Firebase Remote Config during `BurnBarApplication` startup and fails closed
+   (static/default values resolve OFF, global + per-domain hard kills win over enables,
+   Firebase failures resolve OFF).
 4. **Publish-readiness — ✅ LANDED.** The `signalActivationReadiness` callable reports, per
    account, whether every trusted escrow device has a valid published Signal identity; the
    activation runbook ramps the kill switch only where readiness is 100% for the cohort. (The
    producer fail-open already prevents write loss when a peer is un-upgraded.)
-5. **Cross-language KAT + libsignal pin.** The sender-auth signed message is now length-
-   prefixed + NFC-normalized + byte-wise sorted, so it is byte-stable across languages by
-   construction; still pin `Vendor/libsignal` to a verified official 0.94.4 build and add a
-   Swift↔Android sealed-vector + sender-signature known-answer test before relying on
-   cross-device opens. (An independent cross-model adversarial review confirmed the
-   forgery hole is closed and fail-closed; the open items above are coverage/interop, not
-   forgery vectors.)
+5. **Cross-language KAT + libsignal pin — ✅ KATs LANDED; pin verification is a release-time
+   check.** Bidirectional Swift↔Android interop fixtures are committed and consumed by both
+   platforms (`OBBSignalInteropKatTests` opens `android-alice-to-swift-bob.json`;
+   `AndroidSignalInteropKatTest` opens `swift-alice-to-android-bob.json`), the sender-auth
+   signed-message KAT is committed on both sides, and `scripts/ci/verify-signal-cross-device-kats.sh`
+   pins the fixtures + crypto-proof harness in CI. `Vendor/libsignal` is pinned at v0.94.4
+   (`scripts/ci/verify-libsignal-pin.sh`); run it with `--network` at release time to verify
+   the vendored tree byte-matches official upstream.
 6. **Revocation rewrap.** CloudVault rotation and client-side rewrap workers now exist, including
    session-log Storage blob resealing and hosted-search index rekeying. Product copy must still say
    revocation is complete only after the `cloud_vault_rotation_jobs/{jobId}` record reaches
    `complete`; a device that already cached plaintext before revocation cannot be clawed back.
+
+**Remaining non-code gates:** external crypto review, legal/store approval, and
+physical-device E2E evidence, then the staged Remote Config ramp itself. Until those clear,
+user-facing copy does not name the feature — `scripts/ci/check-signal-jargon-user-copy.sh`
+fails the build on any unreviewed "Signal" literal in shipped copy surfaces (thrown errors,
+error descriptions, rendered markup), and the website's claims interpolate the CI-gated
+`LIBSIGNAL_ROLLOUT_STATUS` ("wired in, not activated in production") so the wording cannot
+outlive the rollout it describes.

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Ollama Usage Probe
 
@@ -16,7 +17,7 @@ final class OllamaUsageProbe: ProviderUsageAPI, Sendable {
     private let apiKey: String?
     private let session: URLSession
 
-    init(baseURL: String = "http://localhost:11434", apiKey: String? = nil, session: URLSession = .shared) {
+    init(baseURL: String = LocalService.ollama.defaultBaseURL.absoluteString, apiKey: String? = nil, session: URLSession = .shared) {
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.session = session

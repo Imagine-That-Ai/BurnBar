@@ -159,6 +159,14 @@ export const registerDevicePushEndpoint = onCall(
         liveActivityRegistered: Boolean(liveActivityPushToken),
       };
     },
+    // Not exported from index.ts (not in the endpoint catalog), so no registry
+    // entry exists — the policy is declared inline. Registers push endpoint
+    // material under the caller's device: a credential mutation.
+    {
+      kind: "limited",
+      tier: "security",
+      reason: "Registers FCM/APNs push tokens under the caller's device record.",
+    },
   ),
 );
 

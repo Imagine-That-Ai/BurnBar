@@ -201,15 +201,15 @@ final class QuotaSettings {
         didSet { persistence.set(smartHubQuotaDisplayEnabled, forKey: "smartHubQuotaDisplayEnabled") }
     }
 
-    var smartHubQuotaDashboardURL: String = "http://127.0.0.1:8787/render.html" {
+    var smartHubQuotaDashboardURL: String = LocalService.smartHubDashboard.defaultEndpointURL.absoluteString {
         didSet { persistence.set(smartHubQuotaDashboardURL, forKey: "smartHubQuotaDashboardURL") }
     }
 
-    var smartHubQuotaRefreshURL: String = "http://127.0.0.1:8787/refresh" {
+    var smartHubQuotaRefreshURL: String = LocalService.smartHubDashboard.defaultBaseURL.appendingPathComponent("refresh").absoluteString {
         didSet { persistence.set(smartHubQuotaRefreshURL, forKey: "smartHubQuotaRefreshURL") }
     }
 
-    var smartHubQuotaVoiceRefreshURL: String = "http://127.0.0.1:8787/voice-refresh" {
+    var smartHubQuotaVoiceRefreshURL: String = LocalService.smartHubDashboard.defaultBaseURL.appendingPathComponent("voice-refresh").absoluteString {
         didSet { persistence.set(smartHubQuotaVoiceRefreshURL, forKey: "smartHubQuotaVoiceRefreshURL") }
     }
 
@@ -362,15 +362,15 @@ final class QuotaSettings {
         self.smartHubQuotaDisplayEnabled = persistence.bool(forKey: "smartHubQuotaDisplayEnabled")
         self.smartHubQuotaDashboardURL = persistence.string(
             forKey: "smartHubQuotaDashboardURL",
-            defaultValue: "http://127.0.0.1:8787/render.html"
+            defaultValue: LocalService.smartHubDashboard.defaultEndpointURL.absoluteString
         )
         self.smartHubQuotaRefreshURL = persistence.string(
             forKey: "smartHubQuotaRefreshURL",
-            defaultValue: "http://127.0.0.1:8787/refresh"
+            defaultValue: LocalService.smartHubDashboard.defaultBaseURL.appendingPathComponent("refresh").absoluteString
         )
         self.smartHubQuotaVoiceRefreshURL = persistence.string(
             forKey: "smartHubQuotaVoiceRefreshURL",
-            defaultValue: "http://127.0.0.1:8787/voice-refresh"
+            defaultValue: LocalService.smartHubDashboard.defaultBaseURL.appendingPathComponent("voice-refresh").absoluteString
         )
         if let raw = persistence.optionalString(forKey: "smartHubQuotaTimePeriod"),
            let value = SmartHubTimePeriod(rawValue: raw) {

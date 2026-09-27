@@ -261,14 +261,15 @@ private fun BugReportLinearIssueCard(success: BugReportSubmissionResult) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = success.linearIdentifier,
+                text = success.linearIdentifier ?: "Filed as ${success.reportId}",
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 16.sp,
             )
-            if (success.linearUrl.isNotBlank()) {
+            val linearUrl = success.linearUrl
+            if (!linearUrl.isNullOrBlank()) {
                 TextButton(onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(success.linearUrl))
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(linearUrl))
                     context.startActivity(intent)
                 }) {
                     Text("Open in Linear")

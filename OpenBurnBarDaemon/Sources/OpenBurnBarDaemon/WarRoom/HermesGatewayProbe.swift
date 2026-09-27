@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Is the local Hermes gateway actually listening?
 ///
@@ -12,7 +13,7 @@ import Foundation
 /// captured when the daemon started.
 public struct HermesGatewayProbe: Sendable {
     /// `hermes webapi`'s default port (see `DESIGN.md` § Hermes Integration).
-    public static let defaultPort: UInt16 = 8642
+    public static let defaultPort = UInt16(LocalService.hermesGateway.defaultPort)
 
     private let port: UInt16
 

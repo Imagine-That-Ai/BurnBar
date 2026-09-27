@@ -5,6 +5,7 @@ enum SettingsDeepLinkRouting {
     static let pendingItemKey = "settings.pendingItemID"
     static let pendingTabKey = "settings.pendingTab"
     static let quotaDisplayItemID = "agents.quotaDisplay"
+    static let popoverLayoutItemID = "general.appearance.popoverLayout"
     static let aiInboxItemID = "aiInbox.enable"
 
     static func item(matching itemID: String?) -> SettingsItem? {
@@ -30,6 +31,11 @@ enum SettingsDeepLinkRouting {
     @MainActor
     static func routeToQuotaDisplay() {
         route(to: quotaDisplayItemID)
+    }
+
+    @MainActor
+    static func routeToPopoverLayout() {
+        route(to: popoverLayoutItemID)
     }
 }
 

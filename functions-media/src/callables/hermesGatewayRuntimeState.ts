@@ -34,7 +34,7 @@ export function resolveRuntimeSignalPrekeyWrite(
   });
   throw new HttpsError(
     "failed-precondition",
-    "agent_signal_identity_immutable: rotate the Signal identity only by explicitly re-pairing this client.",
+    "agent_signal_identity_immutable: rotate the device identity only by explicitly re-pairing this client.",
   );
 }
 

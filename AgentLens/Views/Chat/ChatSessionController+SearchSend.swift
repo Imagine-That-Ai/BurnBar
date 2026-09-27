@@ -678,7 +678,7 @@ extension ChatSessionController {
             )
         case .openclaw:
             let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
-                ?? URL(staticString: "http://127.0.0.1:18789")
+                ?? LocalService.openClawGateway.defaultBaseURL
             return self.cliBridge.chatOpenClaw(
                 baseURL: fusionGatewayBaseURL ?? base,
                 systemPrompt: augmentedSystem,

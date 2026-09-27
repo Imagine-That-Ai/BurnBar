@@ -6,8 +6,13 @@ import AppKit
 public struct HelpSupportHubView: View {
     @State private var showingBugReportSheet = false
     @State private var diagnosticsSnapshot: SystemDiagnosticsCollector.Snapshot?
+    /// Re-checks the configured local-service endpoints; the window manager
+    /// binds it to live settings so this view stays free of the settings store.
+    private let reevaluateLocalServices: () -> Void
 
-    public init() {}
+    init(reevaluateLocalServices: @escaping () -> Void) {
+        self.reevaluateLocalServices = reevaluateLocalServices
+    }
 
     public var body: some View {
         ScrollView {
@@ -26,6 +31,10 @@ public struct HelpSupportHubView: View {
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear {
             diagnosticsSnapshot = SystemDiagnosticsCollector.capture()
+            // Re-check the configured local-service endpoints every time the
+            // hub appears so a corrected setting clears its warning here
+            // without a relaunch.
+            reevaluateLocalServices()
         }
         .sheet(isPresented: $showingBugReportSheet) {
             BugReportSheetView()
@@ -58,6 +67,24 @@ public struct HelpSupportHubView: View {
                     healthMetricCard(title: "App Version", value: "\(snap.appVersion) (\(snap.appBuild))", icon: "app.badge")
                     healthMetricCard(title: "Memory Usage", value: "\(snap.memoryUsageMB) MB / \(snap.physicalMemoryGB) GB", icon: "memorychip")
                     healthMetricCard(title: "Daemon Status", value: snap.isDaemonConnected ? "Active & Healthy" : "Offline", icon: "bolt.horizontal.circle.fill", isGood: snap.isDaemonConnected)
+                }
+            }
+
+            let localServiceViolations = LocalServiceHealth.shared.violations
+            if !localServiceViolations.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(localServiceViolations, id: \.message) { violation in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text(LocalServiceHealth.userFacingCopy(for: violation))
+                                .font(.caption)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(10)
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(8)
+                    }
                 }
             }
         }

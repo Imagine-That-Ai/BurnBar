@@ -84,7 +84,7 @@ function computeSignalActivationReadiness(
 
 function requireUid(request: CallableRequest): string {
   const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Sign in to check Signal activation readiness.");
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in to check activation readiness.");
   enforceAuthAndAppCheck(request, uid);
   return uid;
 }

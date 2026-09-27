@@ -396,7 +396,7 @@ class CLIAgentMissionDispatcher(
     private suspend fun resolveFanOutSignalContext(uid: String, groupID: String, runtimeTokens: List<String>): CLISignalSealContext? {
         val fanOutSignal = resolveSignalContext(uid = uid, docId = groupID)
         if (fanOutSignal != null && runtimeTokens.size > 100) {
-            throw DispatchException("Signal fan-out supports at most 100 agents per dispatch.")
+            throw DispatchException("Private fan-out supports at most 100 agents per dispatch.")
         }
         return fanOutSignal
     }
@@ -444,7 +444,7 @@ class CLIAgentMissionDispatcher(
             writeSignalMissionDocuments(signalWrites)
         } catch (error: Exception) {
             cleanupFanOutAfterSignalFailure(uid = uid, groupRef = groupRef, writes = signalWrites)
-            throw DispatchException("Signal fan-out could not be committed atomically: ${error.message ?: "callable failed"}", error)
+            throw DispatchException("Private fan-out could not be committed atomically: ${error.message ?: "callable failed"}", error)
         }
     }
 
@@ -543,7 +543,7 @@ class CLIAgentMissionDispatcher(
 
     private fun requireSealedMissionPayload(payload: Map<String, Any>, signalContext: CLISignalSealContext?, id: String): Map<*, *> {
         if (signalContext != null && payload["signalEnvelope"] == null) {
-            throw DispatchException("Signal at-rest activation produced no mission envelope for $id.")
+            throw DispatchException("Sealed dispatch produced no mission envelope for $id.")
         }
         return payload["sealedPayload"] as? Map<*, *>
             ?: throw DispatchException("Mission payload is missing sealedPayload.")
@@ -579,7 +579,7 @@ class CLIAgentMissionDispatcher(
             writeSignalMissionDocuments(listOf(SignalMissionWrite(missionID = missionID, payload = payload)))
         } catch (error: Exception) {
             runCatching { requestRef.collection("events").document("000001").delete().await() }
-            throw DispatchException("Signal mission could not be committed: ${error.message ?: "callable failed"}", error)
+            throw DispatchException("Private mission could not be committed: ${error.message ?: "callable failed"}", error)
         }
     }
 
@@ -651,7 +651,7 @@ class CLIAgentMissionDispatcher(
             )
         } catch (error: Exception) {
             Log.e("CLIAgentMissionDispatcher", "Signal at-rest seal context failed; refusing mission fallback", error)
-            throw DispatchException("Private mission session could not be prepared: ${error.message ?: "Signal setup failed"}", error)
+            throw DispatchException("Private mission session could not be prepared: ${error.message ?: "secure session setup failed"}", error)
         }
     }
 

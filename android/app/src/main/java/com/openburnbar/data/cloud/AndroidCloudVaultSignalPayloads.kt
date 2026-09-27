@@ -80,7 +80,7 @@ object AndroidCloudVaultSignalPayloads {
         legacyPrivateFields: Set<String>,
     ) {
         if (signalEnvelope == null) {
-            check(state != ActivationState.REQUIRED) { "Signal envelope is required for this write." }
+            check(state != ActivationState.REQUIRED) { "A sealed envelope is required for this write." }
             payload.remove("signalEnvelope")
             return
         }
@@ -182,11 +182,11 @@ object AndroidCloudVaultSignalPayloads {
         val raw = data[field] as? Map<*, *> ?: return null
         val envelope =
             CloudVaultCrypto.signalEnvelopeFromMap(raw)
-                ?: error("Signal envelope is invalid.")
+                ?: error("The sealed envelope is invalid.")
         val expected =
             CloudVaultSignalBinding(uid = uid, collection = collection, docId = docId, field = bindingField ?: field)
-        require(envelope.binding == expected) { "Signal envelope binding does not match the Firestore path." }
-        val identity = localIdentity ?: error("Signal identity is unavailable.")
+        require(envelope.binding == expected) { "The sealed envelope does not match the Firestore path it was written to." }
+        val identity = localIdentity ?: error("This device has no identity key.")
         val trustedSenders = LinkedHashMap(trustedSenderPublicKeys)
         trustedSenders[identity.identityKeyId] = identity.publicKeyData
         return CloudVaultCrypto.openSignalPayload(

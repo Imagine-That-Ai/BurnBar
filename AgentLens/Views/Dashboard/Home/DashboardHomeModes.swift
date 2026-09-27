@@ -163,9 +163,9 @@ enum DashboardHomeRailPanel: String, CaseIterable, Identifiable {
 
     /// Decodes the persisted order, normalized against what actually exists.
     ///
-    /// Same shape as `orderedTraySections` in the menu bar popover: decoded ∩
-    /// available, then append any available that were not stored. That makes a
-    /// future panel appear automatically and a stale key harmless.
+    /// Same decode ∩ available, then append missing IDs shape as
+    /// `PopoverTrayLayout` uses for the menu-bar popover. A future panel
+    /// appears automatically and a stale key is harmless.
     static func ordered(from raw: String) -> [DashboardHomeRailPanel] {
         let decoded = raw
             .split(separator: ",")

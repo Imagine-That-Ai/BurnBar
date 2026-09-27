@@ -27,6 +27,7 @@ vi.mock("../../../../packages/functions-shared/src/callables/computerUseSecurity
   appendComputerUseAuditEvent: vi.fn(async () => undefined),
 }));
 vi.mock("../../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
+  checkCallablePolicyRateLimit: vi.fn(async () => undefined), // central limiter is covered by wrapCallableHandlerRatePolicy.test.ts
   recordCallableApprovalFailure: vi.fn(async () => undefined),
   assertCallableApprovalNotLocked: vi.fn(async () => undefined),
 }));

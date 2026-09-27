@@ -1673,13 +1673,107 @@ final class RoutingClientWiringTests: XCTestCase {
         )
     }
 
+    // MARK: - Configured gateway port detection
+
+    /// A config written while the gateway ran on a custom port must still read
+    /// as wired — the literal-default-port check silently flipped rows to
+    /// "not wired" after the user moved `gatewayPort`.
+    func test_isWired_codex_detectsConfiguredGatewayPort() throws {
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try """
+        [model_providers.openburnbar]
+        name = "OpenBurnBar"
+        base_url = "http://127.0.0.1:9999/v1"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(makeWiring(gatewayPort: 9999).isWired(target: .codex))
+        XCTAssertFalse(makeWiring(gatewayPort: 8317).isWired(target: .codex))
+    }
+
+    /// Configs written before the port changed still point at the shipped
+    /// default, so detection must keep accepting it alongside the configured
+    /// port.
+    func test_isWired_codex_detectsDefaultPortAfterGatewayMoved() throws {
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try """
+        [model_providers.openburnbar]
+        name = "OpenBurnBar"
+        base_url = "http://127.0.0.1:8317/v1"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(makeWiring(gatewayPort: 9999).isWired(target: .codex))
+    }
+
+    func test_isWired_codex_ignoresUnrelatedLoopbackPort() throws {
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try """
+        [model_providers.other]
+        name = "Other"
+        base_url = "http://127.0.0.1:4321/v1"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        XCTAssertFalse(makeWiring().isWired(target: .codex))
+        XCTAssertFalse(makeWiring(gatewayPort: 9999).isWired(target: .codex))
+    }
+
+    func test_isWired_forge_detectsConfiguredGatewayPort() throws {
+        let url = tempHome.appendingPathComponent("forge/.forge.toml")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try """
+        [[provider]]
+        id = "openburnbar"
+        url = "http://localhost:9999/v1/chat/completions"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(makeWiring(gatewayPort: 9999).isWired(target: .forge))
+        XCTAssertFalse(makeWiring().isWired(target: .forge))
+    }
+
+    /// A stray `127.0.0.1:<port>` mention — a comment, a note, a non-`base_url`
+    /// key — is not evidence the client routes through OpenBurnBar. Detection
+    /// is anchored to a `base_url` (codex) / `url` (forge) assignment or the
+    /// OpenBurnBar section, never to a bare endpoint mention.
+    func test_isWired_codex_ignoresLoopbackPortMentionOutsideAssignment() throws {
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try """
+        # was briefly routed through 127.0.0.1:8317 — since removed
+        [model_providers.other]
+        name = "Other"
+        base_url = "https://api.example.com/v1"
+        docs_url = "http://127.0.0.1:8317/docs"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        XCTAssertFalse(makeWiring().isWired(target: .codex))
+        XCTAssertFalse(makeWiring(gatewayPort: 9999).isWired(target: .codex))
+    }
+
+    func test_isWired_forge_ignoresLoopbackPortMentionOutsideAssignment() throws {
+        let url = tempHome.appendingPathComponent("forge/.forge.toml")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try """
+        # gateway used to live at localhost:8317
+        [[provider]]
+        id = "other"
+        url = "https://api.example.com/v1/chat/completions"
+        docs = "http://127.0.0.1:8317/status"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        XCTAssertFalse(makeWiring().isWired(target: .forge))
+        XCTAssertFalse(makeWiring(gatewayPort: 9999).isWired(target: .forge))
+    }
+
     // MARK: - helpers
 
-    private func makeWiring() -> RoutingClientWiring {
+    private func makeWiring(gatewayPort: Int = 8317) -> RoutingClientWiring {
         RoutingClientWiring(
             fileManager: .default,
             home: tempHome,
-            now: { Date(timeIntervalSince1970: 1_700_000_000) }
+            now: { Date(timeIntervalSince1970: 1_700_000_000) },
+            gatewayPort: gatewayPort
         )
     }
 

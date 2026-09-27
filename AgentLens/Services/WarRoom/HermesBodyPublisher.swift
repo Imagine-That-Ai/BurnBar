@@ -53,7 +53,7 @@ final class HermesBodyPublisher {
     nonisolated static let presenceFreshnessSeconds: TimeInterval = 180
 
     private static let cadenceID = "hermes-body-heartbeat"
-    private static let fallbackGatewayURL = "http://127.0.0.1:8642"
+    private static let fallbackGatewayURL = LocalService.hermesGateway.defaultBaseURL.absoluteString
 
     private let accountManager: AccountManaging
     private let settingsManager: SettingsManager

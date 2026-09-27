@@ -32,7 +32,7 @@ enum MobileCloudVaultTrustChainVerificationError: LocalizedError {
         case .missingEscrowPublicKey(let deviceId, let keyVersion):
             return "Trusted device \(deviceId)_\(keyVersion) has no escrow public key."
         case .missingSignalIdentity(let deviceId, let keyVersion):
-            return "Trusted device \(deviceId)_\(keyVersion) has no Signal identity."
+            return "Trusted device \(deviceId)_\(keyVersion) has no device identity."
         case .missingTrustChain(let deviceId):
             return "Trusted device \(deviceId) is missing a verifiable trust chain."
         case .invalidTrustChain(let deviceId):

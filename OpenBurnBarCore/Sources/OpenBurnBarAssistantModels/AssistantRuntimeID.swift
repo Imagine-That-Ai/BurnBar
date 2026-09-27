@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarPlatformSupport
 
 // MARK: - Assistant Runtime ID
 //
@@ -49,28 +50,18 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
 
     /// Defaults used by `AssistantConnectionSheet` when seeding the Direct URL section.
     public var defaultGatewayURL: URL {
-        // Grouped by port instead of one arm per runtime: the arms were fourteen
-        // copies of the same literal. Still exhaustive with no `default:`, so a
-        // new runtime has to name its port rather than silently inheriting the
-        // Hermes gateway.
+        // Grouped by service instead of one arm per runtime: the arms were
+        // fourteen copies of the same endpoint. Still exhaustive with no
+        // `default:`, so a new runtime has to name its service rather than
+        // silently inheriting the Hermes gateway.
         switch self {
         case .hermes, .codex, .claude, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx:
-            return Self.loopbackURL(port: 8642)
+            return LocalService.hermesGateway.defaultBaseURL
         case .pi:
-            return Self.loopbackURL(port: 8765)
+            return LocalService.piAgentGateway.defaultBaseURL
         case .openClaw:
-            return Self.loopbackURL(port: 18789)
+            return LocalService.openClawGateway.defaultBaseURL
         }
-    }
-
-    private static func loopbackURL(port: Int) -> URL {
-        var components = URLComponents()
-        components.scheme = "http"
-        components.host = "127.0.0.1"
-        components.port = port
-        // These parts always form a valid URL; fall back to an inert value
-        // rather than crashing if that ever stops holding.
-        return components.url ?? URL(fileURLWithPath: "/")
     }
 
     /// Caduceus or hex glyph rendered in the runtime pill.

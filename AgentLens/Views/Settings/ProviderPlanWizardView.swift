@@ -589,7 +589,7 @@ struct ProviderPlanWizardView: View {
         var components = URLComponents()
         components.scheme = "http"
         components.host = host
-        components.port = settings.gatewayPort > 0 ? settings.gatewayPort : 8317
+        components.port = LocalService.openBurnBarGateway.resolvedPort(settings.gatewayPort)
         components.path = "/v1/models"
         return components.url
     }

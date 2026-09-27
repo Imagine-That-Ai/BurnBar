@@ -464,11 +464,9 @@ struct ConnectionsSettingsView: View {
     }
 
     private var gatewayModelsEndpoint: String {
-        let host = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "127.0.0.1"
-            : settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
-        return "http://\(host):\(port)/v1/models"
+        let baseURL = LocalService.openBurnBarGateway
+            .baseURL(host: settingsManager.gatewayHost, port: settingsManager.gatewayPort)
+        return "\(baseURL.absoluteString)/v1/models"
     }
 
     // MARK: - Advanced
@@ -639,7 +637,7 @@ struct ConnectionsSettingsView: View {
             Text("Port")
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            TextField("8317", value: $settingsManager.gatewayPort, format: .number)
+            TextField("\(LocalService.openBurnBarGateway.defaultPort)", value: $settingsManager.gatewayPort, format: .number)
                 .textFieldStyle(.roundedBorder)
                 .font(DesignSystem.Typography.monoSmall)
                 .frame(width: 90)
@@ -1288,7 +1286,7 @@ struct ConnectionsSettingsView: View {
 
     private func resetLocalDefaults() {
         settingsManager.gatewayHost = "127.0.0.1"
-        settingsManager.gatewayPort = 8317
+        settingsManager.gatewayPort = LocalService.openBurnBarGateway.defaultPort
         settingsManager.gatewayAuthToken = ""
     }
 

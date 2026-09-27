@@ -191,8 +191,16 @@ extension RoutingClientWiring {
         let lowercased = lowercasedJSONText(dictionary)
         return lowercased.contains("vibeproxy")
             || lowercased.contains("cli-proxy-api")
-            || lowercased.contains("http://localhost:8317")
-            || lowercased.contains("http://127.0.0.1:8317")
+            || mentionsVibeProxyEndpoint(lowercased)
+    }
+
+    /// True when `text` references the external VibeProxy app's own gateway
+    /// endpoint. VibeProxy's port coincides with the BurnBar gateway default
+    /// but is a legacy constant — it must not follow `gatewayPort` when the
+    /// user reconfigures the BurnBar gateway. The match requires an `http(s)`
+    /// URL so a bare `host:port` mention can't brand a config as VibeProxy's.
+    func mentionsVibeProxyEndpoint(_ text: String) -> Bool {
+        LocalService.matchesLoopbackHTTPEndpoint(text, port: LegacyLocalEndpoint.vibeProxyPort)
     }
 
     func stripVibeProxyTOMLSections(
@@ -237,8 +245,7 @@ extension RoutingClientWiring {
                 .trimmingCharacters(in: .whitespacesAndNewlines) == normalizedArrayHeader
                 && (text.contains("vibeproxy")
                     || text.contains("cli-proxy-api")
-                    || text.contains("http://localhost:8317")
-                    || text.contains("http://127.0.0.1:8317"))
+                    || mentionsVibeProxyEndpoint(text))
             if !shouldRemove {
                 output.append(contentsOf: block)
             }
@@ -281,9 +288,7 @@ extension RoutingClientWiring {
         }
         if normalizedHeader.hasPrefix("model_providers.")
             || normalizedHeader.hasPrefix("model.") {
-            return text.contains("base_url")
-                && (text.contains("http://localhost:8317")
-                    || text.contains("http://127.0.0.1:8317"))
+            return text.contains("base_url") && mentionsVibeProxyEndpoint(text)
         }
         return false
     }

@@ -16,6 +16,14 @@ const { dbAccesses, deleteFieldSentinel, entitlementAllowedUids, firestoreDocs }
   firestoreDocs: new Map<string, Record<string, unknown>>(),
 }));
 
+// The central callable limiter (wrapCallableHandler) is covered by
+// callableRateLimits / wrapCallableHandlerRatePolicy; stub it so this suite's
+// minimal Firestore double only sees the handler's own reads and writes.
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../packages/functions-shared/src/callables/publicRateLimit.js")>()),
+  checkCallablePolicyRateLimit: vi.fn(async () => undefined),
+}));
+
 vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     doc(path: string) {

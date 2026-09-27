@@ -15,7 +15,7 @@ const MISSION_COLLECTION = "cli_agent_mission_requests";
 
 function parseSignalDocument(raw: unknown): never {
   const input = recordOrUndefined(raw);
-  if (!input) throw new HttpsError("invalid-argument", "Signal document must be an object.");
+  if (!input) throw new HttpsError("invalid-argument", "The sealed document payload must be an object.");
   if (input.collection === MISSION_COLLECTION) {
     throw new HttpsError("failed-precondition", "use createCliAgentMission");
   }
