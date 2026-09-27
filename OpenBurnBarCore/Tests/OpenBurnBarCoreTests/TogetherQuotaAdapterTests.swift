@@ -477,6 +477,42 @@ final class TogetherQuotaAdapterTests: XCTestCase {
         )!
         return (response, Data(json.utf8))
     }
+
+    func test_usagePayloadDecodesLenientlyAndSumsNumericAndStringCosts() throws {
+        let json = """
+        {
+          "organization_id": "org-1",
+          "billingPeriod": "2026-09",
+          "next_cursor": "",
+          "data": [
+            {"line_items": [{"cost": 1.25}, {"cost": "0.75"}, {"cost": "n/a"}, "junk"]},
+            {"line_items": "not-a-list"},
+            "junk"
+          ]
+        }
+        """
+        let payload = try JSONDecoder().decode(TogetherBillingUsagePayload.self, from: Data(json.utf8))
+        let report = TogetherBillingUsageReport(payload)
+        XCTAssertEqual(report.totalCostUSD, 2.0, accuracy: 0.0001)
+        XCTAssertEqual(report.organizationID, "org-1")
+        XCTAssertEqual(report.billingPeriod, "2026-09")
+        XCTAssertNil(report.nextCursor)
+        XCTAssertNil(TogetherQuotaAdapter.inlineErrorMessage(from: payload))
+    }
+
+    func test_usagePayloadSurfacesInlineErrorObjectsOnly() throws {
+        let object = try JSONDecoder().decode(
+            TogetherBillingUsagePayload.self,
+            from: Data(#"{"error":{"msg":"billing disabled"}}"#.utf8)
+        )
+        XCTAssertEqual(
+            TogetherQuotaAdapter.inlineErrorMessage(from: object),
+            "Together returned an API error: billing disabled"
+        )
+        let text = try JSONDecoder().decode(TogetherBillingUsagePayload.self, from: Data(#"{"error":"flat string"}"#.utf8))
+        XCTAssertNil(TogetherQuotaAdapter.inlineErrorMessage(from: text))
+        XCTAssertThrowsError(try JSONDecoder().decode(TogetherBillingUsagePayload.self, from: Data("[]".utf8)))
+    }
 }
 
 private struct TogetherStubQuotaSnapshotStore: ProviderQuotaSnapshotPersisting {

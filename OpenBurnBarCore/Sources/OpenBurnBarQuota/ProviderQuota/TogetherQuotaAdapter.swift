@@ -68,16 +68,16 @@ public struct TogetherQuotaAdapter: ProviderQuotaAdapter {
 
         for _ in 0..<Self.maxUsagePages {
             guard let requestURL = url else { break }
-            let (status, object) = try await performJSONGET(url: requestURL, apiKey: apiKey, session: context.session)
+            let (status, body) = try await performJSONGET(url: requestURL, apiKey: apiKey, session: context.session)
             switch status {
             case 200:
-                guard let dictionary = object as? [String: Any] else {
+                guard let payload = try? JSONDecoder().decode(TogetherBillingUsagePayload.self, from: body) else {
                     throw TogetherBillingUsageError.malformed("Together billing usage payload was not a JSON object.")
                 }
-                if let inline = Self.inlineErrorMessage(from: dictionary) {
+                if let inline = Self.inlineErrorMessage(from: payload) {
                     throw TogetherBillingUsageError.malformed(inline)
                 }
-                let page = TogetherBillingUsageReport.parse(dictionary)
+                let page = TogetherBillingUsageReport(payload)
                 pages.append(page)
                 if let cursor = page.nextCursor, !cursor.isEmpty {
                     url = Self.billingUsageURL(
@@ -109,7 +109,7 @@ public struct TogetherQuotaAdapter: ProviderQuotaAdapter {
         url: URL,
         apiKey: String,
         session: URLSession
-    ) async throws -> (Int, Any) {
+    ) async throws -> (Int, Data) {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 12
@@ -120,17 +120,19 @@ public struct TogetherQuotaAdapter: ProviderQuotaAdapter {
         guard let http = response as? HTTPURLResponse else {
             throw QuotaServiceError.invalidResponse("Together returned a non-HTTP response.")
         }
-        let object: Any
+        // An empty body reads as an empty object; invalid JSON on a success
+        // status is reported as such, and ignored on error statuses.
+        let emptyObject = Data("{}".utf8)
         if data.isEmpty {
-            object = [String: Any]()
-        } else if let parsed = try? JSONSerialization.jsonObject(with: data) {
-            object = parsed
-        } else if (200..<300).contains(http.statusCode) {
-            throw TogetherBillingUsageError.malformed("Together billing usage payload was not valid JSON.")
-        } else {
-            object = [String: Any]()
+            return (http.statusCode, emptyObject)
         }
-        return (http.statusCode, object)
+        if (try? JSONSerialization.jsonObject(with: data)) == nil {
+            if (200..<300).contains(http.statusCode) {
+                throw TogetherBillingUsageError.malformed("Together billing usage payload was not valid JSON.")
+            }
+            return (http.statusCode, emptyObject)
+        }
+        return (http.statusCode, data)
     }
 
     // MARK: - Snapshots
@@ -234,13 +236,9 @@ public struct TogetherQuotaAdapter: ProviderQuotaAdapter {
         return components.url
     }
 
-    static func inlineErrorMessage(from dictionary: [String: Any]) -> String? {
-        if let error = dictionary["error"] as? [String: Any] {
-            let message = FlexibleQuotaBucketNormalizer.string(in: error, keys: ["message", "msg", "error"])
-                ?? "request failed"
-            return "Together returned an API error: \(message)"
-        }
-        return nil
+    static func inlineErrorMessage(from payload: TogetherBillingUsagePayload) -> String? {
+        guard let error = payload.error else { return nil }
+        return "Together returned an API error: \(error.message ?? "request failed")"
     }
 
     static func currencyString(_ value: Double) -> String {
@@ -272,39 +270,66 @@ struct TogetherBillingUsageReport: Sendable {
         return merged
     }
 
-    static func parse(_ dictionary: [String: Any]) -> TogetherBillingUsageReport {
-        let windows = dictionary["data"] as? [[String: Any]] ?? []
-        var total: Double = 0
-        for window in windows {
-            let items = window["line_items"] as? [[String: Any]] ?? []
-            for item in items {
-                if let cost = decimalNumber(in: item, key: "cost") {
-                    total += cost
-                }
-            }
-        }
-        return TogetherBillingUsageReport(
-            organizationID: FlexibleQuotaBucketNormalizer.string(in: dictionary, keys: ["organization_id", "organizationId"]),
-            billingPeriod: FlexibleQuotaBucketNormalizer.string(in: dictionary, keys: ["billing_period", "billingPeriod"]),
-            totalCostUSD: total,
-            nextCursor: FlexibleQuotaBucketNormalizer.string(in: dictionary, keys: ["next_cursor", "nextCursor"])
-        )
+    init(organizationID: String?, billingPeriod: String?, totalCostUSD: Double, nextCursor: String?) {
+        self.organizationID = organizationID
+        self.billingPeriod = billingPeriod
+        self.totalCostUSD = totalCostUSD
+        self.nextCursor = nextCursor
     }
 
-    private static func decimalNumber(in dictionary: [String: Any], key: String) -> Double? {
-        if let number = dictionary[key] as? NSNumber {
-            return number.doubleValue
+    init(_ payload: TogetherBillingUsagePayload) {
+        self.init(
+            organizationID: payload.organizationID,
+            billingPeriod: payload.billingPeriod,
+            totalCostUSD: payload.windows.flatMap(\.lineItemCosts).reduce(0, +),
+            nextCursor: payload.nextCursor
+        )
+    }
+}
+
+/// Typed projection of `GET /v1/billing/usage`. Decoding is lenient field by
+/// field (a value of an unexpected shape reads as absent) so a schema drift in
+/// one field never hides the month-to-date spend in the others; the document
+/// itself must be a JSON object.
+struct TogetherBillingUsagePayload: Decodable {
+    struct APIError: Decodable {
+        let message: String?
+
+        init(from decoder: Decoder) throws {
+            _ = try decoder.container(keyedBy: QuotaJSONKey.self)
+            message = quotaLenientString(decoder, keys: "message", "msg", "error")
         }
-        if let value = dictionary[key] as? Double {
-            return value
+    }
+
+    struct Window: Decodable {
+        struct LineItem: Decodable {
+            let cost: Double?
+
+            init(from decoder: Decoder) throws {
+                cost = quotaLenientNumber(decoder, key: "cost")
+            }
         }
-        if let value = dictionary[key] as? Int {
-            return Double(value)
+
+        let lineItemCosts: [Double]
+
+        init(from decoder: Decoder) throws {
+            lineItemCosts = (quotaLenientValue([LineItem].self, decoder, key: "line_items") ?? []).compactMap(\.cost)
         }
-        if let text = dictionary[key] as? String {
-            return Double(text.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-        return nil
+    }
+
+    let error: APIError?
+    let organizationID: String?
+    let billingPeriod: String?
+    let nextCursor: String?
+    let windows: [Window]
+
+    init(from decoder: Decoder) throws {
+        _ = try decoder.container(keyedBy: QuotaJSONKey.self)
+        error = quotaLenientValue(APIError.self, decoder, key: "error")
+        organizationID = quotaLenientString(decoder, keys: "organization_id", "organizationId")
+        billingPeriod = quotaLenientString(decoder, keys: "billing_period", "billingPeriod")
+        nextCursor = quotaLenientString(decoder, keys: "next_cursor", "nextCursor")
+        windows = quotaLenientValue([Window].self, decoder, key: "data") ?? []
     }
 }
 

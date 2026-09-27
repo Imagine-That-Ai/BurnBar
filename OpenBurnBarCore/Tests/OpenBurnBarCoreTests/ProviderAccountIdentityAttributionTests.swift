@@ -321,6 +321,32 @@ final class ProviderAccountIdentityAttributionTests: XCTestCase {
     private func date(_ iso: String) -> Date {
         ISO8601DateFormatter().date(from: iso)!
     }
+
+    /// Typed decoding stays as tolerant as the old `as? String` reads: a
+    /// non-string account id is ignored and the email still identifies the seat.
+    func testClaudeResolverIgnoresNonStringAccountUUID() throws {
+        let configURL = scratch.appendingPathComponent(".claude.json")
+        try Data(#"{"oauthAccount":{"accountUuid":42,"emailAddress":"Me@Example.com"}}"#.utf8).write(to: configURL)
+
+        let identity = try XCTUnwrap(
+            ClaudeAccountIdentityResolver(configFileCandidates: [configURL]).resolveCurrentIdentity()
+        )
+        XCTAssertEqual(identity.rawIdentity, "me@example.com")
+        XCTAssertEqual(identity.label, "Me@Example.com")
+    }
+
+    func testCodexResolverFallsBackToEmailClaimWhenAccountIDIsNotAString() throws {
+        let payload = Data(#"{"email":"ops@example.com","exp":1}"#.utf8)
+        let idToken = "eyJhbGciOiJIUzI1NiJ9.\(payload.base64URLEncodedForTest()).sig"
+        let authURL = scratch.appendingPathComponent("auth.json")
+        try Data(#"{"tokens":{"id_token":"\#(idToken)","account_id":["nested"]}}"#.utf8).write(to: authURL)
+
+        let identity = try XCTUnwrap(
+            CodexAccountIdentityResolver(authFileCandidates: [authURL]).resolveCurrentIdentity()
+        )
+        XCTAssertEqual(identity.rawIdentity, "ops@example.com")
+        XCTAssertEqual(identity.label, "ops@example.com")
+    }
 }
 
 extension Data {

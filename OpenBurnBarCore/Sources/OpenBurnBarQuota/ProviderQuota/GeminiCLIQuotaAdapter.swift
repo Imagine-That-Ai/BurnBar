@@ -130,19 +130,15 @@ public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
         let settingsURL = root.appendingPathComponent("settings.json")
         guard fileManager.fileExists(atPath: settingsURL.path),
               let data = try? Data(contentsOf: settingsURL),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let settings = try? JSONDecoder().decode(GeminiSettingsFile.self, from: data) else {
             return .unknown
         }
 
-        var selected = stringValue(object["selectedAuthType"]) ?? ""
-        if let security = object["security"] as? [String: Any] {
-            if selected.isEmpty, let auth = security["auth"] as? [String: Any] {
-                selected = stringValue(auth["selectedType"]) ?? ""
-            }
-            if selected.isEmpty {
-                selected = stringValue(security["selectedType"]) ?? ""
-            }
-        }
+        let selected = [
+            settings.selectedAuthType,
+            settings.security?.auth?.selectedType,
+            settings.security?.selectedType
+        ].lazy.compactMap(stringValue).first ?? ""
 
         let normalized = selected.lowercased()
         if normalized.contains("oauth") || normalized.contains("personal") {
@@ -157,8 +153,8 @@ public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
         return .unknown
     }
 
-    private static func stringValue(_ raw: Any?) -> String? {
-        guard let text = raw as? String else { return nil }
+    private static func stringValue(_ raw: String?) -> String? {
+        guard let text = raw else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
@@ -181,5 +177,37 @@ public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
             parts.append("Personal Google login no longer serves Gemini CLI; use Antigravity for coding. Verizon / Gemini app remaining quota is not available.")
         }
         return parts.joined(separator: " ")
+    }
+}
+
+/// Typed projection of `~/.gemini/settings.json`: only the auth-type
+/// selectors are decoded, leniently (a value of an unexpected type, or a
+/// non-object `security`/`auth`, reads as absent).
+private struct GeminiSettingsFile: Decodable {
+    struct Security: Decodable {
+        struct Auth: Decodable {
+            let selectedType: String?
+
+            init(from decoder: Decoder) throws {
+                selectedType = quotaLenientString(decoder, key: "selectedType")
+            }
+        }
+
+        let auth: Auth?
+        let selectedType: String?
+
+        init(from decoder: Decoder) throws {
+            auth = quotaLenientValue(Auth.self, decoder, key: "auth")
+            selectedType = quotaLenientString(decoder, key: "selectedType")
+        }
+    }
+
+    let selectedAuthType: String?
+    let security: Security?
+
+    init(from decoder: Decoder) throws {
+        _ = try decoder.container(keyedBy: QuotaJSONKey.self)
+        selectedAuthType = quotaLenientString(decoder, key: "selectedAuthType")
+        security = quotaLenientValue(Security.self, decoder, key: "security")
     }
 }

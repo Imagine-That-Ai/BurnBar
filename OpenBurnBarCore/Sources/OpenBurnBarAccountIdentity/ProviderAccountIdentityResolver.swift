@@ -46,3 +46,14 @@ extension [any ProviderAccountIdentityResolving] {
         ]
     }
 }
+
+/// A JSON string field that decodes to `nil` (instead of failing the whole
+/// document) when the tool writes a non-string value there, matching the
+/// tolerance of the old `as? String` reads.
+struct LenientJSONString: Decodable {
+    let value: String?
+
+    init(from decoder: Decoder) throws {
+        value = try? decoder.singleValueContainer().decode(String.self)
+    }
+}

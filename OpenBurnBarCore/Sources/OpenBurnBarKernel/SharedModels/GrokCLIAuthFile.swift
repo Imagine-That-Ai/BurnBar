@@ -42,7 +42,7 @@ public enum GrokCLIAuthFile: Sendable {
     }
 
     public static func inspect(_ data: Data) -> Summary? {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = try? JSONDecoder().decode([String: AuthEntry].self, from: data) else {
             return nil
         }
 
@@ -50,21 +50,20 @@ public enum GrokCLIAuthFile: Sendable {
         var preferredOAuth: Summary?
         var apiKey: Summary?
 
-        for (scope, rawEntry) in object {
-            guard let entry = rawEntry as? [String: Any] else { continue }
-            guard let key = entry["key"] as? String,
+        for (scope, entry) in object {
+            guard let key = entry.key,
                   !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 continue
             }
 
-            let mode = (entry["auth_mode"] as? String)?
+            let mode = entry.authMode?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased()
             let isAPIKey = scope == apiKeyScope || mode == "api_key"
             let summary = Summary(
                 kind: isAPIKey ? .apiKey : .oauthSession,
                 accountDescription: accountDescription(from: entry, apiKey: isAPIKey),
-                expiresAt: parseExpiry(entry["expires_at"])
+                expiresAt: parseExpiry(entry.expiresAt)
             )
 
             if isAPIKey {
@@ -81,10 +80,10 @@ public enum GrokCLIAuthFile: Sendable {
         return preferredOAuth ?? oauth ?? apiKey
     }
 
-    private static func accountDescription(from entry: [String: Any], apiKey: Bool) -> String {
-        let email = stringValue(entry["email"])
-        let first = stringValue(entry["first_name"])
-        let last = stringValue(entry["last_name"])
+    private static func accountDescription(from entry: AuthEntry, apiKey: Bool) -> String {
+        let email = stringValue(entry.email)
+        let first = stringValue(entry.firstName)
+        let last = stringValue(entry.lastName)
         let nameParts = [first, last].compactMap { $0 }
         let name = nameParts.isEmpty ? nil : nameParts.joined(separator: " ")
         if let name, let email {
@@ -95,14 +94,15 @@ public enum GrokCLIAuthFile: Sendable {
         return apiKey ? "Grok CLI API key" : "Grok CLI login"
     }
 
-    private static func stringValue(_ raw: Any?) -> String? {
-        guard let text = raw as? String else { return nil }
+    private static func stringValue(_ raw: String?) -> String? {
+        guard let text = raw else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private static func parseExpiry(_ raw: Any?) -> Date? {
-        if let text = raw as? String {
+    private static func parseExpiry(_ raw: AuthEntry.Expiry?) -> Date? {
+        switch raw {
+        case .text(let text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { return nil }
             if let date = ThreadSafeISO8601DateFormatter.parse(trimmed) {
@@ -112,14 +112,11 @@ public enum GrokCLIAuthFile: Sendable {
                 return dateFromEpoch(seconds)
             }
             return nil
-        }
-        if let number = raw as? NSNumber {
-            return dateFromEpoch(number.doubleValue)
-        }
-        if let seconds = raw as? Double {
+        case .seconds(let seconds):
             return dateFromEpoch(seconds)
+        case nil:
+            return nil
         }
-        return nil
     }
 
     private static func dateFromEpoch(_ value: Double) -> Date? {
@@ -128,5 +125,49 @@ public enum GrokCLIAuthFile: Sendable {
             return Date(timeIntervalSince1970: value / 1000.0)
         }
         return Date(timeIntervalSince1970: value)
+    }
+
+    /// One scope entry of `auth.json`. Every field is read leniently: a value of
+    /// an unexpected type (or a non-object entry) reads as absent instead of
+    /// failing the whole file. Token material other than `key` presence is
+    /// never decoded.
+    private struct AuthEntry: Decodable {
+        enum Expiry {
+            case text(String)
+            case seconds(Double)
+        }
+
+        let key: String?
+        let authMode: String?
+        let email: String?
+        let firstName: String?
+        let lastName: String?
+        let expiresAt: Expiry?
+
+        private enum CodingKeys: String, CodingKey {
+            case key
+            case authMode = "auth_mode"
+            case email
+            case firstName = "first_name"
+            case lastName = "last_name"
+            case expiresAt = "expires_at"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            func string(_ key: CodingKeys) -> String? {
+                (try? container?.decodeIfPresent(String.self, forKey: key)) ?? nil
+            }
+            key = string(.key)
+            authMode = string(.authMode)
+            email = string(.email)
+            firstName = string(.firstName)
+            lastName = string(.lastName)
+            if let seconds = (try? container?.decodeIfPresent(Double.self, forKey: .expiresAt)) ?? nil {
+                expiresAt = .seconds(seconds)
+            } else {
+                expiresAt = string(.expiresAt).map(Expiry.text)
+            }
+        }
     }
 }

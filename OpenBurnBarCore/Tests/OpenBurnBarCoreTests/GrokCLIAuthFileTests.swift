@@ -98,4 +98,24 @@ final class GrokCLIAuthFileTests: XCTestCase {
         XCTAssertEqual(summary.kind, .apiKey)
         XCTAssertNil(GrokCLIAuthFile.inspect(fileAt: root.appendingPathComponent("missing.json")))
     }
+
+    func testInspect_skipsNonObjectEntriesAndTreatsWrongTypedFieldsAsAbsent() throws {
+        let json = """
+        {
+          "xai::legacy": "not-an-object",
+          "https://auth.x.ai::test-client": {"key": "k", "email": 7, "first_name": "Ada", "expires_at": 1893456000}
+        }
+        """
+        let summary = try XCTUnwrap(GrokCLIAuthFile.inspect(Data(json.utf8)))
+        XCTAssertEqual(summary.kind, .oauthSession)
+        XCTAssertEqual(summary.accountDescription, "Ada")
+        XCTAssertEqual(summary.expiresAt, Date(timeIntervalSince1970: 1_893_456_000))
+    }
+
+    func testInspect_readsMillisecondAndStringExpiry() throws {
+        let millis = try XCTUnwrap(GrokCLIAuthFile.inspect(Data(#"{"xai::api_key":{"key":"k","expires_at":1893456000000}}"#.utf8)))
+        XCTAssertEqual(millis.expiresAt, Date(timeIntervalSince1970: 1_893_456_000))
+        let text = try XCTUnwrap(GrokCLIAuthFile.inspect(Data(#"{"xai::api_key":{"key":"k","expires_at":"1893456000"}}"#.utf8)))
+        XCTAssertEqual(text.expiresAt, Date(timeIntervalSince1970: 1_893_456_000))
+    }
 }

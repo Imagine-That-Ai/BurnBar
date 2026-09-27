@@ -220,6 +220,21 @@ final class GeminiCLIQuotaAdapterTests: XCTestCase {
             resolvedAPIKeys: [:]
         )
     }
+
+    func testReadAuthTypeFallsBackThroughSecuritySelectors() throws {
+        let root = try makeTemporaryDirectory("gemini-auth-type")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let settingsURL = root.appendingPathComponent("settings.json")
+        func authType(_ json: String) throws -> GeminiCLIQuotaAdapter.DetectedAuthType {
+            try json.write(to: settingsURL, atomically: true, encoding: .utf8)
+            return GeminiCLIQuotaAdapter.readAuthType(root: root, fileManager: .default)
+        }
+
+        XCTAssertEqual(try authType(#"{"security":{"auth":{"selectedType":"vertex-ai"}}}"#), .vertex)
+        XCTAssertEqual(try authType(#"{"selectedAuthType":" ","security":{"selectedType":"gemini-api-key"}}"#), .apiKey)
+        XCTAssertEqual(try authType(#"{"selectedAuthType":3,"security":"oauth-personal"}"#), .unknown)
+        XCTAssertEqual(try authType(#"["oauth-personal"]"#), .unknown)
+    }
 }
 
 private struct GeminiQuotaTestSnapshotStore: ProviderQuotaSnapshotPersisting {

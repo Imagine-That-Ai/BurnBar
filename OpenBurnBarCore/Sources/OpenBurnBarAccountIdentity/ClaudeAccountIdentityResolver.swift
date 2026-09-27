@@ -43,12 +43,12 @@ public struct ClaudeAccountIdentityResolver: ProviderAccountIdentityResolving {
         for candidate in configFileCandidates {
             guard fileManager.fileExists(atPath: candidate.path),
                   let data = try? Data(contentsOf: candidate),
-                  let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                  let account = object["oauthAccount"] as? [String: Any] else { continue }
+                  let account = (try? JSONDecoder().decode(ClaudeConfigFile.self, from: data))?.oauthAccount
+            else { continue }
 
-            let accountUuid = (account["accountUuid"] as? String)?
+            let accountUuid = account.accountUuid?.value?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let email = (account["emailAddress"] as? String)?
+            let email = account.emailAddress?.value?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
             let rawIdentity = [accountUuid, email?.lowercased()]
@@ -70,4 +70,15 @@ public struct ClaudeAccountIdentityResolver: ProviderAccountIdentityResolving {
         }
         return nil
     }
+}
+
+/// Typed projection of `.claude.json`: only the non-secret `oauthAccount`
+/// identity fields are decoded; everything else in the file is ignored.
+private struct ClaudeConfigFile: Decodable {
+    struct OAuthAccount: Decodable {
+        let accountUuid: LenientJSONString?
+        let emailAddress: LenientJSONString?
+    }
+
+    let oauthAccount: OAuthAccount?
 }

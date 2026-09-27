@@ -46,12 +46,12 @@ public struct CodexAccountIdentityResolver: ProviderAccountIdentityResolving {
                   let attributes = try? fileManager.attributesOfItem(atPath: candidate.path),
                   (attributes[.size] as? Int ?? 0) <= Self.maxAuthFileBytes,
                   let data = try? Data(contentsOf: candidate),
-                  let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                  let tokens = object["tokens"] as? [String: Any] else { continue }
+                  let tokens = (try? JSONDecoder().decode(AuthFile.self, from: data))?.tokens
+            else { continue }
 
-            let accountID = (tokens["account_id"] as? String)?
+            let accountID = tokens.accountID?.value?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let email = (tokens["id_token"] as? String)
+            let email = tokens.idToken?.value
                 .flatMap(Self.identityClaims(fromJWT:))?
                 .email?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -76,8 +76,33 @@ public struct CodexAccountIdentityResolver: ProviderAccountIdentityResolving {
         return nil
     }
 
-    struct IdentityClaims {
+    /// Typed projection of `auth.json`: identity fields only. Token material
+    /// other than the id-token (read for its `email` claim) is never decoded.
+    private struct AuthFile: Decodable {
+        struct Tokens: Decodable {
+            let accountID: LenientJSONString?
+            let idToken: LenientJSONString?
+
+            enum CodingKeys: String, CodingKey {
+                case accountID = "account_id"
+                case idToken = "id_token"
+            }
+        }
+
+        let tokens: Tokens?
+    }
+
+    struct IdentityClaims: Decodable {
         var email: String?
+
+        init(from decoder: Decoder) throws {
+            email = try (decoder.container(keyedBy: CodingKeys.self)
+                .decodeIfPresent(LenientJSONString.self, forKey: .email))?.value
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case email
+        }
     }
 
     /// Decodes the JWT payload segment and returns identity claims only. The
@@ -89,9 +114,7 @@ public struct CodexAccountIdentityResolver: ProviderAccountIdentityResolving {
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
         while base64.count % 4 != 0 { base64.append("=") }
-        guard let payloadData = Data(base64Encoded: base64),
-              let payload = (try? JSONSerialization.jsonObject(with: payloadData)) as? [String: Any]
-        else { return nil }
-        return IdentityClaims(email: payload["email"] as? String)
+        guard let payloadData = Data(base64Encoded: base64) else { return nil }
+        return try? JSONDecoder().decode(IdentityClaims.self, from: payloadData)
     }
 }
