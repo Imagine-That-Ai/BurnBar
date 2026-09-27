@@ -177,78 +177,25 @@ final class SettingsManager {
         // re-render when the underlying AppearanceSettings value changes.
         // @Observable only auto-tracks stored properties; computed bridges
         // need this forwarding to guarantee SwiftUI refreshes.
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .appearanceModeDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .appearanceSkinDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .dashboardLayoutDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .useWebsiteBackgroundDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .useConstellationBackgroundDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .enableDesktopWallpaperDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .desktopWallpaperBackgroundDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .desktopWallpaperSpeedDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .desktopWallpaperProviderGlyphsDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .enableSwarmSparklesDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .excludeBrandShapesFromSwarmDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceSubStoreDidChange),
-            name: .popoverTrayLayoutDidChange,
-            object: nil
-        )
+        let appearanceNotifications: [Notification.Name] = [
+            .appearanceModeDidChange,
+            .appearanceSkinDidChange,
+            .dashboardLayoutDidChange,
+            .useWebsiteBackgroundDidChange,
+            .useConstellationBackgroundDidChange,
+            .enableDesktopWallpaperDidChange,
+            .desktopWallpaperBackgroundDidChange,
+            .desktopWallpaperSpeedDidChange,
+            .desktopWallpaperProviderGlyphsDidChange,
+            .enableSwarmSparklesDidChange,
+            .excludeBrandShapesFromSwarmDidChange,
+            .popoverTrayLayoutDidChange,
+        ]
+        for name in appearanceNotifications {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(appearanceSubStoreDidChange), name: name, object: nil
+            )
+        }
         startComputerUseRemoteConfigPolling()
     }
 
