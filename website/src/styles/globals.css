@@ -519,7 +519,11 @@ section {
   border-radius: var(--r-pill);
   border: 1px solid var(--ink-line);
   color: var(--text-mute);
-  background: var(--ink-surface);
+  /* Opaque on purpose. A translucent ground here made the chip's contrast a
+     property of whatever card it happened to sit on — see the --chip-ground
+     comment in tokens.css. Keep it opaque or the contrast gate loses its
+     ground truth and the AA guarantee goes with it. */
+  background: var(--chip-ground);
 }
 
 .tag--exact {
@@ -540,7 +544,7 @@ section {
 .tag--ember {
   color: var(--ember-bright);
   border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
-  background: var(--ember-wash);
+  background: var(--chip-ground-ember);
 }
 
 .tag--mercury {
@@ -551,7 +555,7 @@ section {
 .tag--beta {
   color: var(--ember-bright);
   border-color: color-mix(in oklab, var(--ember-core) 50%, var(--ink-line));
-  background: var(--ember-wash);
+  background: var(--chip-ground-ember);
   font-weight: var(--wght-medium);
 }
 
