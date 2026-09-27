@@ -165,22 +165,19 @@ struct MemoryExtractionLLMClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let payload: [String: Any] = [
-            "model": model,
-            "prompt": prompt,
-            "images": imagesBase64,
-            "stream": false,
-            "format": "json",
-            "options": [
-                "temperature": 0.1,
-                "num_predict": MemoryExtractionPolicy.maxOutputTokens
-            ]
-        ]
-
-        guard let body = try? JSONSerialization.data(withJSONObject: payload) else { // try?-ok(encode request, skip)
+        let payload = OllamaVisionGenerateRequest(
+            model: model,
+            prompt: prompt,
+            images: imagesBase64,
+            stream: false,
+            format: "json",
+            options: .init(temperature: 0.1, numPredict: MemoryExtractionPolicy.maxOutputTokens)
+        )
+        do {
+            request.httpBody = try JSONEncoder().encode(payload)
+        } catch {
             return (nil, false)
         }
-        request.httpBody = body
 
         let data: Data
         let response: URLResponse
@@ -199,11 +196,35 @@ struct MemoryExtractionLLMClient: Sendable {
             return (nil, cooldown)
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
-              let text = json["response"] as? String
-        else {
+        do {
+            return (try JSONDecoder().decode(OllamaGenerateResponse.self, from: data).response, false)
+        } catch {
             return (nil, false)
         }
-        return (text, false)
     }
+}
+
+/// Ollama `/api/generate` body with native base64 `images` (vision models).
+private struct OllamaVisionGenerateRequest: Encodable {
+    struct Options: Encodable {
+        var temperature: Double
+        var numPredict: Int
+
+        private enum CodingKeys: String, CodingKey {
+            case temperature
+            case numPredict = "num_predict"
+        }
+    }
+
+    var model: String
+    var prompt: String
+    var images: [String]
+    var stream: Bool
+    var format: String
+    var options: Options
+}
+
+/// The one field read from a non-streaming Ollama `/api/generate` reply.
+private struct OllamaGenerateResponse: Decodable {
+    var response: String
 }

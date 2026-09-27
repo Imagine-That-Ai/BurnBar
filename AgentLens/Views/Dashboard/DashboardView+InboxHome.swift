@@ -33,6 +33,23 @@ extension DashboardView {
         consentCoordinator.showMemoryConsent = true
     }
 
+    /// Presents the first-run usage-memory consent, the THIRD link in the chain:
+    /// `shouldShowUsageMemoryConsent` already requires the indexing prompt and
+    /// the chat-memory consent to be settled, and the guards below additionally
+    /// hold it back while any other first-run sheet is on screen.
+    func presentUsageMemoryConsentIfNeeded() {
+        guard let consentCoordinator,
+              consentCoordinator.shouldShowUsageMemoryConsent,
+              !consentCoordinator.showUsageMemoryConsent,
+              !consentCoordinator.showMemoryConsent,
+              !showIndexingConsent,
+              !showCLIConsentSheet,
+              !showSessionLogCloudConsent,
+              !showAnalyticsConsent,
+              AnalyticsConsentStore.shared.hasDecided else { return }
+        consentCoordinator.showUsageMemoryConsent = true
+    }
+
     func autoExpandTimeRangeIfNeeded() {
         guard !didAutoExpandEmptyTimeRange else { return }
         defer { didAutoExpandEmptyTimeRange = true }

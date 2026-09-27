@@ -692,6 +692,20 @@ struct DashboardView: View {
             }
             .presentationBackground(Material.ultraThinMaterial)
         }
+        .sheet(isPresented: Binding(
+            get: { consentCoordinator?.showUsageMemoryConsent ?? false },
+            set: { consentCoordinator?.showUsageMemoryConsent = $0 }
+        )) {
+            UsageMemoryConsentSheet(settings: settingsManager) { grant in
+                consentCoordinator?.confirmUsageMemoryConsent(grant: grant)
+                consentCoordinator?.showUsageMemoryConsent = false
+            }
+            // U3: "Set up local model…" on the placement step posts the setup
+            // notification; presenting from the sheet content stacks the
+            // wizard on top of the consent sheet.
+            .usageMemoryLocalSetupPresenter(settings: settingsManager)
+            .presentationBackground(Material.ultraThinMaterial)
+        }
         .sheet(isPresented: $showAnalyticsConsent) {
             AnalyticsConsentPromptView { granted in
                 if granted {
@@ -713,16 +727,26 @@ struct DashboardView: View {
         .onAppear {
             presentAnalyticsConsentIfNeeded()
             presentMemoryConsentIfNeeded()
+            presentUsageMemoryConsentIfNeeded()
         }
         .onChange(of: showIndexingConsent) { wasShowing, isShowing in
             if wasShowing && !isShowing {
                 presentAnalyticsConsentIfNeeded()
                 presentMemoryConsentIfNeeded()
+                presentUsageMemoryConsentIfNeeded()
             }
         }
         .onChange(of: showAnalyticsConsent) { wasShowing, isShowing in
             if wasShowing && !isShowing {
                 presentMemoryConsentIfNeeded()
+                presentUsageMemoryConsentIfNeeded()
+            }
+        }
+        .onChange(of: consentCoordinator?.showMemoryConsent ?? false) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                // Chat-memory consent just settled; usage-memory consent is the
+                // next (third) link in the one-at-a-time first-run chain.
+                presentUsageMemoryConsentIfNeeded()
             }
         }
         .onChange(of: accountManager.isSignedIn) { _, isSignedIn in

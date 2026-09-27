@@ -265,7 +265,7 @@ struct BurnBarFieldInterior: View {
             .float(uniforms.detail),
             .color(ground)
         ]
-        arguments.append(contentsOf: BurnBarKernelField.bandArguments(uniforms))
+        arguments.append(contentsOf: BurnBarKernelMath.bandArguments(uniforms))
         return Shader(function: ShaderLibrary.default.burnBarUsageFieldColor, arguments: arguments)
     }
 }

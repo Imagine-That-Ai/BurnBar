@@ -123,14 +123,14 @@ final class UsageCurationCloudClientTests: XCTestCase {
             requestId: "req-123"
         )
 
-        XCTAssertEqual(payload["lane"] as? String, "multimodal")
-        XCTAssertEqual(payload["requestId"] as? String, "req-123")
-        let candidates = try XCTUnwrap(payload["candidates"] as? [[String: Any]])
-        XCTAssertEqual(candidates.count, 2)
-        XCTAssertEqual(candidates[0]["id"] as? String, "cand-1")
-        XCTAssertEqual(candidates[0]["sourceKind"] as? String, "safari_ask")
-        XCTAssertEqual(candidates[0]["text"] as? String, "candidate text")
-        XCTAssertEqual(candidates[0]["imageRefs"] as? [String], ["data:image/png;base64,AAAA"])
+        XCTAssertEqual(payload.lane, "multimodal")
+        XCTAssertEqual(payload.requestId, "req-123")
+        XCTAssertEqual(payload.candidates.count, 2)
+        XCTAssertEqual(payload.candidates[0].id, "cand-1")
+        XCTAssertEqual(payload.candidates[0].sourceKind, "safari_ask")
+        XCTAssertEqual(payload.candidates[0].text, "candidate text")
+        XCTAssertEqual(payload.candidates[0].imageRefs, ["data:image/png;base64,AAAA"])
+        let candidates = try encodedCandidates(payload)
         XCTAssertNil(candidates[1]["imageRefs"], "Absent imageRefs must be OMITTED, not sent as an empty array.")
     }
 
@@ -140,8 +140,15 @@ final class UsageCurationCloudClientTests: XCTestCase {
             candidates: [UsageCurationCloudCandidate(id: "c", sourceKind: "safari_ask", text: "t", imageRefs: [])],
             requestId: "req"
         )
-        let candidates = try XCTUnwrap(payload["candidates"] as? [[String: Any]])
+        let candidates = try encodedCandidates(payload)
         XCTAssertNil(candidates[0]["imageRefs"], "The server rejects imageRefs outside the multimodal lane.")
+    }
+
+    /// The candidate objects exactly as they go over the wire.
+    private func encodedCandidates(_ payload: UsageCurationCallableRequest) throws -> [[String: Any]] {
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(payload))
+        let body = try XCTUnwrap(object as? [String: Any])
+        return try XCTUnwrap(body["candidates"] as? [[String: Any]])
     }
 
     func testNewRequestIDsAreUniqueUUIDs() {
@@ -154,7 +161,7 @@ final class UsageCurationCloudClientTests: XCTestCase {
     // MARK: - Response parsing
 
     func testWellFormedResponseParsesFully() throws {
-        let response = try UsageCurationCloudClient.response(from: wellFormedResponseDict())
+        let response = try UsageCurationCloudClient.response(fromJSONObject: wellFormedResponseDict())
 
         XCTAssertEqual(response.promptVersion, "usage-curation-v1")
         XCTAssertEqual(response.usage.promptTokens, 1200)
@@ -181,7 +188,7 @@ final class UsageCurationCloudClientTests: XCTestCase {
         var usage = try XCTUnwrap(dict["usage"] as? [String: Any])
         usage.removeValue(forKey: "cachedTokens")
         dict["usage"] = usage
-        let response = try UsageCurationCloudClient.response(from: dict)
+        let response = try UsageCurationCloudClient.response(fromJSONObject: dict)
         XCTAssertEqual(response.usage.cachedTokens, 0)
     }
 
@@ -190,14 +197,14 @@ final class UsageCurationCloudClientTests: XCTestCase {
         var results = try XCTUnwrap(dict["results"] as? [[String: Any]])
         results.append(["kind": "fact"]) // no text/candidateId — dropped
         dict["results"] = results
-        let response = try UsageCurationCloudClient.response(from: dict)
+        let response = try UsageCurationCloudClient.response(fromJSONObject: dict)
         XCTAssertEqual(response.results.count, 1)
     }
 
     func testMissingUsageThrowsMalformedResponse() {
         var dict = wellFormedResponseDict()
         dict.removeValue(forKey: "usage")
-        XCTAssertThrowsError(try UsageCurationCloudClient.response(from: dict)) { error in
+        XCTAssertThrowsError(try UsageCurationCloudClient.response(fromJSONObject: dict)) { error in
             XCTAssertEqual(error as? UsageCurationCloudError, .malformedResponse)
         }
     }
@@ -207,7 +214,7 @@ final class UsageCurationCloudClientTests: XCTestCase {
         var usage = dict["usage"] as? [String: Any] ?? [:]
         usage["lane"] = "video"
         dict["usage"] = usage
-        XCTAssertThrowsError(try UsageCurationCloudClient.response(from: dict)) { error in
+        XCTAssertThrowsError(try UsageCurationCloudClient.response(fromJSONObject: dict)) { error in
             XCTAssertEqual(error as? UsageCurationCloudError, .malformedResponse)
         }
     }
@@ -215,7 +222,7 @@ final class UsageCurationCloudClientTests: XCTestCase {
     func testMissingAllowanceThrowsMalformedResponse() {
         var dict = wellFormedResponseDict()
         dict.removeValue(forKey: "allowance")
-        XCTAssertThrowsError(try UsageCurationCloudClient.response(from: dict)) { error in
+        XCTAssertThrowsError(try UsageCurationCloudClient.response(fromJSONObject: dict)) { error in
             XCTAssertEqual(error as? UsageCurationCloudError, .malformedResponse)
         }
     }
@@ -243,7 +250,7 @@ final class UsageCurationCloudClientTests: XCTestCase {
     }
 
     func testFakeClientReceivesTypedRequestAndReturnsTypedResponse() async throws {
-        let scripted = try UsageCurationCloudClient.response(from: wellFormedResponseDict())
+        let scripted = try UsageCurationCloudClient.response(fromJSONObject: wellFormedResponseDict())
         let fake = FakeUsageCurationCloudClient(result: .success(scripted))
         let client: UsageCurationCloudClientProtocol = fake
 
@@ -261,7 +268,7 @@ final class UsageCurationCloudClientTests: XCTestCase {
     }
 
     func testConvenienceOverloadMintsAFreshRequestIdPerCall() async throws {
-        let scripted = try UsageCurationCloudClient.response(from: wellFormedResponseDict())
+        let scripted = try UsageCurationCloudClient.response(fromJSONObject: wellFormedResponseDict())
         let fake = FakeUsageCurationCloudClient(result: .success(scripted))
         let client: UsageCurationCloudClientProtocol = fake
 

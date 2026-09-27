@@ -81,4 +81,80 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.showCLIConsentSheet)
         XCTAssertTrue(didOpen)
     }
+
+    // MARK: - Usage-memory consent (U2: third link in the first-run chain)
+
+    func test_onDashboardAppear_showsOnlyIndexingConsentWhenNothingShown() {
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        coordinator.onDashboardAppear(aggregator: nil)
+        XCTAssertTrue(coordinator.showIndexingConsent)
+        XCTAssertFalse(coordinator.showMemoryConsent)
+        XCTAssertFalse(coordinator.showUsageMemoryConsent)
+    }
+
+    func test_onDashboardAppear_showsMemoryConsentSecond_notUsageConsent() {
+        settingsManager.conversationIndexingConsentShown = true
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        coordinator.onDashboardAppear(aggregator: nil)
+        XCTAssertFalse(coordinator.showIndexingConsent)
+        XCTAssertTrue(coordinator.showMemoryConsent)
+        XCTAssertFalse(coordinator.showUsageMemoryConsent)
+    }
+
+    func test_onDashboardAppear_showsUsageMemoryConsentThird() {
+        settingsManager.conversationIndexingConsentShown = true
+        settingsManager.memoryConsentShown = true
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        coordinator.onDashboardAppear(aggregator: nil)
+        XCTAssertFalse(coordinator.showIndexingConsent)
+        XCTAssertFalse(coordinator.showMemoryConsent)
+        XCTAssertTrue(coordinator.showUsageMemoryConsent)
+    }
+
+    func test_onDashboardAppear_showsNothingWhenAllThreeShown() {
+        settingsManager.conversationIndexingConsentShown = true
+        settingsManager.memoryConsentShown = true
+        settingsManager.usageMemoryConsentShown = true
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        coordinator.onDashboardAppear(aggregator: nil)
+        XCTAssertFalse(coordinator.showIndexingConsent)
+        XCTAssertFalse(coordinator.showMemoryConsent)
+        XCTAssertFalse(coordinator.showUsageMemoryConsent)
+    }
+
+    func test_shouldShowUsageMemoryConsent_requiresIndexingConsentShown() {
+        settingsManager.memoryConsentShown = true
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        XCTAssertFalse(coordinator.shouldShowUsageMemoryConsent)
+    }
+
+    func test_shouldShowUsageMemoryConsent_requiresMemoryConsentShown() {
+        settingsManager.conversationIndexingConsentShown = true
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        XCTAssertFalse(coordinator.shouldShowUsageMemoryConsent)
+    }
+
+    func test_shouldShowUsageMemoryConsent_falseOnceShown() {
+        settingsManager.conversationIndexingConsentShown = true
+        settingsManager.memoryConsentShown = true
+        settingsManager.usageMemoryConsentShown = true
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        XCTAssertFalse(coordinator.shouldShowUsageMemoryConsent)
+    }
+
+    func test_confirmUsageMemoryConsent_grantSetsGrantedAndShown() {
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        coordinator.confirmUsageMemoryConsent(grant: true)
+        XCTAssertTrue(settingsManager.usageMemoryConsentGranted)
+        XCTAssertTrue(settingsManager.usageMemoryConsentShown)
+    }
+
+    func test_confirmUsageMemoryConsent_declineOnlyMarksShown() {
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        coordinator.confirmUsageMemoryConsent(grant: false)
+        XCTAssertFalse(settingsManager.usageMemoryConsentGranted)
+        XCTAssertTrue(settingsManager.usageMemoryConsentShown)
+        // Declining leaves the whole usage loop dormant.
+        XCTAssertFalse(settingsManager.usageMemoryExtractionEnabled)
+    }
 }

@@ -251,3 +251,18 @@ extension ProviderPlanWizardView {
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isSelected)
     }
 }
+
+// MARK: - Provider configuration branding
+//
+// Lives under Views rather than Theme: a Theme -> Services edge put Theme on the
+// app-wide dependency cycle (docs/SERVICES_DECOMPOSITION_PROGRAM.md).
+
+extension OpenBurnBarDaemonProviderConfiguration {
+    /// Brand metadata for rendering logos — works for all catalog providers.
+    var brand: ProviderBrand {
+        if let provider {
+            return ProviderBrand(from: provider)
+        }
+        return ProviderBrand(providerID: providerID)
+    }
+}

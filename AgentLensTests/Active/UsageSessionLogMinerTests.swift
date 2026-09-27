@@ -12,19 +12,16 @@ import OpenBurnBarData
 /// must be skipped).
 final class UsageSessionLogMinerTests: XCTestCase {
 
-    private var tempRoot: URL!
+    /// XCTest builds a fresh instance per test method, so each test gets its own root.
+    private let tempRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("usage-session-miner-\(UUID().uuidString)", isDirectory: true)
 
     override func setUpWithError() throws {
-        tempRoot = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("usage-session-miner-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
-        if let tempRoot {
-            try? FileManager.default.removeItem(at: tempRoot)
-        }
-        tempRoot = nil
+        try? FileManager.default.removeItem(at: tempRoot)
     }
 
     // MARK: - Fixtures

@@ -832,3 +832,18 @@ private struct DataControlCenterSettingsLanding: View {
         .padding(32)
     }
 }
+
+// MARK: - SettingsManager presentation
+//
+// Lives under Views rather than Theme: a Theme -> Services edge put Theme on the
+// app-wide dependency cycle (docs/SERVICES_DECOMPOSITION_PROGRAM.md).
+
+extension SettingsManager {
+    var preferredSwiftUIColorScheme: ColorScheme? {
+        _ = appearanceMutationVersionForPresentation
+        if let modeScheme = appearance.appearanceMode.colorScheme {
+            return modeScheme
+        }
+        return appearance.appearanceSkin == .editorial ? .light : nil
+    }
+}

@@ -486,3 +486,9 @@ extension SettingsManager {
         set { chatBackend.launchHermesWithOpenBurnBar = newValue }
     }
 }
+
+// MARK: - Usage-memory settings contract
+
+extension SettingsManager: UsageMemorySettingsProviding {
+    var usageMemoryLocalVLModel: String { summary.usageMemoryLocalVLModel }
+}

@@ -14,8 +14,20 @@ if (manifest.background?.service_worker !== 'background.js') {
 if (manifest.browser_specific_settings?.safari?.strict_min_version !== '15.4') {
   failures.push('Safari strict_min_version must be 15.4');
 }
-if (!manifest.permissions?.includes('nativeMessaging')) {
-  failures.push('nativeMessaging permission is required');
+const requiredPermissions = new Set(['activeTab', 'alarms', 'nativeMessaging', 'scripting', 'storage', 'tabs']);
+const declaredPermissions = manifest.permissions ?? [];
+const declaredPermissionSet = new Set(declaredPermissions);
+if (
+  !Array.isArray(declaredPermissions) ||
+  declaredPermissions.some((permission) => !requiredPermissions.has(permission)) ||
+  declaredPermissions.length !== requiredPermissions.size ||
+  declaredPermissionSet.size !== requiredPermissions.size ||
+  [...requiredPermissions].some((permission) => !declaredPermissionSet.has(permission))
+) {
+  failures.push(
+    'permissions must be exactly activeTab, alarms, nativeMessaging, scripting, storage, tabs — ' +
+      'history is deliberately forbidden: usage memory derives from asks the member volunteered, never browsing history'
+  );
 }
 const allowedPersistentHosts = new Set(['http://127.0.0.1/*', 'http://localhost/*', 'http://[::1]/*']);
 const persistentHosts = manifest.host_permissions ?? [];

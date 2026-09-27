@@ -8,7 +8,8 @@ import Foundation
 // entitlement-gated gateway for BurnBar-cloud usage-memory curation. Mirrors
 // the repo's existing callable adapters (`FirebaseKnowledgeSyncCallable`,
 // `MacHostedQuotaPurchaseStore`): `Functions.functions(region: "us-central1")`,
-// dictionary payloads, defensive response parsing.
+// with typed Codable request/response wire shapes (strict envelope, lenient
+// per-result entries).
 //
 // PRIVACY INVARIANT: candidate text and image bytes are user usage data. This
 // client NEVER logs, prints, or embeds them in errors — the only strings that
@@ -133,19 +134,22 @@ struct UsageCurationCloudClient: UsageCurationCloudClientProtocol {
     ) async throws -> UsageCurationBatchResponse {
         // cov:ignore-start -- live Firebase callable round-trip; payload/response/error translation is unit-tested via the static helpers below
         guard FirebaseApp.app() != nil else { throw UsageCurationCloudError.cloudUnavailable }
-        let callable = Functions.functions(region: "us-central1").httpsCallable("curateUsageMemoryBatch")
-        let result: HTTPSCallableResult
+        let callable = Functions.functions(region: "us-central1").httpsCallable(
+            "curateUsageMemoryBatch",
+            requestAs: UsageCurationCallableRequest.self,
+            responseAs: UsageCurationCallableResponse.self
+        )
+        let wire: UsageCurationCallableResponse
         do {
-            result = try await callable.call(
+            wire = try await callable.call(
                 Self.payload(lane: lane, candidates: candidates, requestId: requestId)
             )
+        } catch is DecodingError {
+            throw UsageCurationCloudError.malformedResponse
         } catch {
             throw Self.mapCallableError(error)
         }
-        guard let dict = result.data as? [String: Any] else {
-            throw UsageCurationCloudError.malformedResponse
-        }
-        return try Self.response(from: dict)
+        return try Self.response(from: wire)
         // cov:ignore-end
     }
 
@@ -155,22 +159,21 @@ struct UsageCurationCloudClient: UsageCurationCloudClientProtocol {
         lane: UsageCurationLane,
         candidates: [UsageCurationCloudCandidate],
         requestId: String
-    ) -> [String: Any] {
-        [
-            "lane": lane.rawValue,
-            "requestId": requestId,
-            "candidates": candidates.map { candidate -> [String: Any] in
-                var entry: [String: Any] = [
-                    "id": candidate.id,
-                    "sourceKind": candidate.sourceKind,
-                    "text": candidate.text
-                ]
-                if let imageRefs = candidate.imageRefs, imageRefs.isEmpty == false {
-                    entry["imageRefs"] = imageRefs
-                }
-                return entry
+    ) -> UsageCurationCallableRequest {
+        UsageCurationCallableRequest(
+            lane: lane.rawValue,
+            requestId: requestId,
+            candidates: candidates.map { candidate in
+                UsageCurationCallableRequest.Candidate(
+                    id: candidate.id,
+                    sourceKind: candidate.sourceKind,
+                    text: candidate.text,
+                    // The server rejects imageRefs outside the multimodal lane,
+                    // so an empty list is omitted rather than sent as `[]`.
+                    imageRefs: candidate.imageRefs?.isEmpty == false ? candidate.imageRefs : nil
+                )
             }
-        ]
+        )
     }
 
     // MARK: Error mapping (pure)
@@ -186,7 +189,7 @@ struct UsageCurationCloudClient: UsageCurationCloudClientProtocol {
         }
         switch code {
         case .resourceExhausted:
-            let details = nsError.userInfo[FunctionsErrorDetailsKey] as? [String: Any]
+            let details = nsError.userInfo[FunctionsErrorDetailsKey] as? NSDictionary
             let lane = (details?["lane"] as? String).flatMap(UsageCurationLane.init(rawValue:))
             return UsageCurationCloudError.budgetExhausted(
                 lane: lane,
@@ -203,18 +206,24 @@ struct UsageCurationCloudClient: UsageCurationCloudClientProtocol {
 
     // MARK: Response parsing (pure)
 
-    static func response(from dict: [String: Any]) throws -> UsageCurationBatchResponse {
-        guard let promptVersion = dict["promptVersion"] as? String,
-              let usageDict = dict["usage"] as? [String: Any],
-              let allowanceDict = dict["allowance"] as? [String: Any],
-              let rawResults = dict["results"] as? [[String: Any]],
-              let promptTokens = intValue(usageDict["promptTokens"]),
-              let outputTokens = intValue(usageDict["outputTokens"]),
-              let lane = (usageDict["lane"] as? String).flatMap(UsageCurationLane.init(rawValue:)),
-              let textRemainingMonth = intValue(allowanceDict["textRemainingMonth"]),
-              let multimodalRemainingMonth = intValue(allowanceDict["multimodalRemainingMonth"]),
-              let resetsAt = allowanceDict["resetsAt"] as? String
-        else {
+    /// Decode a raw callable payload (the JSON object Firebase hands back).
+    /// Any shape mismatch in the envelope is `.malformedResponse`.
+    static func response(fromJSONObject raw: Any) throws -> UsageCurationBatchResponse {
+        guard JSONSerialization.isValidJSONObject(raw) else {
+            throw UsageCurationCloudError.malformedResponse
+        }
+        let wire: UsageCurationCallableResponse
+        do {
+            let data = try JSONSerialization.data(withJSONObject: raw)
+            wire = try JSONDecoder().decode(UsageCurationCallableResponse.self, from: data)
+        } catch {
+            throw UsageCurationCloudError.malformedResponse
+        }
+        return try response(from: wire)
+    }
+
+    static func response(from wire: UsageCurationCallableResponse) throws -> UsageCurationBatchResponse {
+        guard let lane = UsageCurationLane(rawValue: wire.usage.lane) else {
             throw UsageCurationCloudError.malformedResponse
         }
 
@@ -222,52 +231,114 @@ struct UsageCurationCloudClient: UsageCurationCloudClientProtocol {
         // the batch — the server already sanitized them, so a shape mismatch
         // here means a contract skew we degrade around, not user data loss
         // (candidates without a result simply stay queued).
-        let results: [UsageCurationCuratedMemory] = rawResults.compactMap { raw in
-            guard let text = raw["text"] as? String,
-                  let kind = raw["kind"] as? String,
-                  let candidateId = raw["candidateId"] as? String
+        let results: [UsageCurationCuratedMemory] = wire.results.compactMap { entry in
+            guard let text = entry.text,
+                  let kind = entry.kind,
+                  let candidateId = entry.candidateId
             else { return nil }
             return UsageCurationCuratedMemory(
                 text: text,
                 kind: kind,
-                confidence: doubleValue(raw["confidence"]) ?? 0.5,
-                keywords: stringArray(raw["keywords"]),
-                tags: stringArray(raw["tags"]),
-                context: raw["context"] as? String ?? "",
+                confidence: entry.confidence ?? 0.5,
+                keywords: entry.keywords ?? [],
+                tags: entry.tags ?? [],
+                context: entry.context ?? "",
                 candidateId: candidateId
             )
         }
 
         return UsageCurationBatchResponse(
             results: results,
-            promptVersion: promptVersion,
+            promptVersion: wire.promptVersion,
             usage: UsageCurationTokenUsage(
-                promptTokens: promptTokens,
-                outputTokens: outputTokens,
-                cachedTokens: intValue(usageDict["cachedTokens"]) ?? 0,
+                promptTokens: wire.usage.promptTokens,
+                outputTokens: wire.usage.outputTokens,
+                cachedTokens: wire.usage.cachedTokens ?? 0,
                 lane: lane
             ),
             allowance: UsageCurationAllowance(
-                textRemainingMonth: textRemainingMonth,
-                multimodalRemainingMonth: multimodalRemainingMonth,
-                resetsAt: resetsAt
+                textRemainingMonth: wire.allowance.textRemainingMonth,
+                multimodalRemainingMonth: wire.allowance.multimodalRemainingMonth,
+                resetsAt: wire.allowance.resetsAt
             )
         )
     }
+}
 
-    private static func intValue(_ raw: Any?) -> Int? {
-        if let value = raw as? Int { return value }
-        if let value = raw as? NSNumber { return value.intValue }
-        return nil
+// MARK: Wire shapes
+
+/// `curateUsageMemoryBatch` request body (U4 contract).
+struct UsageCurationCallableRequest: Encodable, Equatable, Sendable {
+    struct Candidate: Encodable, Equatable, Sendable {
+        var id: String
+        var sourceKind: String
+        var text: String
+        /// Omitted from the encoded body when `nil`.
+        var imageRefs: [String]?
     }
 
-    private static func doubleValue(_ raw: Any?) -> Double? {
-        if let value = raw as? Double { return value }
-        if let value = raw as? NSNumber { return value.doubleValue }
-        return nil
+    var lane: String
+    var requestId: String
+    var candidates: [Candidate]
+}
+
+/// `curateUsageMemoryBatch` response body (U4 contract). The envelope is
+/// strict; each `results` entry is lenient so one skewed entry is dropped
+/// instead of failing the batch.
+struct UsageCurationCallableResponse: Decodable, Sendable {
+    struct Usage: Decodable, Sendable {
+        var promptTokens: Int
+        var outputTokens: Int
+        var cachedTokens: Int?
+        var lane: String
     }
 
-    private static func stringArray(_ raw: Any?) -> [String] {
-        (raw as? [Any])?.compactMap { $0 as? String } ?? []
+    struct Allowance: Decodable, Sendable {
+        var textRemainingMonth: Int
+        var multimodalRemainingMonth: Int
+        /// ISO-8601 boundary at which the monthly counters reset.
+        var resetsAt: String
     }
+
+    struct Entry: Decodable, Sendable {
+        var text: String?
+        var kind: String?
+        var confidence: Double?
+        var keywords: [String]?
+        var tags: [String]?
+        var context: String?
+        var candidateId: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case text, kind, confidence, keywords, tags, context, candidateId
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            text = Self.lenient(container, .text)
+            kind = Self.lenient(container, .kind)
+            confidence = Self.lenient(container, .confidence)
+            keywords = Self.lenient(container, .keywords)
+            tags = Self.lenient(container, .tags)
+            context = Self.lenient(container, .context)
+            candidateId = Self.lenient(container, .candidateId)
+        }
+
+        /// A wrongly-typed field reads as absent rather than failing the entry.
+        private static func lenient<T: Decodable>(
+            _ container: KeyedDecodingContainer<CodingKeys>,
+            _ key: CodingKeys
+        ) -> T? {
+            do {
+                return try container.decodeIfPresent(T.self, forKey: key)
+            } catch {
+                return nil
+            }
+        }
+    }
+
+    var results: [Entry]
+    var promptVersion: String
+    var usage: Usage
+    var allowance: Allowance
 }

@@ -659,6 +659,42 @@ public enum CodexSessionLogScanner {
         return (name, detail)
     }
 
+    /// What one rollout JSONL line is, for consumers that only need the
+    /// user-visible shape (the usage-memory session miner).
+    public enum RolloutLineKind: Equatable, Sendable {
+        case notJSON
+        case skipped
+        case toolRun(name: String)
+        case userMessage(text: String)
+    }
+
+    /// Classifies one rollout line. Current rollouts carry the response item
+    /// directly in `payload` (`payload.role`/`payload.content`), which the
+    /// extractors reach by re-wrapping it as `{"item": payload}`. `event_msg` /
+    /// `user_message` lines duplicate the same text without a `role`, so both
+    /// paths return nil for them and nothing is double counted.
+    public static func classifyRolloutLine(_ lineText: String) -> RolloutLineKind {
+        guard let data = lineText.data(using: .utf8),
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
+            return .notJSON
+        }
+        let payload = json["payload"] as? LogParserJSONObject
+        let payloadType = payload?["type"] as? String
+
+        if payloadType == "function_call" || payloadType == "local_shell_call"
+            || payloadType == "custom_tool_call" || payload?["tool_name"] != nil {
+            if let payload, let tool = extractCodexTool(from: ["item": payload]) {
+                return .toolRun(name: tool.name)
+            }
+            return .skipped
+        }
+
+        let message = extractCodexMessage(from: json)
+            ?? payload.flatMap { extractCodexMessage(from: ["item": $0]) }
+        guard let message, message.role == "user" else { return .skipped }
+        return .userMessage(text: message.text)
+    }
+
     // MARK: - Shared Thread Processing
 
     /// Turns materialized `threads` rows into usage/conversation records —

@@ -300,7 +300,7 @@ actor UsageSessionLogMiner {
             // 2026-07-16 discipline: the JSONSerialization object graph is
             // autoreleased — drain it per line or a multi-GB corpus walk
             // climbs to the governor ceiling.
-            let outcome = parserAutoReleasePool { Self.classify(lineText: line.text) }
+            let outcome = parserAutoReleasePool { CodexSessionLogScanner.classifyRolloutLine(line.text) }
             persistedOffset = line.endOffset
 
             switch outcome {
@@ -436,44 +436,6 @@ actor UsageSessionLogMiner {
             simhash: simhash,
             salienceHint: salienceHint
         )
-    }
-
-    // MARK: - Line classification
-
-    private enum LineOutcome {
-        case notJSON
-        case skipped
-        case toolRun(name: String)
-        case userMessage(text: String)
-    }
-
-    /// Payload-as-item shim, verbatim from the Stage-0 harness: current
-    /// rollouts carry the response item directly in `payload`
-    /// (`payload.role`/`payload.content`), which `extractCodexMessage`
-    /// reaches by re-wrapping as `{"item": payload}`. `event_msg` /
-    /// `user_message` lines duplicate the same message text without a `role`
-    /// field, so both extraction paths return nil for them — no double
-    /// counting.
-    private static func classify(lineText: String) -> LineOutcome {
-        guard let data = lineText.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
-            return .notJSON
-        }
-        let payload = json["payload"] as? [String: Any]
-        let payloadType = payload?["type"] as? String
-
-        if payloadType == "function_call" || payloadType == "local_shell_call"
-            || payloadType == "custom_tool_call" || payload?["tool_name"] != nil {
-            if let payload, let tool = CodexSessionLogScanner.extractCodexTool(from: ["item": payload]) {
-                return .toolRun(name: tool.name)
-            }
-            return .skipped
-        }
-
-        let message = CodexSessionLogScanner.extractCodexMessage(from: json)
-            ?? payload.flatMap { CodexSessionLogScanner.extractCodexMessage(from: ["item": $0]) }
-        guard let message, message.role == "user" else { return .skipped }
-        return .userMessage(text: message.text)
     }
 
     // MARK: - Cursor persistence
