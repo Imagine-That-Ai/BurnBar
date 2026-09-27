@@ -50,6 +50,7 @@ struct PrivacyIndexingSettingsView: View {
             get: { AnalyticsConsentStore.shared.isGranted },
             set: { isOn in
                 Analytics.shared.setConsent(granted: isOn)
+                if isOn { Analytics.trackFunnelSessionStartIfConsented() }
             }
         )
     }

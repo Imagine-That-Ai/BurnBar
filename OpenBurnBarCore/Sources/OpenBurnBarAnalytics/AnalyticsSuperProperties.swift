@@ -30,6 +30,7 @@ public struct AnalyticsSuperProperties {
 
     public func asDictionary() -> [String: AnalyticsValue] {
         [
+            "product": .string("burnbar"),
             "platform": .string(platform),
             "app_version": .string(appVersion),
             "app_build": .string(appBuild),

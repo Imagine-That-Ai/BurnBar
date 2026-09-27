@@ -57,6 +57,20 @@ function jobBlock(source, jobName) {
 
 // ── Tests ────────────────────────────────────────────────────────────────
 
+test("push path filter watches the shared analytics contract compiled into the marketing bundle", () => {
+  const trigger = WORKFLOW.slice(0, WORKFLOW.indexOf("\njobs:"));
+  assert.match(
+    trigger,
+    /^\s+- "analytics\/\*\*"$/mu,
+    "analytics-only main commits must rebuild burnbar.ai",
+  );
+  assert.doesNotMatch(
+    trigger,
+    /workers\/analytics-collector/u,
+    "hosting deploys the marketing bundle, not the collector Worker",
+  );
+});
+
 test("push deploys are enabled while manual dry-runs remain build-only", () => {
   const build = jobBlock(WORKFLOW, "build-hosting-artifacts");
   const deploy = jobBlock(WORKFLOW, "deploy-hosting");

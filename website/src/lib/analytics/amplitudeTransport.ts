@@ -3,6 +3,10 @@ import type { AnalyticsTransport, AnalyticsProps } from "./recorder";
 type AmplitudeModule = typeof import("@amplitude/analytics-browser");
 
 /**
+ * Legacy Amplitude Browser SDK transport. The marketing site no longer uses
+ * this path: `index.ts` posts to a first-party collector so the browser never
+ * holds `AMPLITUDE_API_KEY`. Kept for reference / emergency fallback only.
+ *
  * Production transport backed by the Amplitude Browser SDK, mirroring
  * AgentLens/Services/Analytics/AmplitudeTransport.swift. The SDK is **dynamically
  * imported on start()** — which the recorder calls only after consent — so a

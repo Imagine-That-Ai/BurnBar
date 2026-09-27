@@ -55,7 +55,12 @@ import {
   type User
 } from "firebase/auth";
 import { firebaseConfig } from "../lib/firebaseClient";
-import { EVENT, trackEvent, type ArenaSignInProvider } from "../lib/analytics";
+import {
+  EVENT,
+  trackEmailCapturedIfNewAccount,
+  trackEvent,
+  type ArenaSignInProvider
+} from "../lib/analytics";
 import { arenaTaskBrief } from "./arena-tasks";
 import { buildIdentityCard } from "./arena-identities";
 import { at, closestFrom, query, targetAs } from "./dom.js";
@@ -1566,8 +1571,9 @@ async function arenaSignIn(provider: ArenaSignInProvider): Promise<void> {
   setAuthGateBusy(true);
   setAuthGateMessage(`Opening ${arenaProviderLabels[provider]} sign-in…`);
   try {
-    await signInWithPopup(arenaAuth, authProvider);
+    const credential = await signInWithPopup(arenaAuth, authProvider);
     trackEvent(EVENT.arenaSignInCompleted, { variant: ARENA_VARIANT, provider });
+    trackEmailCapturedIfNewAccount(credential.user, provider);
   } catch (err) {
     const code = callableErrorCode(err);
     // The referrer-blocked code below is synthesized from the server's message,
@@ -1686,6 +1692,7 @@ function wireAuthGate(): void {
       const provider = sessionStorage.getItem(REDIRECT_PROVIDER_KEY);
       if (provider && provider in arenaProviders) {
         trackEvent(EVENT.arenaSignInCompleted, { variant: ARENA_VARIANT, provider });
+        trackEmailCapturedIfNewAccount(result.user, provider);
       }
       rememberRedirectProvider(null);
     })

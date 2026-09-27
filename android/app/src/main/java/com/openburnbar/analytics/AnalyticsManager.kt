@@ -28,6 +28,8 @@ object AnalyticsManager {
 
     @Volatile private var currentSessionIsFirstLaunch: Boolean = false
 
+    @Volatile private var sessionSpineEmitted: Boolean = false
+
     /** Per-app-session id (rotated each process launch); NOT a user id. */
     private val sessionId: String = UUID.randomUUID().toString()
 
@@ -79,6 +81,25 @@ object AnalyticsManager {
     val analyticsDeviceIdPayload: String?
         get() = if (isGranted) anonymousDeviceId else null
 
+    /** Test seam: attach a recorder without Android Context / Amplitude SDK. */
+    internal fun attachForTests(store: AnalyticsConsentStore, transport: AnalyticsTransport, apiKey: String = "test-key") {
+        consentStore = store
+        analytics = Analytics(
+            consent = store,
+            transport = transport,
+            apiKey = apiKey,
+            superProperties = ::superProperties,
+        )
+    }
+
+    internal fun resetForTests() {
+        analytics = null
+        consentStore = null
+        anonymousDeviceId = null
+        currentSessionIsFirstLaunch = false
+        sessionSpineEmitted = false
+    }
+
     fun rememberLaunchContext(isFirstLaunch: Boolean) {
         currentSessionIsFirstLaunch = isFirstLaunch
     }
@@ -87,6 +108,7 @@ object AnalyticsManager {
     fun grant() {
         consentStore?.grant()
         analytics?.consentDidChange()
+        trackCurrentSessionStartIfConsented()
     }
 
     /** Decline: persist; stays dark. */
@@ -118,6 +140,8 @@ object AnalyticsManager {
      */
     fun trackSessionStartIfConsented(isFirstLaunch: Boolean) {
         if (!isGranted) return
+        if (sessionSpineEmitted) return
+        sessionSpineEmitted = true
         track(
             AnalyticsEvent.APP_SESSION_STARTED,
             mapOf(
@@ -125,6 +149,17 @@ object AnalyticsManager {
                 "cold_start" to true.av(),
             ),
         )
+        track(
+            AnalyticsEvent.APP_OPENED,
+            mapOf(
+                "is_first_launch" to isFirstLaunch.av(),
+                "cold_start" to true.av(),
+                "surface" to "android".av(),
+            ),
+        )
+        if (isFirstLaunch) {
+            track(AnalyticsEvent.INSTALL_STARTED, mapOf("surface" to "android".av()))
+        }
     }
 
     fun trackCurrentSessionStartIfConsented() {
@@ -136,6 +171,7 @@ object AnalyticsManager {
         val region = locale.country.takeIf { it.isNotBlank() }
         val bcp47 = if (region != null) "${locale.language}-$region" else locale.language
         return linkedMapOf(
+            "product" to "burnbar".av(),
             "platform" to "android".av(),
             "app_version" to BuildConfig.VERSION_NAME.av(),
             "app_build" to BuildConfig.VERSION_CODE.toString().av(),

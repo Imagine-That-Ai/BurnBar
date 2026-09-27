@@ -69,7 +69,7 @@ when its grid is fully green **and** its opt-in/revoke tests pass.
 > targets **Xcode 26** (`glassEffect`, `extendLifetime`), so `project.yml`'s `16.0` pin is stale.
 | iOS / widget / keyboard | ✅ core unit test (Swift 6 strict) | ⬜ needs prod key + Xcode 16 | ✅ core unit test |
 | Android  | ✅ full debug build + 1159 unit tests green | ⬜ needs prod key | ✅ unit test |
-| Website  | ✅ build-proven: SDK is a dynamic chunk the page never loads/preloads pre-consent | ✅ **live E2E**: real opt-in → `POST /2/httpapi` **200** carrying consent.granted + app.session.started + screen.viewed; anon device_id, no user_id, 0 PII | ✅ unit test: revoke stops + silences |
+| Website  | ✅ build-proven: no Amplitude key in the browser; collector URL empty → dark | ✅ unit + collector contract: consented POST to first-party collector only; Worker returns `events_forwarded`; anon device_id created at start-after-consent | ✅ unit test: revoke stops + silences |
 | Console  | ✅ build-proven: SDK in a lazy chunk, 0 refs in first-load JS / prerendered HTML | ⬜ needs prod key | ✅ unit test |
 | Extension| ✅ SDK client never constructed until opt-in **and** VS Code telemetry on | ⬜ needs prod key | ✅ unit test |
 | Backend  | ✅ no emit without a propagated granted-consent flag + key (unit tests) | ⬜ needs prod key | — (per-request; no persistent client) |

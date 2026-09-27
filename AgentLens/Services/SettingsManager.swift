@@ -3,6 +3,7 @@ import Foundation
 import FirebaseCore
 import FirebaseRemoteConfig
 import Observation
+import OpenBurnBarAnalytics
 import OpenBurnBarCore
 
 // MARK: - Settings Manager
@@ -114,6 +115,7 @@ final class SettingsManager {
     ) {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults, flushDelayNanoseconds: flushDelayNanoseconds)
         self.persistence = coordinator
+        Self.migrateHasLaunchedBeforeIfNeeded(persistence: coordinator)
 
         let controllerSecretPersistence = SettingsSecretPersistence(
             defaults: defaults,
@@ -1322,9 +1324,28 @@ final class SettingsManager {
         providerPath.resolvedPath(for: provider, restrictedLogAccess: index.restrictedLogAccess)
     }
 
-    // MARK: First Launch
+    // MARK: First Launch (`hasLaunchedBefore` drives the opt-in funnel's `install.started`)
     var isFirstLaunch: Bool {
-        !persistence.bool(forKey: "hasLaunchedBefore")
+        if !persistence.objectExists(forKey: "hasLaunchedBefore"),
+           persistence.objectExists(forKey: AnalyticsConsentStorage.key) { markHasLaunchedBefore() }
+        return !persistence.bool(forKey: "hasLaunchedBefore")
+    }
+    func markHasLaunchedBefore() { Self.markHasLaunchedBefore(persistence: persistence) }
+    /// Prior builds never wrote `hasLaunchedBefore`; prior-install evidence (read at init,
+    /// before stores write defaults) means an upgrade, which must not emit `install.started`.
+    static func migrateHasLaunchedBeforeIfNeeded(persistence: SettingsPersistenceCoordinator) {
+        let evidence = [AnalyticsConsentStorage.key, "appearanceMode", "preferLightAppearance",
+                        "databaseEncryptionEnabled", "refreshInterval", "selectedOnboardingProvidersCSV",
+                        "chatBackendOnboardingCompleted", "conversationIndexingConsentShown"]
+        guard !persistence.objectExists(forKey: "hasLaunchedBefore"),
+              evidence.contains(where: { persistence.objectExists(forKey: $0) }) else { return }
+        markHasLaunchedBefore(persistence: persistence)
+    }
+    /// Seeds `showInMenuBar` first: absent must stay `true`, not UserDefaults' missing-key false.
+    private static func markHasLaunchedBefore(persistence: SettingsPersistenceCoordinator) {
+        if !persistence.objectExists(forKey: "showInMenuBar") { persistence.set(true, forKey: "showInMenuBar") }
+        persistence.set(true, forKey: "hasLaunchedBefore")
+        persistence.flush()
     }
 
     // MARK: Usage Formatting

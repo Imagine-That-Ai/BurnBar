@@ -17,6 +17,7 @@ on:
   pull_request:
     paths:
       - "website/**"
+      - "services/analytics-collector/**"
       - ".github/workflows/website-ci.yml"
       # Inputs of website/scripts/generate-crypto-claims.mjs — a change to any
       # of these can make the committed crypto-claims copy stale.
@@ -28,6 +29,7 @@ on:
       - main
     paths:
       - "website/**"
+      - "services/analytics-collector/**"
       - ".github/workflows/website-ci.yml"
       - "docs/security/crypto-architecture-policy.json"
       - "packages/libsignal-bridge/package.json"

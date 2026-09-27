@@ -16,6 +16,9 @@ export interface ConsentStorage {
 
 export const CONSENT_STORAGE_KEY = "burnbar-analytics-consent";
 
+/** Taxonomy `consent_version` for the current website consent copy. */
+export const ANALYTICS_CONSENT_VERSION = "1";
+
 export class ConsentStore {
   constructor(
     private readonly storage: ConsentStorage,

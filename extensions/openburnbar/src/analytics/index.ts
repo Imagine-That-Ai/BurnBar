@@ -10,6 +10,8 @@
  * is `''`, so the recorder stays DARK: the transport's `start()` is never called
  * and the Amplitude SDK is never even imported.
  */
+import { randomUUID } from 'node:crypto';
+
 import { ConsentStore, type ConsentStorage } from './consent';
 import { Analytics, type AnalyticsProps, type ConsentSignal, type AnalyticsTransport } from './recorder';
 import { AmplitudeTransport } from './amplitudeTransport';
@@ -80,11 +82,17 @@ export function createAnalytics(host: AnalyticsHost): AnalyticsGraph {
   const consent = new ConsentStore(host.storage);
   const transport = host.transport ?? new AmplitudeTransport(host.deviceId, serverZone);
 
+  /** One RFC 4122 UUID per host activation. Mint only when an event actually
+   *  sends so a dark activation never creates a session id. */
+  let sessionId = '';
   const superProperties = (): AnalyticsProps => {
+    if (!sessionId) sessionId = randomUUID();
     const props: AnalyticsProps = {
+      product: 'burnbar',
       platform: 'vscode',
       app_version: host.appVersion,
-      surface: SURFACE.app
+      surface: SURFACE.app,
+      session_id: sessionId
     };
     if (host.appBuild) props.app_build = host.appBuild;
     return props;
@@ -123,6 +131,14 @@ export function bootAnalytics(
     is_first_launch: ctx.isFirstActivation,
     cold_start: true
   });
+  graph.analytics.track(EVENT.appOpened, {
+    is_first_launch: ctx.isFirstActivation,
+    cold_start: true,
+    surface: 'extension'
+  });
+  if (ctx.isFirstActivation) {
+    graph.analytics.track(EVENT.installStarted, { surface: 'extension' });
+  }
   graph.analytics.track(EVENT.vscodeExtensionActivated, { host_kind: ctx.hostKind });
   graph.analytics.track(EVENT.screenViewed, {
     surface: ctx.surface ?? SURFACE.app,

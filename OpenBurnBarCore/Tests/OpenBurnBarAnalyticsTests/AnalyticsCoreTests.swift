@@ -135,6 +135,12 @@ final class AnalyticsEventNamingTests: XCTestCase {
         XCTAssertEqual(AnalyticsEvent.settingsChanged.rawValue, "settings.changed")
         XCTAssertEqual(AnalyticsEvent.errorHandled.rawValue, "error.handled")
         XCTAssertEqual(AnalyticsEvent.consentAnalyticsGranted.rawValue, "consent.analytics.granted")
+        XCTAssertEqual(AnalyticsEvent.pageViewed.rawValue, "page.viewed")
+        XCTAssertEqual(AnalyticsEvent.appOpened.rawValue, "app.opened")
+        XCTAssertEqual(AnalyticsEvent.ctaClicked.rawValue, "cta.clicked")
+        XCTAssertEqual(AnalyticsEvent.downloadClicked.rawValue, "download.clicked")
+        XCTAssertEqual(AnalyticsEvent.installStarted.rawValue, "install.started")
+        XCTAssertEqual(AnalyticsEvent.emailCaptured.rawValue, "email.captured")
     }
 
     func test_noDuplicateRawValues() {
@@ -170,6 +176,7 @@ final class AnalyticsSuperPropertiesTests: XCTestCase {
             locale: "en_US", sessionId: "sess-1", consentVersion: "1"
         )
         let d = sp.asDictionary()
+        XCTAssertEqual(d["product"], .string("burnbar"))
         XCTAssertEqual(d["platform"], .string("ios"))
         XCTAssertEqual(d["app_version"], .string("2.4.1"))
         XCTAssertEqual(d["app_build"], .string("123"))

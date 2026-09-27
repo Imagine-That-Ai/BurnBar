@@ -153,7 +153,9 @@ const LANE_PATTERNS = {
     /^scripts\/(?:test-functions|verify-functions)/,
     ...NODE_SIGNAL_ENVELOPE_CONTRACTS,
   ],
-  web: [/^(website|web|extensions\/openburnbar|plugins\/openburnbar)\//],
+  web: [
+    /^(website|web|extensions\/openburnbar|plugins\/openburnbar|services\/analytics-collector)\//,
+  ],
   console: [/^(apps\/console|console)\//],
 };
 

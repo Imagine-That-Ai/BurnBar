@@ -22,6 +22,8 @@ export * as domainsBillingAppstoreAuditTesting from "./domains/billing/appstore/
 export * as domainsBillingAppstoreNotificationsTesting from "./domains/billing/appstore/notifications.js";
 export * as domainsBillingAppstoreReconcilerTesting from "./domains/billing/appstore/reconciler.js";
 export * as domainsBillingAppstoreVerifierTesting from "./domains/billing/appstore/verifier.js";
+export * as domainsBillingPromoCampaignsTesting from "./domains/billing/promoCampaigns.js";
+export * as domainsBillingPromoRedemptionTesting from "./domains/billing/promoRedemption.js";
 export * as domainsBillingStripeTesting from "./domains/billing/stripe.js";
 export * as domainsBillingTierCogsTesting from "./domains/billing/tierCogs.js";
 export * as domainsDevicesCliLinkTesting from "./domains/devices/cliLink.js";

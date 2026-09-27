@@ -1,0 +1,24 @@
+{
+  "$comment": [
+    "Promotional campaign definitions seeded into Firestore by scripts/promo/seed-promo-campaign.mjs.",
+    "This file is the reviewable grant POLICY (which tier, how long, how many, which window).",
+    "Firestore is the runtime source of truth: pausing, capping, or rotating a live campaign is a",
+    "seed-script run, not a deploy. See docs/PROMO_CAMPAIGNS.md.",
+    "",
+    "defaultCode is the code printed in the launch post — public marketing copy, not a secret.",
+    "Only its SHA-256 digest is ever written to Firestore. Rotate with --code <NEW> at seed time;",
+    "the campaign document and every grant it already made are untouched by a rotation."
+  ],
+  "campaigns": [
+    {
+      "campaignID": "xopen-ultra",
+      "label": "X launch — free BurnBar Ultra beta",
+      "defaultCode": "XOPEN-ULTRA",
+      "entitlementID": "burnbar_ultra",
+      "productID": "com.openburnbar.ultra.annual.v2",
+      "grantExpiresAt": "2099-01-01T00:00:00.000Z",
+      "maxRedemptions": 5000,
+      "claimURL": "https://burnbar.ai/beta"
+    }
+  ]
+}

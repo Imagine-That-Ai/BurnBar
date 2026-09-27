@@ -711,6 +711,7 @@ struct DashboardView: View {
                 if granted {
                     AnalyticsConsentStore.shared.grant()
                     Analytics.shared.consentDidChange()
+                    Analytics.trackFunnelSessionStartIfConsented()
                 } else {
                     AnalyticsConsentStore.shared.decline()
                 }

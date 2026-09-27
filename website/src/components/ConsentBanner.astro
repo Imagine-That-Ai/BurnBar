@@ -2,7 +2,7 @@
 // Opt-in analytics consent banner. Renders hidden; the bundled script below
 // shows it only on first visit (consent unset) and boots analytics ONLY after
 // an explicit Accept. Declining — or never answering — keeps the site dark:
-// the Amplitude chunk is never even fetched. Revisit via any `[data-analytics-manage]`
+// the first-party collector is never called. Revisit via any `[data-analytics-manage]`
 // control (see Footer). This is the single client entry point for analytics and
 // is included once from BaseLayout.
 ---
@@ -173,6 +173,7 @@
     grantConsent,
     declineConsent,
     boot,
+    rememberAttribution,
     installDelegatedTracking
   } from "../lib/analytics";
 
@@ -194,6 +195,11 @@
   // CTA tracking is safe to wire immediately — every track() is dropped until
   // consent is granted, so nothing leaks pre-opt-in.
   installDelegatedTracking();
+
+  // Persist bounded landing UTMs before the consent branch. Undecided
+  // visitors who navigate internally and grant on /download must still
+  // carry the campaign; `boot()` only runs after a decision.
+  rememberAttribution();
 
   const suppressInitialPrompt = document.body.hasAttribute("data-transactional-page");
   if (analyticsConsent.hasDecided) {

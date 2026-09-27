@@ -1,4 +1,11 @@
 /**
+ * `source` recorded on entitlement documents minted by a promotional campaign
+ * redemption (`redeemPromoCode`). It carries no provider receipt, so the write
+ * guards rank it below every verified purchase or operator bridge.
+ */
+export const PROMO_ENTITLEMENT_SOURCE = "promo_campaign_grant";
+
+/**
  * Returns whether an entitlement mutation belongs to the same verified
  * provider purchase as the existing document.
  */

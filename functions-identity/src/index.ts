@@ -40,6 +40,7 @@ export {
   stripeBurnBarProWebhook,
 } from "./domains/billing/stripe.js";
 export { googlePlayDeveloperNotifications } from "./domains/billing/googlePlayRtdn.js";
+export { redeemPromoCode } from "./domains/billing/promoRedemption.js";
 export { reconcileGooglePlayVoidedPurchasesDaily } from "./domains/billing/googlePlayVoidedPurchaseReconciler.js";
 export {
   publishSignalPrekeyBundle,

@@ -416,6 +416,58 @@ test("account erasure retention records are server-only", async () => {
   }
 });
 
+test("promotional campaigns, codes, and the redemption ledger are server-only", async () => {
+  const ownerDb = authedDb("promo-owner");
+  const otherDb = authedDb("promo-attacker");
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+
+  const campaignID = "xopen-ultra";
+  const campaignPath = `promo_campaigns/${campaignID}`;
+  const codeDigest = "c".repeat(64);
+  const codePath = `promo_codes/${codeDigest}`;
+  const redemptionPath = `${campaignPath}/redemptions/promo-owner`;
+
+  const campaign = {
+    campaignID,
+    active: true,
+    entitlementID: "burnbar_ultra",
+    productID: "com.openburnbar.ultra.annual.v2",
+    grantExpiresAtMillis: Date.now() + 365 * 24 * 3600 * 1000,
+    maxRedemptions: 5000,
+    redemptionCount: 1,
+    schemaVersion: 1,
+  };
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, campaignPath), campaign);
+    await setDoc(doc(db, codePath), { campaignID, active: true, schemaVersion: 1 });
+    await setDoc(doc(db, redemptionPath), { uid: "promo-owner", campaignID, schemaVersion: 1 });
+  });
+
+  // Reading promo_codes would hand an attacker the live campaign digests, which
+  // for short marketing codes is equivalent to the codes themselves; writing any
+  // of these would mint or re-mint an Ultra grant outside the callable.
+  async function assertAllPromoClientOpsFail(db) {
+    for (const path of [campaignPath, codePath, redemptionPath]) {
+      await assertFails(getDoc(doc(db, path)));
+      await assertFails(setDoc(doc(db, path), { active: true }));
+      await assertFails(updateDoc(doc(db, path), { active: true }));
+      await assertFails(deleteDoc(doc(db, path)));
+    }
+    await assertFails(getDocs(collection(db, "promo_campaigns")));
+    await assertFails(getDocs(collection(db, "promo_codes")));
+    await assertFails(getDocs(collection(db, `${campaignPath}/redemptions`)));
+    // A self-authored campaign is the direct path to free Ultra for everyone.
+    await assertFails(setDoc(doc(db, "promo_campaigns/self-minted"), campaign));
+    await assertFails(setDoc(doc(db, `promo_codes/${"d".repeat(64)}`), { campaignID, active: true }));
+  }
+
+  for (const db of [ownerDb, otherDb, unauthDb]) {
+    await assertAllPromoClientOpsFail(db);
+  }
+});
+
 test("provider accounts reject plaintext, unknown credential containers, and client-authored refresh sweep entries", async () => {
   const ownerDb = authedDb("provider-owner");
   const basePath = "users/provider-owner/provider_accounts/account-1";

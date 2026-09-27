@@ -105,7 +105,7 @@ export const FAQ: FAQItem[] = [
     category: "privacy",
     question: "Does OpenBurnBar send my data anywhere?",
     answer:
-      "By default, no. Local usage tracking runs entirely on your Mac and writes to a local SQLite database. No telemetry, no analytics, no crash reports leave the device unless you explicitly enable an opt-in feature.\n\nThe opt-in features are: Firebase sync (metadata only by default), iCloud session-log mirroring (separate from Firebase, uses your Apple ID), Sentry crash diagnostics (off by default), and hosted quota sync (paid). Each one is a separate toggle, each one is described in the Privacy & Trust page."
+      "By default, no. Local usage tracking runs entirely on your Mac and writes to a local SQLite database. No telemetry, no analytics, no crash reports leave the device unless you explicitly enable an opt-in feature.\n\nThe opt-in features are: Amplitude product analytics (off by default; website consent banner or the in-app Settings toggle; revocable; no conversation content or raw emails), Firebase sync (metadata only by default), iCloud session-log mirroring (separate from Firebase, uses your Apple ID), Sentry crash diagnostics (off by default), and hosted quota sync (paid). Each one is a separate toggle, each one is described in the Privacy & Trust page."
   },
   {
     id: "api-keys",
