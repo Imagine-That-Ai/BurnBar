@@ -3956,7 +3956,10 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(persistedAccounts.map(\.id), ["deepseek-work", "deepseek-personal"])
     }
 
-    func test_refreshAll_fetchesOpenCodeDaemonCredentialSlotsAsAccountSnapshots() async throws {
+    /// OpenCode Go quota is a device-wide estimate (local opencode.db spend),
+    /// so multiple daemon slots must not fan out into identical per-account
+    /// quota cards (#2293). The provider-level snapshot carries the estimate.
+    func test_refreshAll_reportsOpenCodeQuotaOnceDespiteMultipleDaemonSlots() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
         let opencodeDBURL = home.appendingPathComponent("opencode-test.db")
@@ -4029,14 +4032,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refreshAll(dataStore: dataStore)
 
         let snapshots = service.snapshots(for: AgentProvider.openCode)
-        let primary = try XCTUnwrap(snapshots.first { $0.accountID == "opencode-8793" })
-        let fallback = try XCTUnwrap(snapshots.first { $0.accountID == "opencode-ajnunezg" })
-        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: .openCode)
+        XCTAssertFalse(snapshots.contains { $0.accountID == "opencode-8793" })
+        XCTAssertFalse(snapshots.contains { $0.accountID == "opencode-ajnunezg" })
 
-        XCTAssertEqual(primary.primaryDisplayableBucket?.key, "opencode-5h-estimated")
-        XCTAssertEqual(primary.primaryDisplayableBucket?.remainingValue ?? -1, 6.75, accuracy: 0.01)
-        XCTAssertEqual(fallback.primaryDisplayableBucket?.key, "opencode-5h-estimated")
-        XCTAssertEqual(Set(persistedAccounts.map(\.id)), Set(["opencode-8793", "opencode-ajnunezg"]))
+        let rollup = try XCTUnwrap(service.snapshot(for: .openCode))
+        XCTAssertTrue(ProviderQuotaAccountDisplay.isRollup(rollup))
+        XCTAssertEqual(rollup.primaryDisplayableBucket?.key, "opencode-5h-estimated")
+        XCTAssertEqual(rollup.primaryDisplayableBucket?.remainingValue ?? -1, 6.75, accuracy: 0.01)
     }
 
     func test_refreshAll_fetchesAnthropicOAuthSlotsAsClaudeAccountQuotaSnapshots() async throws {

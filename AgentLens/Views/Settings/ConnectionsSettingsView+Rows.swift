@@ -1137,6 +1137,9 @@ struct AppConnectRow: View {
         }
         switch state {
         case .connected:
+            if target == .grok {
+                return "Routes Grok CLI through the local gateway. Quota meters live under Settings → Quotas."
+            }
             if modelSummary?.openburnbarModelCount == nil, !target.supportsModelSync {
                 return "Connected via local gateway"
             }
@@ -1155,16 +1158,7 @@ struct AppConnectRow: View {
     }
 
     private var missingRouteText: String {
-        switch target {
-        case .claudeCode:
-            return "No route-ready OpenBurnBar model is enabled for /v1/messages. Add or enable a provider account first."
-        case .codex, .opencode, .forge, .droid, .cursorAgent:
-            return "No route-ready OpenBurnBar account is enabled for this gateway endpoint. Add or enable a provider account first."
-        case .antigravity:
-            return "No route-ready Antigravity profile is enabled. Add or enable an Antigravity account first."
-        case .grok:
-            return "No route-ready xAI account is enabled. Add or enable an xAI API key first."
-        }
+        target.missingRouteReadyAccountMessage
     }
 
     @ViewBuilder

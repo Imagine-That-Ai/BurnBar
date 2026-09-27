@@ -5,7 +5,6 @@ import OpenBurnBarKernel
 
 // Returns `.unavailable` for providers with no data source or not yet installed.
 // Used for providers in the AgentProvider enum that either:
-// - Have no public usage API (Gemini CLI)
 // - Are not installed on this machine (Cline, Roo Code, Windsurf, etc.)
 // - Have no discoverable data source (Goose, OpenClaw)
 //
@@ -179,23 +178,4 @@ public struct OpenClaudeQuotaAdapter: ProviderQuotaAdapter {
     }
 }
 
-// MARK: - Gemini CLI
-
-public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
-    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        let geminiCLIPath = ("~/.gemini" as NSString).expandingTildeInPath
-        let installed = FileManager.default.fileExists(atPath: geminiCLIPath)
-
-        return ProviderQuotaSnapshot(
-            provider: .geminiCLI,
-            fetchedAt: Date(),
-            source: .unavailable,
-            confidence: .unavailable,
-            managementURL: "https://aistudio.google.com",
-            statusMessage: installed
-                ? "Gemini CLI detected. Google AI Studio has no programmatic usage API. Track usage via API key billing at aistudio.google.com."
-                : "Gemini CLI not detected. Google AI Studio has no programmatic usage API.",
-            buckets: []
-        )
-    }
-}
+// Gemini CLI used-token meters live in GeminiCLIQuotaAdapter.swift.

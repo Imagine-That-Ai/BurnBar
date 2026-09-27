@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarAccountIdentity
 import OpenBurnBarInboxModels
 import OpenBurnBarKernel
 import OpenBurnBarLogParsers
@@ -38,6 +39,11 @@ struct UsageRefreshPipeline: Sendable {
     let dataStore: DataStore
     let orchestrator: any ConversationIndexingCoordinator
     let settings: RefreshSettingsSnapshot
+    /// Fills `providerAccountID`/`Label`/`Source` on freshly parsed rows so
+    /// multi-seat installs can see which account burned the tokens. Applied in
+    /// `parse`, before persistence, because attribution is part of a row's
+    /// identity (it feeds the deterministic id and the upsert conflict target).
+    var accountAttributor: ProviderAccountUsageAttributor?
 
     struct DiscoverResult: Sendable {
         var parserEntries: [(AgentProvider, any OpenBurnBarLogParsers.LogParser)] = []
@@ -93,6 +99,7 @@ struct UsageRefreshPipeline: Sendable {
         var result = ParsedBatch()
         let startedAt = Date()
         let includeConversationBodies = includeConversationBodies ?? settings.conversationIndexingEnabled
+        accountAttributor?.refreshObservations()
 
         for (provider, parser) in discovery.parserEntries {
             do {
@@ -102,7 +109,8 @@ struct UsageRefreshPipeline: Sendable {
                         resourceGovernor: resourceGovernor
                     )
                 )
-                let usages = parseResult.usages
+                let usages = accountAttributor.map { $0.attribute(parseResult.usages) }
+                    ?? parseResult.usages
                 let providerHealth: ParserHealth = usages.isEmpty
                     ? .empty
                     : .healthy(sessionCount: usages.count)

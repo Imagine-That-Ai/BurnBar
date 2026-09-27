@@ -226,6 +226,46 @@ extension RoutingClientWiring {
 
     // MARK: - Probe
 
+    /// Compose the Connections-row detail for a failed 1-token probe.
+    /// When the ping actually selected a model, name that model and its
+    /// provider so a Grok-labeled card cannot be read as "Grok CLI is missing"
+    /// when the hop that failed was Codex.
+    static func userVisibleProbeFailure(
+        status: Int,
+        upstreamMessage: String,
+        modelID: String?,
+        providerID: String?,
+        target: RoutingClientWiringTarget
+    ) -> String {
+        let trimmed = upstreamMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed == target.missingRouteReadyAccountMessage {
+            return trimmed
+        }
+        let model = modelID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let provider = providerID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !model.isEmpty, !provider.isEmpty {
+            let clause = "while probing `\(model)` (provider `\(provider)`) for \(target.displayName)"
+            if trimmed.isEmpty {
+                return status <= 0
+                    ? "Local gateway test failed \(clause)."
+                    : "Local gateway test failed with HTTP \(status) \(clause)."
+            }
+            if status <= 0 {
+                return "Local gateway request failed \(clause). \(trimmed)"
+            }
+            return "Local gateway returned HTTP \(status) \(clause). \(trimmed)"
+        }
+        if trimmed.isEmpty {
+            return status <= 0
+                ? "Local gateway test failed."
+                : "Local gateway test failed with HTTP \(status)."
+        }
+        if status <= 0 {
+            return trimmed
+        }
+        return "Local gateway returned HTTP \(status). \(trimmed)"
+    }
+
     /// Hit the local gateway with a `max_tokens: 1` request shaped for the
     /// target's wire format. Confirms the gateway responds before the helper
     /// reports "wired". Surfaces the upstream status code so failures point
@@ -250,6 +290,7 @@ extension RoutingClientWiring {
 
         let body: [String: Any]
         let probeModel: String
+        let probeProviderID: String
         switch target {
         case .antigravity:
             return .skipped(reason: "Antigravity is launched through profile switching, not routed client wiring.")
@@ -262,10 +303,13 @@ extension RoutingClientWiring {
             guard let liveModel = firstGatewayServedModel(models, target: .claudeCode) else {
                 return .failed(
                     status: 503,
-                    message: "No route-eligible gateway models are advertised for /v1/messages."
+                    message: "No route-eligible gateway models are advertised for /v1/messages.",
+                    modelID: nil,
+                    providerID: nil
                 )
             }
             probeModel = liveModel.id
+            probeProviderID = liveModel.providerID
             // Anthropic Messages uses `max_tokens`. Older versions of the
             // Messages API rejected requests that didn't include this field,
             // so we send it explicitly even for a 1-token probe.
@@ -281,26 +325,54 @@ extension RoutingClientWiring {
             guard let liveModel = firstGatewayServedModel(models, target: .codex) else {
                 return .failed(
                     status: 503,
-                    message: "No route-eligible gateway models are advertised for /v1/responses."
+                    message: "No route-eligible gateway models are advertised for /v1/responses.",
+                    modelID: nil,
+                    providerID: nil
                 )
             }
             probeModel = codexProxyModelID(for: liveModel)
+            probeProviderID = liveModel.providerID
             body = [
                 "model": probeModel,
                 "input": "ping",
                 "max_output_tokens": 1
             ]
-        case .opencode, .forge, .droid, .grok:
+        case .grok:
             let models = advertisedModels.isEmpty
                 ? await self.advertisedModels(gateway: gateway, session: session, timeoutSeconds: timeoutSeconds)
                 : advertisedModels
-            guard let liveModel = firstGatewayServedModel(models, target: target) else {
+            guard let liveModel = firstXAIGatewayServedModel(models) else {
                 return .failed(
                     status: 503,
-                    message: "No route-eligible gateway models are advertised by /v1/models."
+                    message: RoutingClientWiringTarget.grok.missingRouteReadyAccountMessage,
+                    modelID: nil,
+                    providerID: nil
                 )
             }
             probeModel = liveModel.id
+            probeProviderID = liveModel.providerID
+            body = [
+                "model": probeModel,
+                "max_completion_tokens": 1,
+                "messages": [["role": "user", "content": "ping"]]
+            ]
+        case .opencode, .forge, .droid:
+            let models = advertisedModels.isEmpty
+                ? await self.advertisedModels(gateway: gateway, session: session, timeoutSeconds: timeoutSeconds)
+                : advertisedModels
+            // P2: `.first` after provider-name sort is not a health oracle.
+            // Skip local-CLI executors when any HTTP provider is advertised
+            // so Droid / Forge / OpenCode do not ping Codex/Factory by default.
+            guard let liveModel = preferredOpenAICompatProbeModel(models, target: target) else {
+                return .failed(
+                    status: 503,
+                    message: "No route-eligible gateway models are advertised by /v1/models.",
+                    modelID: nil,
+                    providerID: nil
+                )
+            }
+            probeModel = liveModel.id
+            probeProviderID = liveModel.providerID
             // OpenAI Chat Completions deprecated `max_tokens` for reasoning-
             // capable models in favor of `max_completion_tokens`. The
             // gateway's structured-executor tests use `max_completion_tokens`
@@ -315,22 +387,75 @@ extension RoutingClientWiring {
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         } catch {
-            return .failed(status: 0, message: "could not encode probe body: \(error.localizedDescription)")
+            return .failed(
+                status: 0,
+                message: "could not encode probe body: \(error.localizedDescription)",
+                modelID: probeModel,
+                providerID: probeProviderID
+            )
         }
 
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else {
-                return .failed(status: 0, message: "missing HTTP response")
+                return .failed(
+                    status: 0,
+                    message: "missing HTTP response",
+                    modelID: probeModel,
+                    providerID: probeProviderID
+                )
             }
             if (200..<300).contains(http.statusCode) {
                 return .ok(modelID: probeModel)
             }
             let bodyText = String(data: data, encoding: .utf8)?.prefix(200) ?? ""
-            return .failed(status: http.statusCode, message: String(bodyText))
+            return .failed(
+                status: http.statusCode,
+                message: String(bodyText),
+                modelID: probeModel,
+                providerID: probeProviderID
+            )
         } catch {
-            return .failed(status: 0, message: error.localizedDescription)
+            return .failed(
+                status: 0,
+                message: error.localizedDescription,
+                modelID: probeModel,
+                providerID: probeProviderID
+            )
         }
+    }
+
+    func firstXAIGatewayServedModel(
+        _ advertisedModels: [RoutingClientAdvertisedModel]
+    ) -> RoutingClientAdvertisedModel? {
+        gatewayServedModels(advertisedModels, target: .grok).first { model in
+            model.providerID.caseInsensitiveCompare("xai") == .orderedSame
+        }
+    }
+
+    /// Local-CLI executors that advertise OpenAI-compat rows and sort first
+    /// on a default install. A generic Chat Completions health ping must not
+    /// treat those rows as readiness when any HTTP provider is advertised —
+    /// that is how a Droid / Forge / OpenCode card showed a missing-`codex`
+    /// 503 (#2616 P2). Grok stays on `firstXAIGatewayServedModel` (P1).
+    static let localCLIExecutorProviderIDs: Set<String> = ["codex", "factory"]
+
+    static func isLocalCLIExecutorProvider(_ providerID: String) -> Bool {
+        localCLIExecutorProviderIDs.contains(
+            providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        )
+    }
+
+    /// Prefer an HTTP-provider row for generic OpenAI-compat probes. When
+    /// the catalog is local-CLI only, keep the first remaining row so a
+    /// Codex-only ping still carries P0 model + provider attribution.
+    func preferredOpenAICompatProbeModel(
+        _ advertisedModels: [RoutingClientAdvertisedModel],
+        target: RoutingClientWiringTarget
+    ) -> RoutingClientAdvertisedModel? {
+        let served = gatewayServedModels(advertisedModels, target: target)
+        let httpModels = served.filter { !Self.isLocalCLIExecutorProvider($0.providerID) }
+        return httpModels.first ?? served.first
     }
 
     // MARK: - Private helpers

@@ -493,6 +493,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Guarded by auth + App Check + a single-use high-risk nonce, a wrong-code
   lockout, per-uid rate limits, a one-per-uid ledger, and a campaign cap;
   `promo_campaigns` / `promo_codes` / the redemption ledger are server-only.
+- **Google Gemini used-token meters.** The Providers wizard now treats Gemini
+  as a meter connection, not a routing key: Gemini CLI session logs on the Mac
+  report tokens used in the last 24 hours and 7 days. Remaining AI Studio
+  rate limits, Vertex spend, and Gemini app / Verizon Google AI Pro quota stay
+  explicitly unavailable — Google does not publish those to an API key.
+  Antigravity remains the estimated 5-hour coding-window adapter. Firebase
+  Google sign-in is unchanged and still does not read Gemini usage.
+- **Together remaining prepaid credits stay an explicit unsupported
+  meter.** Phase 2 re-checked Together after #2622: official OpenAPI
+  Billing is still only `GET /v1/billing/usage`. Live probes of
+  `/v1/billing/balance`, `/v1/credits`, and `/v1/account` 404 to the
+  console HTML app — not a Bearer wallet. BurnBar does not scrape
+  Together's Google/GitHub console or invent remaining % from spend.
+  Quotas now shows month-to-date spend as a used-only figure (no "Wide
+  Open" battery) plus a remaining-credits callout. 200/404/401 honesty
+  from the usage meter is unchanged.
+- **Together / Meta Llama usage meters.** Connections → Meta Llama now
+  pastes a Together API key and refreshes `GET /v1/billing/usage` for
+  month-to-date Together spend. Remaining prepaid credits stay on the
+  Together billing console (Google or GitHub sign-in — not Facebook, and
+  not Firebase IdP). A 404 from that beta endpoint is an explicit
+  unsupported remaining-credit state; routing still works. No WKWebView
+  session scrape. `TogetherQuotaAdapter` + `unlocksQuotaRefresh` on
+  `meta-together-key`.
+- **xAI / SuperGrok / Grok quota lanes are honest about what they can meter.**
+  GrokBuild still refreshes exact prepaid credits from an `xai-mgmt-…`
+  Management Key. SuperGrok no longer promises a vendor login — remaining
+  prompts stay estimated from OpenBurnBar-routed traffic because xAI has no
+  consumer remaining-quota API. Grok CLI login is detected from a real
+  `~/.grok/auth.json` (or `XAI_API_KEY`), not from an empty `~/.grok` folder.
+  The quota popover splits the three lanes; Connections → Grok Build stays
+  “route the CLI,” not “quota connected.” Account Switcher can run
+  `grok login`. Pinned by `GrokCLIAuthFileTests`, CLI discovery tests, and
+  updated xAI quota adapter / registry tests.
 - **app.burnbar.ai is now reachable from every surface.** The member Data &
   Privacy Control Center existed only as a bare URL — nothing linked to it.
   The website's header More menu, mobile nav, footer trust column, and the
@@ -521,6 +555,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- Grok Build CLI's Chat Completions probe no longer pings the first advertised
+  gateway model (usually default local Codex) and then show a missing-`codex`
+  503 on the Grok card. The probe now prefers an advertised `xai` model and
+  fail-closes with the "No route-ready xAI inference key" copy when none is
+  present. Routed-client probe failures also name the model and provider that
+  were actually pinged. Droid / Forge / OpenCode now skip local-CLI executors
+  (`codex`, `factory`) when any HTTP provider is advertised, instead of using
+  bare `.first` as a health oracle ([#2616](https://github.com/Imagine-That-Ai/BurnBar/issues/2616)).
 - Direct-download macOS updates no longer offer a same-build repair tag as an
   upgrade. The live feed advertises `1.0.40+repair.36` at build 82 while the
   installed app reports Apple marketing `1.0.40` at build 82; the checker used
@@ -1138,6 +1180,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `plugin-fast` job. The editor extension remains source-only / load-unpacked
   (no VS Marketplace / Open VSX listing). Install + auth + sealed-field
   honesty: `docs/OPENBURNBAR_CURSOR_PLUGIN.md`.
+### Added - Per-account burn attribution
+
+- Usage rows now record *which* provider account produced them, so an install
+  with several seats of the same provider (three Cursor seats, three OpenAI
+  accounts) can see burn split per account instead of one merged provider
+  total. The `token_usage` account columns have existed since `v35`; nothing
+  filled them for locally parsed usage until now, so no migration is involved.
+- Local identity resolvers read each tool's own signed-in identity — Cursor
+  (`cursorAuth/cachedEmail`), Codex (`auth.json` account id + `id_token` email
+  claim), Claude Code (`.claude.json` `oauthAccount`) — and a device-local
+  identity timeline attributes each parsed session to the account signed in
+  during that session's window. Attribution is deliberately conservative:
+  sessions spanning an account switch, and history recorded before attribution
+  first ran, stay unattributed rather than being guessed onto a seat. Identity
+  values are stored as the existing anonymized `acct_sha256_…` partition token.
+- Daemon-routed traffic carries the router's credential slot through
+  `BurnBarUsageEvent` into `token_usage`, so gateway burn is attributed too.
+- Attributed rows retire their unattributed predecessor on upsert, so turning
+  attribution on re-keys existing history instead of double-counting it.
+- Surfaced in the dashboard Credential Ranking lane and a new per-provider
+  **Spend by Account** panel. See [`docs/PROVIDER_ACCOUNTS.md`](docs/PROVIDER_ACCOUNTS.md).
+
+### Fixed - Multiple OpenCode Go subscriptions
+
+- Connecting a second OpenCode Go subscription no longer overwrites the first.
+  OpenCode mirrored every credential into the shared `opencode_auth_json`
+  app-keychain account — a singleton — so the provider-level lane silently
+  pinned itself to whichever account was saved last. OpenCode now stores
+  per credential slot, matching Ollama and Anthropic. Existing installs keep
+  working: the legacy mirror is still read, just never written again.
+- OpenCode quota no longer renders one identical card per subscription.
+  OpenCode Go exposes no hosted per-account quota API, so `OpenCodeQuotaAdapter`
+  measures this machine (`opencode.db` spend + `opencode stats` history), which
+  covers every subscription signed in on the device. That estimate is now
+  reported once at provider level — labelled *This Mac · all subscriptions* —
+  instead of being fetched per account and triple-counting one machine in the
+  cumulative merge. Subscriptions remain separate accounts for routing,
+  failover, and per-account burn attribution.
 
 ### Fixed - iPhone mission-approval Deny now persists
 - Tapping **Deny** on an Approvals-waiting card now leaves `waiting_for_approval`

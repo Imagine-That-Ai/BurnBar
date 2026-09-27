@@ -65,7 +65,7 @@ const KNOWN_AUTH_METHODS_BY_PROVIDER: Partial<Record<Provider, ReadonlySet<strin
   minimax: new Set(["minimax-coding-plan", "minimax-open-platform"]),
   zai: new Set(["zai-coding-plan"]),
   kimi: new Set(["kimi-session-token", "moonshot-api-key"]),
-  xai: new Set(["xai-api-key", "xai-management-key"]),
+  xai: new Set(["xai-api-key", "xai-management-key", "xai-grok-cli"]),
   mimo: new Set(["mimo-token-plan", "mimo-payg"]),
 };
 

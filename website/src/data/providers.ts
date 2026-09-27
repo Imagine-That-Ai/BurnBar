@@ -306,9 +306,9 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
     source: "SuperGrok Event Log + xAI Management API",
     cost: "estimated",
     quota: "yes",
-    cred: "xAI management key (xai-mgmt-…); none for SuperGrok",
+    cred: "xAI management key (xai-mgmt-…) for GrokBuild; SuperGrok estimated locally; Grok CLI ~/.grok/auth.json is login presence only",
     notes:
-      "Spend telemetry and rate limits are managed through the xAI Management API and event logs written by Hermes.",
+      "GrokBuild prepaid credits come from the Management API. SuperGrok has no remaining-quota login. Grok CLI auth.json is detected for identity, not remaining quota.",
     category: "api",
     shippedToday: true
   }

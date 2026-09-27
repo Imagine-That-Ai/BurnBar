@@ -1288,6 +1288,8 @@ enum SettingsManifest {
             keywords += ["mini max", "minimax"]
         case .mimo:
             keywords += ["mimo", "xiaomi", "xiaomi mimo", "token plan"]
+        case .together:
+            keywords += ["together", "meta", "llama", "together.ai", "facebook", "billing usage", "remaining credits"]
         case .copilot:
             keywords += ["github", "github copilot"]
         default:

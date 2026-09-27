@@ -45,6 +45,8 @@ class ProviderLogoViewTest {
         assertEquals(R.drawable.logo_prime_agent, AgentProvider.PRIME_AGENT.logoRes)
         assertEquals(R.drawable.logo_meta, ProviderLogo.drawableFor(AgentProvider.MUSE))
         assertEquals(R.drawable.logo_meta, AgentProvider.MUSE.logoRes)
+        assertEquals(R.drawable.logo_meta, ProviderLogo.drawableFor(AgentProvider.TOGETHER))
+        assertEquals(R.drawable.logo_meta, AgentProvider.TOGETHER.logoRes)
     }
 
     @Test

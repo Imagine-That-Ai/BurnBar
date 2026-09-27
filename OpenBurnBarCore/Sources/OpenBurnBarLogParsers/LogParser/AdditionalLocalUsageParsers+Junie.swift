@@ -32,7 +32,7 @@ public final class JunieParser: LogParser, Sendable {
                 fileName: ".obb-junie-parser-cache.plist"
             ),
             fileManager: fileManager,
-            schemaVersion: 2,
+            schemaVersion: 3,
             logLabel: "JunieParser"
         )
     }

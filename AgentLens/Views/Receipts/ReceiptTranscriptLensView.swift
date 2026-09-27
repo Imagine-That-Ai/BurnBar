@@ -539,7 +539,7 @@ enum ReceiptHarnessInk {
             return Color(red: 0.55, green: 0.35, blue: 0.95)
         case .xAI:
             return Color(red: 0.92, green: 0.32, blue: 0.32)
-        case .muse:
+        case .muse, .together:
             return Color(red: 0.02, green: 0.41, blue: 0.88)
         case .aider:
             return Color(red: 0.45, green: 0.75, blue: 0.35)

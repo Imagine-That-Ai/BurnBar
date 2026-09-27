@@ -633,18 +633,34 @@ public enum BurnBarProviderAuthRegistry {
                 kind: .apiKey,
                 displayName: "OpenCode auth.json",
                 summary: "Routes OpenCode Go models; local quota comes from CLI stats.",
-                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, the full auth.json, or just its key value. OpenBurnBar extracts the route key and sends requests to OpenCode Go's OpenAI-compatible gateway.",
+                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, the full "
+                    + "auth.json, or just its key value. OpenBurnBar extracts the route key and sends requests "
+                    + "to OpenCode Go's OpenAI-compatible gateway. Add one connection per OpenCode Go "
+                    + "subscription; each becomes its own BurnBar account.",
                 placeholder: "{\"opencode-go\":{\"type\":\"...\",\"key\":\"...\"}}",
                 dashboardURL: "https://opencode.ai/docs/go/",
                 dashboardLabel: "OpenCode Go docs",
-                storage: .daemonSlotMirroredToKeychain(account: "opencode_auth_json"),
+                // Per-slot storage, like Ollama and Anthropic. This used to
+                // mirror to the shared `opencode_auth_json` app-keychain
+                // account, which is a singleton: connecting a second OpenCode
+                // Go subscription overwrote the first one's mirrored secret,
+                // so the provider-level lane silently pinned itself to
+                // whichever account was saved last. Nothing needs the mirror —
+                // the quota adapter only uses a credential as an
+                // "is OpenCode signed in" gate (its numbers come from the
+                // local CLI/SQLite), and `resolveDaemonPlanAPIKey` already
+                // resolves the provider-level key from the daemon slot.
+                // Legacy installs keep working: `opencode_auth_json` stays in
+                // `quotaKeyIdentifiers`, so a previously mirrored value is
+                // still read, it just is not written again.
+                storage: .daemonSlot,
                 unlocksProxyRouting: true,
                 unlocksQuotaRefresh: true
             )
         ],
         summary: "OpenCode Go routing, quota, and account tracking.",
         proxyHint: "Routed through OpenCode Go's OpenAI-compatible /zen/go/v1 gateway.",
-        quotaHint: "Local/self-hosted quota refresh reads OpenCode CLI stats; route credentials can be added as separate BurnBar accounts."
+        quotaHint: "Connect one account per OpenCode Go subscription — each routes and bills separately. OpenCode exposes no per-account quota API, so plan pressure is a device-wide estimate from local CLI stats and is reported once for the provider, not duplicated per account."
     )
 
     private static let googleDescriptor = BurnBarProviderAuthDescriptor(
@@ -653,11 +669,37 @@ public enum BurnBarProviderAuthRegistry {
         aliasProviderIDs: ["gemini"],
         methods: [
             BurnBarProviderAuthMethod(
+                id: "google-gemini-cli-local",
+                kind: .localRuntime,
+                displayName: "Gemini CLI sessions on this Mac",
+                summary: "Reads used tokens from local Gemini CLI logs.",
+                helperText: "BurnBar reads ~/.gemini/tmp session logs and shows tokens used in the last 24 hours and 7 days. Google does not publish remaining AI Studio or Gemini app quota to other apps.",
+                placeholder: "Local Gemini CLI profile",
+                dashboardURL: "https://aistudio.google.com",
+                dashboardLabel: "Open Google AI Studio",
+                storage: .appKeychain(account: "provider.google.geminiCLI"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "google-antigravity-login",
+                kind: .localRuntime,
+                displayName: "Antigravity on this Mac",
+                summary: "Uses the Antigravity quota adapter for estimated 5-hour coding windows.",
+                helperText: "Sign in to Antigravity with the same Google AI Pro / Ultra account. Remaining Gemini app / Verizon quota is still not published. Exact remaining Antigravity credits are estimated from local activity.",
+                placeholder: "Local Antigravity profile",
+                dashboardURL: "https://antigravity.google",
+                dashboardLabel: "Open Antigravity",
+                storage: .appKeychain(account: "provider.google.antigravity"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
                 id: "google-api-key",
                 kind: .apiKey,
                 displayName: "Google AI API Key",
-                summary: "Tracks Gemini usage.",
-                helperText: "Get a key from Google AI Studio. Proxy routing for Gemini uses the native protocol and isn't enabled yet.",
+                summary: "Saves an AI Studio key. Does not unlock remaining quota.",
+                helperText: "Paste a key from Google AI Studio. The key cannot read remaining RPD, RPM, or TPM. Remaining meters need a Google Cloud project connection, which is not in this release.",
                 placeholder: "AIza…",
                 prefixHint: "AIza",
                 dashboardURL: "https://aistudio.google.com/app/apikey",
@@ -665,11 +707,25 @@ public enum BurnBarProviderAuthRegistry {
                 storage: .daemonSlot,
                 unlocksProxyRouting: false,
                 unlocksQuotaRefresh: false
+            ),
+            BurnBarProviderAuthMethod(
+                id: "google-ai-pro-consumer",
+                kind: .browserLogin,
+                displayName: "Google AI Pro / Gemini app (including Verizon)",
+                summary: "Marks a consumer Gemini subscription. Remaining app quota is not available.",
+                helperText: "Verizon Google AI Pro and the Gemini app do not publish remaining quota to other apps. BurnBar will not invent a remaining percentage. Use Antigravity or Gemini CLI logs for used tokens on this Mac.",
+                placeholder: "Consumer Google AI Pro account",
+                dashboardURL: "https://gemini.google.com",
+                dashboardLabel: "Open Gemini",
+                storage: .appKeychain(account: "provider.google.consumer"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: false
             )
         ],
-        summary: "Google Gemini — tracking and accounting only.",
-        proxyHint: "Tracking only — Gemini uses a non-OpenAI protocol the proxy doesn't speak yet.",
-        quotaHint: nil
+        primaryMethodID: "google-gemini-cli-local",
+        summary: "Google Gemini — local used-token meters. Remaining AI Studio and Gemini app quota is not published.",
+        proxyHint: "Proxy routing for Gemini is not enabled yet. Connect to report local usage meters.",
+        quotaHint: "Used tokens come from Gemini CLI session logs. Remaining AI Studio rate limits, Vertex spend, and Verizon / Gemini app quota are unavailable without a Google Cloud identity (not in this release)."
     )
 
     private static let xaiDescriptor = BurnBarProviderAuthDescriptor(
@@ -704,11 +760,24 @@ public enum BurnBarProviderAuthRegistry {
                 storage: .appKeychain(account: "provider.xai.managementKey"),
                 unlocksProxyRouting: false,
                 unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "xai-grok-cli",
+                kind: .localRuntime,
+                displayName: "Grok Build CLI login",
+                summary: "Detects ~/.grok/auth.json from `grok login`. Historical session tokens only — not remaining quota.",
+                helperText: "Run `grok login` on this Mac. OpenBurnBar reads auth.json for presence and a safe email label only. This does not unlock SuperGrok remaining-quota or GrokBuild credits. An xai-… inference key still routes traffic.",
+                placeholder: "~/.grok/auth.json",
+                dashboardURL: "https://console.x.ai",
+                dashboardLabel: "xAI console",
+                storage: .daemonSlot,
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: false
             )
         ],
-        summary: "xAI Grok — OpenAI-compatible routing plus Management-API quota reporting (GrokBuild + SuperGrok tiers).",
-        proxyHint: "Routed via api.x.ai (OpenAI-compatible).",
-        quotaHint: "Add a Management Key for exact GrokBuild credit balance; SuperGrok tiers use local pacing estimates."
+        summary: "xAI Grok — OpenAI-compatible routing plus Management-API quota reporting (GrokBuild) and estimated SuperGrok pacing.",
+        proxyHint: "Routed via api.x.ai (OpenAI-compatible). Inference keys are not quota meters.",
+        quotaHint: "Management Key for exact GrokBuild credits. SuperGrok remaining-quota is estimated locally — xAI has no consumer quota API. Grok CLI ~/.grok/auth.json is a local login, not a meter."
     )
 
     private static let mimoDescriptor = BurnBarProviderAuthDescriptor(
@@ -876,18 +945,23 @@ public enum BurnBarProviderAuthRegistry {
                 id: "meta-together-key",
                 kind: .apiKey,
                 displayName: "Together / Llama API Key",
-                summary: "Routes Llama traffic via Together (OpenAI-compatible).",
-                helperText: "Use a Together.ai key to route Llama models. Direct Meta API access isn't generally available.",
+                summary: "Routes Llama traffic via Together and reports month-to-date usage.",
+                helperText: "Paste a Together API key to route Llama models and refresh Together billing usage. "
+                    + "Together console sign-in is Google or GitHub — Facebook is not a meter path. "
+                    + "Remaining prepaid credits stay console-only: Together has no Bearer balance API "
+                    + "(GET /v1/billing/balance is not a documented wallet).",
                 placeholder: "…",
-                dashboardURL: "https://api.together.xyz/settings/api-keys",
+                dashboardURL: "https://api.together.ai/settings/api-keys",
                 dashboardLabel: "Together API keys",
                 storage: .daemonSlot,
                 unlocksProxyRouting: true,
-                unlocksQuotaRefresh: false
+                unlocksQuotaRefresh: true
             )
         ],
-        summary: "Meta Llama via Together — OpenAI-compatible routing.",
+        summary: "Meta Llama via Together — OpenAI-compatible routing plus Together usage meters.",
         proxyHint: "Routed via api.together.xyz (OpenAI-compatible).",
-        quotaHint: nil
+        quotaHint: "Live usage comes from Together GET /v1/billing/usage when the org has the beta enabled. "
+            + "Remaining prepaid credits are an explicit unsupported meter — Together's OpenAPI has no Bearer balance/credits endpoint, "
+            + "and BurnBar does not scrape the Google/GitHub console. A 404 is an unsupported remaining-credit state, not a fake meter."
     )
 }

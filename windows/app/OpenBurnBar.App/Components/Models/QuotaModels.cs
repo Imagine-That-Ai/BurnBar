@@ -289,9 +289,18 @@ public sealed class QuotaBucket
         }
     }
 
+    /// <summary>Swift: <c>ProviderQuotaBucket.isUsedOnlyMeter</c>.</summary>
+    public bool IsUsedOnlyMeter =>
+        string.Equals(MetaLower("limitKind"), "used-only", StringComparison.Ordinal);
+
     /// <summary>The compact "left" string. Swift: UnifiedQuotaSignalView.remainingText.</summary>
     public string RemainingText(string displayMode = "remainingPercent")
     {
+        if (IsUsedOnlyMeter)
+        {
+            return $"{FormatValue(Used)} used";
+        }
+
         if (Unit == QuotaBucketUnitKind.Unlimited)
         {
             return "Unlimited";
@@ -333,6 +342,11 @@ public sealed class QuotaBucket
     /// <summary>The verbose "remaining" string. Swift: UnifiedQuotaSignalView.fullRemainingText.</summary>
     public string FullRemainingText(string displayMode = "remainingPercent")
     {
+        if (IsUsedOnlyMeter)
+        {
+            return $"{FormatValue(Used)} used";
+        }
+
         if (Unit == QuotaBucketUnitKind.Unlimited)
         {
             return "Unlimited";
@@ -376,6 +390,11 @@ public sealed class QuotaBucket
     {
         get
         {
+            if (IsUsedOnlyMeter)
+            {
+                return "Remaining unavailable";
+            }
+
             if (Unit == QuotaBucketUnitKind.Unlimited)
             {
                 return "No fixed cap";
@@ -390,6 +409,11 @@ public sealed class QuotaBucket
     {
         get
         {
+            if (IsUsedOnlyMeter)
+            {
+                return "—";
+            }
+
             if (Unit == QuotaBucketUnitKind.Unlimited)
             {
                 return "∞"; // infinity

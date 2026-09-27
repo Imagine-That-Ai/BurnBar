@@ -105,6 +105,9 @@ struct ProviderDashboardQuotaPanel: View {
                             )) { bucket in
                                 ProviderQuotaBucketRow(bucket: bucket, provider: provider)
                             }
+                            if provider == .together {
+                                togetherRemainingCreditsCallout
+                            }
                         }
                     } else {
                         QuotaStatusCallout(
@@ -119,6 +122,9 @@ struct ProviderDashboardQuotaPanel: View {
                             isActive: isRefreshing,
                             isWarning: quotaService.errors[provider] != nil
                         )
+                        if provider == .together, !isRefreshing {
+                            togetherRemainingCreditsCallout
+                        }
                     }
 
                     HStack(spacing: DesignSystem.Spacing.md) {
@@ -205,6 +211,16 @@ struct ProviderDashboardQuotaPanel: View {
                 }
             }
         }
+    }
+
+    private var togetherRemainingCreditsCallout: some View {
+        QuotaStatusCallout(
+            provider: provider,
+            title: TogetherRemainingCreditsMeter.title,
+            message: TogetherRemainingCreditsMeter.fullUnsupportedMessage,
+            isActive: false,
+            isWarning: false
+        )
     }
 
     private var headerSubtitle: String {

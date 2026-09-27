@@ -39,7 +39,9 @@ extension BurnBarHTTPGatewayServer {
             executionSourceKind: executionSource.kind == .unknown ? nil : executionSource.kind,
             executionSourceConfidence: executionSource.id == "unknown" ? nil : .exact,
             confidence: usage.confidence,
-            parentRequestID: parentRequestID
+            parentRequestID: parentRequestID,
+            providerAccountID: route.credentialSlotID,
+            providerAccountLabel: route.credentialSlotLabel
         )
         do {
             // A stable, content-derived key means a client that retries the

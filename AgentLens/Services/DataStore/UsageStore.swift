@@ -40,11 +40,15 @@ final class UsageStore: Sendable {
             let before = db.totalChangesCount
             try self.deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
             try self.deletePlaceholderModelRows(replacedBy: usage, in: db)
+            if try self.shouldSkipPlaceholderModelRow(usage, in: db) {
+                return db.totalChangesCount - before
+            }
             if try self.shouldSuppressFactoryRoutedMirror(usage, in: db) {
                 return db.totalChangesCount - before
             }
             try self.deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
             try self.deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
+            try self.deleteUnattributedPredecessorRows(replacedBy: usage, in: db)
             try self.upsertUsage(usage, in: db)
             return db.totalChangesCount - before
         }
@@ -59,11 +63,15 @@ final class UsageStore: Sendable {
             for usage in newUsages {
                 try self.deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
                 try self.deletePlaceholderModelRows(replacedBy: usage, in: db)
+                if try self.shouldSkipPlaceholderModelRow(usage, in: db) {
+                    continue
+                }
                 if try self.shouldSuppressFactoryRoutedMirror(usage, in: db) {
                     continue
                 }
                 try self.deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
                 try self.deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
+                try self.deleteUnattributedPredecessorRows(replacedBy: usage, in: db)
                 try self.upsertUsage(usage, in: db)
             }
             return db.totalChangesCount - before

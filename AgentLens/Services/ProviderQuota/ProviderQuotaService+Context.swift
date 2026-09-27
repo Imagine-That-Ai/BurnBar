@@ -139,6 +139,8 @@ extension ProviderQuotaService {
             return "anthropic"
         case .mimo:
             return "mimo"
+        case .together:
+            return "meta"
         default:
             return nil
         }
@@ -165,6 +167,17 @@ extension ProviderQuotaService {
             identifiers.append(contentsOf: ["deepseek", "deep_seek"])
         case .mimo:
             identifiers.append(contentsOf: ["mimo", "xiaomimimo", "xiaomi", "provider.mimo.apiKey"])
+        case .together:
+            identifiers.append(contentsOf: [
+                "together",
+                "meta",
+                "llama",
+                "meta-together-key",
+                "together_api_key",
+                "together-api-key",
+                "provider.together.apiKey",
+                "provider.meta.apiKey"
+            ])
         default:
             break
         }
@@ -188,6 +201,9 @@ extension ProviderQuotaService {
             return .ollama
         case "kimi_auth_token":
             return .kimi
+        case "meta-together-key", "together_api_key", "together-api-key",
+             "provider.together.apiKey", "provider.meta.apiKey", "meta", "llama":
+            return .together
         default:
             return nil
         }

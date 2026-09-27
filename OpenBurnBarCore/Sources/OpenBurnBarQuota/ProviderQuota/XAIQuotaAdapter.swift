@@ -34,8 +34,9 @@ import FoundationNetworking
 //    2-hour prompt count. Caps are `XAIQuotaPlanTier.rollingTwoHourPromptCap`.
 //    Snapshots are marked `confidence: .estimated`, `isEstimated: true`.
 //
-// 3. **Neither key nor active plan** → `.unavailable` snapshot pointing at
-//    `https://console.x.ai`.
+// 3. **Neither key nor active plan** → `.unavailable` snapshot that names
+//    the three meter lanes (GrokBuild management key, SuperGrok estimated
+//    pacing, Grok CLI auth.json presence). No SuperGrok vendor login.
 //
 // Reference: xAI Management API
 // (docs.x.ai/docs/management-api/billing, verified 2026-05-21).
@@ -143,7 +144,7 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
         return unavailableSnapshot(
             for: .xAI,
             source: .unavailable,
-            message: "Pick a Grok plan tier (SuperGrok or GrokBuild) and connect either your SuperGrok login or an xAI Management Key."
+            message: "Choose a meter lane: GrokBuild needs an xAI Management Key (xai-mgmt-…) for prepaid credits; SuperGrok remaining prompts are estimated from routed traffic after you pick a SuperGrok plan; Grok CLI login (~/.grok/auth.json) is not a remaining-quota API."
         )
     }
 
@@ -153,15 +154,39 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
         context: ProviderQuotaAdapterContext,
         managementKey: String
     ) async throws -> ProviderQuotaSnapshot {
-        let teamID = try await resolveTeamID(context: context, managementKey: managementKey)
-        guard let teamID else {
+        switch await resolveTeamID(context: context, managementKey: managementKey) {
+        case .team(let teamID):
+            return try await fetchGrokBuildSnapshot(
+                context: context,
+                managementKey: managementKey,
+                teamID: teamID
+            )
+        case .unauthorized:
+            return unavailableSnapshot(
+                for: .xAI,
+                source: .officialAPI,
+                message: "xAI Management Key was rejected. Use an xai-mgmt-… team key from console.x.ai, not an xai-… inference key."
+            )
+        case .noTeam:
             return unavailableSnapshot(
                 for: .xAI,
                 source: .officialAPI,
                 message: "xAI Management Key authenticated but no team is associated. Visit console.x.ai to create a team."
             )
+        case .unreachable:
+            return unavailableSnapshot(
+                for: .xAI,
+                source: .officialAPI,
+                message: "Could not reach the xAI Management API to resolve a team. Check network and try refresh."
+            )
         }
+    }
 
+    private func fetchGrokBuildSnapshot(
+        context: ProviderQuotaAdapterContext,
+        managementKey: String,
+        teamID: String
+    ) async throws -> ProviderQuotaSnapshot {
         let now = Date()
         async let balanceBuckets = fetchBalanceBuckets(
             context: context,
@@ -333,22 +358,29 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
         }
     }
 
+    private enum TeamResolution: Equatable, Sendable {
+        case team(String)
+        case unauthorized
+        case noTeam
+        case unreachable
+    }
+
     /// Resolves the xAI team id for the management key. Cached in the
     /// snapshot store under the `xai/team-id` scratch key so we don't hit
     /// `/v1/teams` on every refresh.
     private func resolveTeamID(
         context: ProviderQuotaAdapterContext,
         managementKey: String
-    ) async throws -> String? {
+    ) async -> TeamResolution {
         if let cached = context.snapshotStore.loadScratchString(forKey: "xai/team-id"),
            !cached.isEmpty {
-            return cached
+            return .team(cached)
         }
 
         // Allow an env override for power users / CI fixtures.
         if let envOverride = quotaNonEmpty(context.environment["XAI_TEAM_ID"]) {
             context.snapshotStore.saveScratchString(envOverride, forKey: "xai/team-id")
-            return envOverride
+            return .team(envOverride)
         }
 
         let url = Self.managementBaseURL.appendingPathComponent("v1/teams", isDirectory: false)
@@ -357,14 +389,26 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
         request.setValue("Bearer \(managementKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await context.session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            return nil
+        do {
+            let (data, response) = try await context.session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return .unreachable
+            }
+            if http.statusCode == 401 || http.statusCode == 403 {
+                return .unauthorized
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                return .unreachable
+            }
+            let payload = try JSONDecoder().decode(TeamsResponse.self, from: data)
+            guard let id = payload.teams?.first?.id, !id.isEmpty else {
+                return .noTeam
+            }
+            context.snapshotStore.saveScratchString(id, forKey: "xai/team-id")
+            return .team(id)
+        } catch {
+            return .unreachable
         }
-        let payload = try JSONDecoder().decode(TeamsResponse.self, from: data)
-        guard let id = payload.teams?.first?.id, !id.isEmpty else { return nil }
-        context.snapshotStore.saveScratchString(id, forKey: "xai/team-id")
-        return id
     }
 
     // MARK: - SuperGrok pacing branch
@@ -415,10 +459,10 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
         let statusMessage: String
         if !scan.sawAnyEvent {
             confidence = .estimated
-            statusMessage = "\(plan.displayName): no SuperGrok prompts observed yet. Caps are community-estimated; run a Grok session via OpenBurnBar to populate the rolling window."
+            statusMessage = "\(plan.displayName): no SuperGrok prompts observed yet. xAI does not publish a SuperGrok remaining-quota API; this estimated 2-hour cap fills only from OpenBurnBar-routed Grok traffic."
         } else {
             confidence = .estimated
-            statusMessage = "\(plan.displayName): rolling 2-hour pacing window. Cap is community-estimated and may vary by account."
+            statusMessage = "\(plan.displayName): estimated 2-hour prompt window from OpenBurnBar-routed Grok traffic. xAI has no SuperGrok remaining-quota API; the cap is community-estimated."
         }
 
         return ProviderQuotaSnapshot(

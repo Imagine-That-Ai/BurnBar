@@ -323,7 +323,7 @@ extension ProviderQuotaService {
         apiKeyOverride: String
     ) async throws -> ProviderQuotaSnapshot {
         switch provider {
-        case .minimax, .zai, .deepSeek, .copilot, .ollama, .kimi:
+        case .minimax, .zai, .deepSeek, .copilot, .ollama, .kimi, .together:
             let context = makeContext(apiKeyOverrides: [provider: apiKeyOverride])
             return try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
         default:
@@ -333,7 +333,7 @@ extension ProviderQuotaService {
                 source: .unavailable,
                 confidence: .unavailable,
                 managementURL: nil,
-                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, DeepSeek, Kimi, Copilot, and Ollama Cloud.",
+                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, DeepSeek, Kimi, Copilot, Ollama Cloud, and Together.",
                 buckets: []
             )
         }

@@ -5,6 +5,41 @@ import OpenBurnBarLogParsers
 import OpenBurnBarUI
 
 extension UsageStore {
+    /// Retires the unattributed predecessor of a now-attributed row.
+    ///
+    /// The unique index (and the `ON CONFLICT` target) includes
+    /// `COALESCE(providerAccountID, '')`, so once account attribution starts
+    /// filling that column an incoming row no longer collides with the same
+    /// session's previously unattributed row — it would insert alongside it and
+    /// double the session's tokens and cost. A session belongs to exactly one
+    /// signed-in account, so a NULL-account row with the same
+    /// provider/session/model/device identity is the same usage before it was
+    /// attributable: delete it and let the attributed row take its place.
+    ///
+    /// Only rows that are still unattributed are claimed; a row already
+    /// attributed to a *different* account is left alone, so this can never
+    /// merge two real accounts' usage together.
+    func deleteUnattributedPredecessorRows(replacedBy usage: TokenUsage, in db: Database) throws {
+        guard Self.usagePartitionToken(from: usage.providerAccountID) != nil else { return }
+
+        try db.execute(
+            sql: """
+                DELETE FROM token_usage
+                WHERE provider = ?
+                  AND sessionId = ?
+                  AND model = ?
+                  AND COALESCE(sourceDeviceId, '') = COALESCE(?, '')
+                  AND COALESCE(providerAccountID, '') = ''
+                """,
+            arguments: [
+                usage.provider.rawValue,
+                usage.sessionId,
+                usage.model,
+                usage.sourceDeviceId
+            ]
+        )
+    }
+
     func deleteKimiRequestIDModelRows(replacedBy usage: TokenUsage, in db: Database) throws { // pure-move: was private
         guard usage.provider == .kimi,
               !Self.isKimiRequestIDModel(usage.model) else { return }
@@ -39,7 +74,13 @@ extension UsageStore {
     /// that session arrives. Mirrors `deleteKimiRequestIDModelRows`: the
     /// upsert key includes `model`, so without this the placeholder row and
     /// the corrected row coexist and dashboards double-bill the session while
-    /// rendering a `<synthetic>` band. No-op when the incoming row is itself a
+    /// rendering a `<synthetic>` band.
+    ///
+    /// Confidence-gated: a lower-confidence correction never discards a
+    /// higher-confidence placeholder row's tokens — the ON CONFLICT upsert
+    /// cannot recover a deleted row under a different model key, so the
+    /// delete only runs when the incoming row's confidence meets or beats
+    /// the stored row's. No-op when the incoming row is itself a
     /// placeholder, so a placeholder can never delete a real model.
     func deletePlaceholderModelRows(replacedBy usage: TokenUsage, in db: Database) throws {
         guard !OpenBurnBarLogParsers.TokenExtractionUtility.isPlaceholderModelName(usage.model) else { return }
@@ -55,6 +96,49 @@ extension UsageStore {
                     LOWER(TRIM(model)) IN ('', 'unknown', 'default', 'none')
                     OR (TRIM(model) LIKE '<%>' AND LENGTH(TRIM(model)) > 2)
                   )
+                  AND (
+                    CASE provenanceConfidence
+                        WHEN 'exact' THEN 4
+                        WHEN 'derived_exact' THEN 3
+                        WHEN 'high_confidence_estimate' THEN 2
+                        WHEN 'low_confidence_estimate' THEN 1
+                        ELSE 0
+                    END
+                  ) <= ?
+                """,
+            arguments: [
+                usage.provider.rawValue,
+                usage.sessionId,
+                usage.sourceDeviceId,
+                usagePartition,
+                usage.provenanceConfidence.precedence
+            ]
+        )
+    }
+
+    /// Drops an incoming placeholder-model row when the same session already
+    /// holds an exact-model row. The upsert key includes `model`, so without
+    /// this a stale placeholder (stale parser cache, older sync client)
+    /// arriving after the exact row would persist as a second row, restoring
+    /// the `<synthetic>` band and double-counting the session. A placeholder
+    /// that is the session's only row is still stored, preserving its tokens.
+    /// Returns true when the caller should skip the upsert entirely.
+    func shouldSkipPlaceholderModelRow(_ usage: TokenUsage, in db: Database) throws -> Bool {
+        guard OpenBurnBarLogParsers.TokenExtractionUtility.isPlaceholderModelName(usage.model) else { return false }
+        let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
+        let count = try Int.fetchOne(
+            db,
+            sql: """
+                SELECT COUNT(*)
+                FROM token_usage
+                WHERE provider = ?
+                  AND sessionId = ?
+                  AND COALESCE(sourceDeviceId, '') = COALESCE(?, '')
+                  AND COALESCE(providerAccountID, '') = COALESCE(?, '')
+                  AND NOT (
+                    LOWER(TRIM(model)) IN ('', 'unknown', 'default', 'none')
+                    OR (TRIM(model) LIKE '<%>' AND LENGTH(TRIM(model)) > 2)
+                  )
                 """,
             arguments: [
                 usage.provider.rawValue,
@@ -62,7 +146,8 @@ extension UsageStore {
                 usage.sourceDeviceId,
                 usagePartition
             ]
-        )
+        ) ?? 0
+        return count > 0
     }
 
     func shouldSuppressFactoryRoutedMirror(_ usage: TokenUsage, in db: Database) throws -> Bool { // pure-move: was private
@@ -162,6 +247,11 @@ extension UsageStore {
             // A synced exact-model correction must retire a local placeholder
             // row for the same session, exactly as on the local insert path.
             try self.deletePlaceholderModelRows(replacedBy: usage, in: db)
+            // A stale synced placeholder must not resurrect a second row
+            // beside the session's exact-model row.
+            if try self.shouldSkipPlaceholderModelRow(usage, in: db) {
+                return 0
+            }
             let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
             try db.execute(
                 sql: """

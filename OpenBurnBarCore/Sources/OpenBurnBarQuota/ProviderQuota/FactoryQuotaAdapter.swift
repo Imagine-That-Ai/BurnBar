@@ -6,14 +6,6 @@ import OpenBurnBarLogParsers
 import FoundationNetworking
 #endif
 
-/// Untyped JSON object at the schemaless provider-quota boundary.
-///
-/// Provider billing/subscription payloads have no stable schema, so navigation
-/// stays dictionary-based — but every site spells the type through this alias
-/// instead of repeating the raw untyped-dictionary literal, keeping the
-/// string-any boundary countable at one choke point.
-public typealias QuotaJSONObject = [String: Any]
-
 // MARK: - Factory / Droid Quota Adapter
 
 /// Reports real Factory/droid token usage from `~/.factory/sessions/**/*.settings.json`.

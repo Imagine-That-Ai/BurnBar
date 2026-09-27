@@ -407,7 +407,9 @@ final class PixelClockQuotaRendererTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(Set(litPixels).count, 2, provider.displayName)
             XCTAssertEqual(logo.sourceName, expectedLogoSourceName(for: provider), provider.displayName)
             let allowsSharedOpenAIFamilyLogo = [.openAI, .codex, .openCode, .cursor, .cursorAgent].contains(provider)
-            if !allowsSharedOpenAIFamilyLogo {
+            // Gemini CLI and Antigravity are both Google Gemini surfaces and share its mark.
+            let allowsSharedGeminiFamilyLogo = provider == .geminiCLI
+            if !allowsSharedOpenAIFamilyLogo && !allowsSharedGeminiFamilyLogo {
                 XCTAssertTrue(seenColorGrids.insert(colorGrid).inserted, provider.displayName)
             }
         }
@@ -1261,7 +1263,7 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         case .kimi: return "KimiLogo"
         case .deepSeek: return "DeepSeekLogo"
         case .openCode: return "OpenCodeLogo"
-        case .antigravity: return "GeminiCLILogo"
+        case .antigravity, .geminiCLI: return "GeminiCLILogo"
         case .xAI: return "GrokLogo"
         default: return "monogram"
         }

@@ -279,4 +279,78 @@ final class CLIAuthDiscoveryTests: XCTestCase {
         )
         XCTAssertEqual(antigravity.authState, .authenticated(lastRefresh: nil))
     }
+
+    func test_grokDiscoveryRequiresAuthJSONOrAPIKeyNotEmptyHome() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-grok-auth-\(UUID().uuidString)", isDirectory: true)
+        let configDir = tempRoot.appendingPathComponent(".grok", isDirectory: true)
+        let sessionsDir = configDir.appendingPathComponent("sessions", isDirectory: true)
+        let executableURL = tempRoot.appendingPathComponent("grok")
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+        try "#!/bin/sh\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+        CLILaunchAdapter.executableResolver = { $0 == .grok ? executableURL : nil }
+        CLILaunchAdapter.environmentProvider = { [:] }
+        CLIAuthDiscovery.environmentProvider = { [:] }
+
+        let emptyHome = CLIAuthDiscovery.discoverAuthState(
+            for: .grok,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(emptyHome.authState, .notAuthenticated)
+        XCTAssertNil(emptyHome.accountDescription)
+
+        try "session\n".write(
+            to: sessionsDir.appendingPathComponent("notes.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let sessionsOnly = CLIAuthDiscovery.discoverAuthState(
+            for: .grok,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(sessionsOnly.authState, .notAuthenticated)
+
+        try #"{}"#.write(
+            to: configDir.appendingPathComponent("auth.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let emptyAuth = CLIAuthDiscovery.discoverAuthState(
+            for: .grok,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(emptyAuth.authState, .notAuthenticated)
+
+        try """
+        {
+          "https://auth.x.ai::test-client": {
+            "key": "opaque-token",
+            "auth_mode": "oidc",
+            "email": "grok@example.com"
+          }
+        }
+        """.write(
+            to: configDir.appendingPathComponent("auth.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let signedIn = CLIAuthDiscovery.discoverAuthState(
+            for: .grok,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(signedIn.authState, .authenticated(lastRefresh: nil))
+        XCTAssertEqual(signedIn.accountDescription, "grok@example.com")
+
+        try FileManager.default.removeItem(at: configDir.appendingPathComponent("auth.json"))
+        CLIAuthDiscovery.environmentProvider = { ["XAI_API_KEY": "xai-env-test"] }
+        let envKey = CLIAuthDiscovery.discoverAuthState(
+            for: .grok,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(envKey.authState, .apiKeyPresent)
+        XCTAssertEqual(envKey.accountDescription, "XAI_API_KEY")
+    }
 }

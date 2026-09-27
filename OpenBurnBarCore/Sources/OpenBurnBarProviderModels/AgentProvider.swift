@@ -40,6 +40,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case junie = "Junie"
     case primeAgent = "Prime Agent"
     case muse = "Muse"
+    case together = "Together"
     case fx = "fx"
 
     public var id: String { rawValue }
@@ -84,12 +85,15 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .warp,
         .cursorAgent,
         .muse,
+        .together,
         .fx
     ]
 
     /// Providers that expose a real quota/rate-limit signal either through an
     /// official API, a provider dashboard scrape, or a first-party local quota
-    /// bridge. Usage-only tools stay out of quota surfaces.
+    /// bridge. Gemini CLI reports used tokens from local session logs and keeps
+    /// remaining vendor quota unavailable. Usage-only tools without a meter
+    /// contract stay out of quota surfaces.
     public static let quotaSignalProviders: [AgentProvider] = [
         .codex,
         .openCode,
@@ -107,9 +111,11 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .ollama,
         .kimi,
         .antigravity,
+        .geminiCLI,
         .xAI,
         .mimo,
-        .cursorAgent
+        .cursorAgent,
+        .together
     ]
 
     public var isQuotaSignalProvider: Bool {
@@ -315,6 +321,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .primeAgent
         case "muse", "muse-code", "musecode", "meta-muse", "metamuse":
             return .muse
+        case "meta", "llama", "together", "togetherai", "together.ai", "together-ai":
+            return .together
         case "fx", "vercel-fx", "vercelfx", "vercel fx":
             return .fx
         default:
@@ -364,6 +372,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .junie:      return "JunieLogo"
         case .primeAgent: return "PrimeAgentLogo"
         case .muse: return "MetaLogo"
+        case .together: return "MetaLogo"
         case .fx: return "FxLogo"
         }
     }
@@ -407,6 +416,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .junie: return "j.circle.fill"
         case .primeAgent: return "arrow.triangle.2.circlepath"
         case .muse: return "brain.head.profile"
+        case .together: return "gauge.with.needle"
         case .fx: return "forward.fill"
         }
     }

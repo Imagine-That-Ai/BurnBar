@@ -70,8 +70,10 @@ public struct ProviderQuotaAdapterRegistry: Sendable {
         live(.ollama, OllamaQuotaAdapter()),
         live(.kimi, KimiQuotaAdapter()),
         live(.antigravity, AntigravityQuotaAdapter()),
+        live(.geminiCLI, GeminiCLIQuotaAdapter()),
         live(.xAI, XAIQuotaAdapter()),
         live(.mimo, MimoQuotaAdapter()),
+        live(.together, TogetherQuotaAdapter()),
         unavailable(
             .cursorAgent,
             message: "Cursor Agent has no stable quota API; connect a self-hosted bridge to report it."

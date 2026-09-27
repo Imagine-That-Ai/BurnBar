@@ -21,6 +21,9 @@ public extension ProviderQuotaBucket {
     }
 
     func remainingText(displayMode mode: QuotaPercentageDisplayMode) -> String {
+        if isUsedOnlyMeter {
+            return "Unavailable"
+        }
         switch mode {
         case .remainingPercent:
             if let remainingPercent {
@@ -64,11 +67,17 @@ public extension ProviderQuotaBucket {
     }
 
     var usageText: String {
-        if let usedValue, let limitValue {
+        if isUsedOnlyMeter, let usedValue {
+            return "\(Self.formatQuotaValue(usedValue, unit: unit)) used"
+        }
+        if let usedValue, let limitValue, limitValue > 0 {
             return "\(Self.formatQuotaValue(usedValue, unit: unit)) / \(Self.formatQuotaValue(limitValue, unit: unit))"
         }
         if let usedPercent {
             return "\(Self.formatQuotaValue(usedPercent, unit: .percent)) used"
+        }
+        if let usedValue {
+            return "\(Self.formatQuotaValue(usedValue, unit: unit)) used"
         }
         return "No usage detail"
     }

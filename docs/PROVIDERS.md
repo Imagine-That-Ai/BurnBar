@@ -12,6 +12,7 @@
 | **Codex** | `CodexQuotaAdapter.swift` | `.exact` | `~/.codex/sessions/rollout-*.jsonl` | Rate-limit % (5h + 7d windows) |
 | **OpenAI** | `OpenAIQuotaAdapter` | `.exact` | `GET api.openai.com/v1/organization/usage/completions` | Org token usage (cost computed locally) |
 | **DeepSeek** | `DeepSeekQuotaAdapter` | `.exact` | `GET api.deepseek.com/v1` | Developer console credit balance and API usage |
+| **Together / Meta Llama** | `TogetherQuotaAdapter.swift` | `.exact` / `.unavailable` | `GET api.together.ai/v1/billing/usage` | Month-to-date Together spend in USD. Remaining prepaid credits are an explicit unsupported meter (no Bearer balance API). A 404 is an unsupported remaining-credit state, not a fake meter. |
 | **Copilot** | `CopilotQuotaAdapter.swift` | `.estimated` | `POST api.github.com/copilot_internal/user` | Premium interactions and chat limits |
 | **Cursor** | `CursorQuotaAdapter.swift` | `.estimated` | `GET cursor.com/api/usage-summary` | Included usage, limits, and USD spent |
 | **Cursor Agent CLI**| `CursorAgentParser.swift` | `.exact` | `~/.cursor-agent/sessions/` (`transcript.jsonl`, `summary.json`, `*.jsonl`) | Local session tokens; exact token limits |
@@ -25,12 +26,12 @@
 | **Kimi** | `KimiQuotaAdapter.swift` | `.exact` | `kimi.com BillingService` | Weekly request and token usage stats |
 | **Hermes** | `HermesQuotaAdapter.swift` | `.exact` | `~/.hermes/sessions/*.jsonl` | Local UI automation and computer-use metrics |
 | **Pi Agent** | `PiAgentQuotaAdapter` | `.exact` | `~/.pi/sessions/*.jsonl` | Local workspace logs and token history |
-| **xAI (Grok)** | `XAIQuotaAdapter.swift` | `.estimated` / `.exact` | `SuperGrok event logs` + `xAI Management API` | SuperGrok pacing estimate; GrokBuild prepaid balance via Management API |
+| **xAI (Grok)** | `XAIQuotaAdapter.swift` | `.estimated` / `.exact` | `SuperGrok event logs` + `xAI Management API` | SuperGrok estimated local pacing (no vendor remaining-quota login); GrokBuild prepaid balance via Management API |
 | **Grok Build CLI** | `GrokParser.swift` | `.exact` | `~/.grok/sessions/<encoded-cwd>/<uuid>/` (`summary.json`, `signals.json`, `chat_history.jsonl`) | Local session tokens; gateway wiring via `~/.grok/config.toml` `[model.openburnbar]` |
 | **Aider** | `AiderQuotaAdapter.swift` | `.exact` | `~/.aider/analytics.jsonl` | Local interaction token stats (no vendor quota) |
 | **Forge** | `ForgeQuotaAdapter.swift` | `.estimated` | `~/forge/.forge.db` local SQLite | Session counts via OpenBurnBar local gateway |
-| **OpenCode** | `OpenCodeQuotaAdapter` | `.exact` | `~/.local/share/opencode/opencode.db` | Local SQLite session metrics and model details |
-| **Gemini CLI** | _none_ / Local scans | `.unavailable` | Local session files only | Session tokens only (no programmatic quota API) |
+| **OpenCode** | `OpenCodeQuotaAdapter` | `.exact` | `~/.local/share/opencode/opencode.db` | Local SQLite session metrics and model details. Multiple OpenCode Go subscriptions connect as separate accounts; the quota estimate is device-wide and reported once at provider level (see [PROVIDER_ACCOUNTS.md](PROVIDER_ACCOUNTS.md#opencode-go)) |
+| **Gemini CLI** | `GeminiCLIQuotaAdapter.swift` | `.exact` used / remaining unavailable | `~/.gemini/tmp/**/session-*.json(l)` | Used tokens in 24h and 7d windows. Remaining AI Studio / Gemini app / Verizon quota is not published |
 | **Cline** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **Roo Code** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **Kilo Code** | `KiloCodeQuotaAdapter.swift` | `.exact` | Install detection | Visual environment detection only |
@@ -122,10 +123,12 @@ without durable source evidence stay `unknown`.
 | Provider | Auth Type | Credential Format | Header | Scope / Notes |
 |----------|-----------|-------------------|--------|---------------|
 | **Antigravity** | None | N/A (local file) | N/A | Reads `history.jsonl` from `~/.gemini/antigravity-cli/` |
+| **Gemini CLI** | None | N/A (local file) | N/A | Reads used tokens from `~/.gemini/tmp/**/session-*.json(l)`. Remaining AI Studio / Gemini app quota is not published |
 | **Claude Code** | None | N/A (local file) | N/A | Reads `~/.claude/projects/**/*.jsonl` |
 | **Codex** | None | N/A (local file) | N/A | Reads `rollout-*.jsonl` from `~/.codex/sessions/` |
 | **OpenAI (usage)** | Admin API key | `sk-...` | `Authorization: Bearer {key}` | Requires organization admin key for completions usage |
 | **DeepSeek** | API key | `sk-...` | `Authorization: Bearer {key}` | Created at platform.deepseek.com |
+| **Together / Meta Llama** | Together API key | Together console key | `Authorization: Bearer {key}` | Created at api.together.ai/settings/api-keys. Together console sign-in is Google or GitHub — Facebook is not a meter path. Remaining prepaid credits are an explicit unsupported meter (no Bearer balance API). |
 | **Copilot** | GitHub OAuth / PAT | `ghp_...` or OAuth token | `Authorization: token {token}` | `read:user` scope required |
 | **Cursor** | Browser cookie | `WorkosCursorSessionToken={id}::{token}` | `Cookie: {cookieString}` | Extracted locally from database or Safari/Chrome |
 | **Cursor Agent** | None | N/A (local file) | N/A | Reads session logs from `~/.cursor-agent/sessions/` |
@@ -139,8 +142,8 @@ without durable source evidence stay `unknown`.
 | **Hermes** | None | N/A (local file) | N/A | Offline JSONL telemetry scraper |
 | **Pi Agent** | None | N/A (local file) | N/A | Offline workspace interaction logger |
 | **Vercel fx** | CLI auth | N/A (local session files + CLI auth) | N/A | Reads `~/.fx/sessions/` (`session.json`, `usage-v2.json`, `events.jsonl`) |
-| **xAI (Grok)** | API key / Management key | `xai-…` inference key; `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok pacing log + Management API; daemon gateway emits pacing events on routed xAI traffic |
-| **Grok Build CLI** | Local CLI + optional `XAI_API_KEY` | `grok` binary; sessions under `~/.grok/` | OpenBurnBar gateway block in `config.toml` | Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
+| **xAI (Grok)** | API key / Management key | `xai-…` inference key (routing only); `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok remaining-quota is estimated local pacing (no vendor login); GrokBuild uses the Management API |
+| **Grok Build CLI** | Local CLI login (`~/.grok/auth.json`) or `XAI_API_KEY` | `grok login`; sessions under `~/.grok/sessions/` | OpenBurnBar gateway block in `config.toml` | Auth file is presence-only (not a remaining-quota meter). Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
 | **OMP** | Local CLI | `omp` binary | N/A | Uses installed Oh My Pi CLI; OpenBurnBar stores no provider credential |
 | **Prime Agent** | None | N/A (local file) | N/A | Reads `~/.prime/agent/sessions/*.jsonl`; sessions are Recursive Language Model + Continual Harness JSONL; `auth.json` / `models.json` hold API keys per routed backend but are not read by BurnBar |
 | **Muse** | None | N/A (local file) | N/A | Reads `~/.local/share/muse/sessions/**/session.jsonl` envelope JSONL (newest date shard first); `~/.local/share/muse/model-catalog/*.json` lists Spark 1.2/1.3 but leaves `cost` null — bundled catalog prices contributor $0.10/$0.20/$0.002 and standard $1.25/$4.25/$0.15 |
@@ -180,9 +183,11 @@ empty key by default.
 | Provider | Endpoint | Method | Response Shape |
 |----------|----------|--------|---------------|
 | Antigravity | `~/.gemini/antigravity-cli/history.jsonl` | File read | Local history JSONL with detailed token count attributes |
+| Gemini CLI | `~/.gemini/tmp/**/session-*.json(l)` | File read | Local session `usage` / `usageMetadata` token totals (24h and 7d used-only buckets) |
 | Codex | `~/.codex/sessions/rollout-*.jsonl` | File read | `{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":...}}}}` |
 | Claude Code | `~/.claude/projects/**/*.jsonl` | File read | `{"type":"assistant","message":{"model":"...","usage":{"input_tokens":...,"output_tokens":...}}}` |
 | DeepSeek | `GET https://api.deepseek.com/user/balance` | HTTP | `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"...","real_time_balance":"..."}]}` |
+| Together / Meta Llama | `GET https://api.together.ai/v1/billing/usage?month=YYYY-MM&granularity=day` | HTTP | `{"billing_period":"2026-07","data":[{"line_items":[{"cost":"..."}]}],"next_cursor":null}` — org-gated beta; 404 means remaining-credit window unsupported. Folklore `/v1/billing/balance` is not an API (404 HTML). |
 | OpenAI | `GET https://api.openai.com/v1/organization/usage/completions` | HTTP | `{"data":[{"results":[{"input_tokens":...,"output_tokens":...}]}]}` |
 | Copilot | `POST https://api.github.com/copilot_internal/user` | HTTP | `{"copilot_plan":"pro","quota_snapshots":{"premium_interactions":{"remaining":180}}}` |
 | Cursor | `GET https://cursor.com/api/usage-summary` | HTTP | `{"individualUsage":{"plan":{"totalPercentUsed":...},"onDemand":{"used":...}}}` |
@@ -200,14 +205,48 @@ empty key by default.
 
 ---
 
+## Together remaining prepaid credits (Phase 2)
+
+Month-to-date Together spend shipped in #2622 via `GET /v1/billing/usage`.
+Remaining prepaid credits were left console-only pending a second API pass.
+
+**Re-check (2026-09-17):** remaining credits stay console-only. BurnBar
+surfaces that as an **explicit unsupported remaining-credit meter**, not a
+WKWebView scrape and not a number invented from spend.
+
+| Probe | Result |
+|-------|--------|
+| Official OpenAPI Billing tag (`docs.together.ai/openapi.yaml`) | Only `GET /billing/usage` (`getBillingUsage`). No `/billing/balance`, `/credits`, or wallet path. |
+| Credits docs (`docs.together.ai/docs/billing-credits`) | Prepaid credits, auto-recharge, and invoices are **billing-settings console** flows. No Bearer remaining-credit API. |
+| Live `GET https://api.together.ai/v1/billing/usage` with a dummy key | **403** `{"error":"Unauthorized"}` — route exists (same honesty as 401/403 in the adapter). |
+| Live `GET /v1/billing/balance`, `/v1/billing/credits`, `/v1/credits`, `/v1/account` | **404 HTML** (Together console Next.js app). Not a JSON wallet. |
+| Unofficial `/billing/balance` snippets | Third-party folklore. Not in Together OpenAPI. Not implemented. |
+| Fine-tune estimate `user_limit` | Job price-estimate field ("credit limit in dollars"), not remaining prepaid credits. |
+| Inference `x-remaining-credit` header | Unreliable; would require paid inference calls. Not a meter. |
+| Console scrape / WKWebView | Together signs in with **Google or GitHub**, not Facebook. Rejected: fragile, not proven, not required. |
+
+`TogetherQuotaAdapter` therefore:
+
+- keeps the #2622 200 / 404 / 401 / 403 / 429 honesty for month-to-date spend
+- never requests folklore balance paths
+- never invents `remainingValue`, `limitValue`, or `usedPercent` from spend
+- marks spend as a used-only currency signal so Quotas shows **$X.XX used**, not a "Wide Open" remaining battery
+- always states remaining prepaid credits are console-only
+
+Do not add Firebase / Sign in with Facebook for this meter.
+
+---
+
 ## Refresh Cadences
 
 | Provider | Cadence | Auth Required |
 |----------|---------|---------------|
 | Antigravity | Real-time on CLI transaction | None |
+| Gemini CLI | On refresh (local session scan) | None |
 | Claude Code | Real-time on prompt interaction | None |
 | Codex | Real-time on next CLI invocation | None |
 | DeepSeek | On refresh (polled) | Yes |
+| Together / Meta Llama | On refresh (polled) | Yes |
 | OpenAI | On refresh (polled) | Yes |
 | Copilot | Real-time | Yes |
 | MiniMax | On refresh (polled) | Yes |

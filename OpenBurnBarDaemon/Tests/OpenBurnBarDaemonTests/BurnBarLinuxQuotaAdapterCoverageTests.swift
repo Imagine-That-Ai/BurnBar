@@ -9,7 +9,7 @@ final class BurnBarLinuxQuotaAdapterCoverageTests: XCTestCase {
         XCTAssertTrue(BurnBarLinuxQuotaAdapterCoverageCatalog.isAuthoritative())
         XCTAssertEqual(entries.count, AgentProvider.quotaSignalProviders.count)
         XCTAssertEqual(Set(entries.map(\.provider)), Set(AgentProvider.quotaSignalProviders))
-        XCTAssertEqual(entries.filter { $0.state == .liveAdapter }.count, 17)
+        XCTAssertEqual(entries.filter { $0.state == .liveAdapter }.count, 19)
         XCTAssertEqual(entries.filter { $0.state == .unavailable }.count, 2)
         XCTAssertEqual(entries.first?.provider, .antigravity)
         XCTAssertEqual(entries.last?.provider, .xAI)

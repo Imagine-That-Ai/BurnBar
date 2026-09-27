@@ -188,6 +188,45 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertTrue(method?.validate(#"{"opencode-go":{"type":"api"}}"#).isWarning ?? false)
     }
 
+    /// Multiple OpenCode Go subscriptions must be connectable side by side, the
+    /// same way Ollama and Anthropic already are. OpenCode used to mirror its
+    /// credential into the shared `opencode_auth_json` app-keychain account,
+    /// which is a singleton — connecting a second subscription overwrote the
+    /// first one's secret, so the provider-level lane pinned itself to whichever
+    /// account was saved last. Per-slot storage is what keeps N subscriptions
+    /// independent.
+    func test_openCodeStoresPerSlotSoMultipleSubscriptionsDoNotClobberEachOther() {
+        let method = BurnBarProviderAuthRegistry
+            .descriptor(forCatalogProviderID: "opencode")?
+            .method(id: "opencode-auth-json")
+
+        XCTAssertNil(
+            method?.storage.mirrorAccountIdentifier,
+            "A shared mirror account makes the Nth OpenCode Go subscription overwrite the first."
+        )
+        XCTAssertTrue(method?.storage.usesDaemonSlot ?? false)
+
+        // Same storage shape as the providers this parity is measured against.
+        let ollama = BurnBarProviderAuthRegistry
+            .descriptor(forCatalogProviderID: "ollama")?
+            .method(id: "ollama-cloud-key")
+        XCTAssertEqual(method?.storage, ollama?.storage)
+    }
+
+    /// `opencode-go` and its spelling variants must resolve to the same
+    /// descriptor, so a subscription connected under either name lands on one
+    /// provider identity instead of forking into a second, unroutable one.
+    func test_openCodeGoAliasesResolveToTheSameDescriptor() {
+        let canonical = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "opencode")
+        for alias in ["opencode-go", "open-code-go", "open code go", "open-code"] {
+            XCTAssertEqual(
+                BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: alias)?.providerID,
+                canonical?.providerID,
+                "\(alias) should resolve to the canonical OpenCode descriptor"
+            )
+        }
+    }
+
     func test_apiKeyValidation_warnsOnMissingPrefix() {
         let method = BurnBarProviderAuthMethod(
             id: "test",
@@ -231,6 +270,67 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("xai"), .xAI)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("x-ai"), .xAI)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("grok"), .xAI)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("meta"), .together)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("llama"), .together)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("together"), .together)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("together-ai"), .together)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("meta-muse"), .muse)
+        XCTAssertNotEqual(AgentProvider.fromCatalogProviderID("muse"), .together)
+    }
+
+    func test_metaLlama_togetherKeyUnlocksQuotaRefreshWithoutFacebookLogin() {
+        let viaMeta = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "meta")
+        let viaTogether = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "together")
+        let viaLlama = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "llama")
+
+        XCTAssertEqual(viaMeta?.providerID, "meta")
+        XCTAssertEqual(viaTogether?.providerID, "meta")
+        XCTAssertEqual(viaLlama?.providerID, "meta")
+        XCTAssertEqual(viaMeta?.displayName, "Meta Llama")
+
+        let method = viaMeta?.method(id: "meta-together-key")
+        XCTAssertEqual(method?.kind, .apiKey)
+        XCTAssertTrue(method?.unlocksProxyRouting ?? false)
+        XCTAssertTrue(method?.unlocksQuotaRefresh ?? false)
+        XCTAssertTrue(method?.helperText.localizedCaseInsensitiveContains("google or github") ?? false)
+        XCTAssertTrue(method?.helperText.localizedCaseInsensitiveContains("facebook is not a meter path") ?? false)
+        XCTAssertFalse(method?.helperText.localizedCaseInsensitiveContains("sign in with facebook") ?? true)
+        XCTAssertTrue(viaMeta?.quotaHint?.localizedCaseInsensitiveContains("billing/usage") ?? false)
+        XCTAssertTrue(viaMeta?.quotaHint?.localizedCaseInsensitiveContains("404") ?? false)
+        XCTAssertTrue(viaMeta?.quotaHint?.localizedCaseInsensitiveContains("no Bearer balance") ?? false)
+        XCTAssertTrue(method?.helperText.localizedCaseInsensitiveContains("billing/balance") ?? false)
+        XCTAssertEqual(method?.dashboardURL, "https://api.together.ai/settings/api-keys")
+    }
+
+    func test_googleDescriptor_separatesKeyFromLocalMetersAndConsumerUnsupported() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "google")
+        XCTAssertEqual(descriptor?.providerID, "google")
+        XCTAssertEqual(descriptor?.displayName, "Google Gemini")
+        XCTAssertNotNil(BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "gemini"))
+
+        let apiKey = descriptor?.method(id: "google-api-key")
+        XCTAssertEqual(apiKey?.kind, .apiKey)
+        XCTAssertFalse(apiKey?.unlocksProxyRouting ?? true)
+        XCTAssertFalse(apiKey?.unlocksQuotaRefresh ?? true)
+
+        let localMeters = descriptor?.method(id: "google-gemini-cli-local")
+        XCTAssertEqual(localMeters?.kind, .localRuntime)
+        XCTAssertFalse(localMeters?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(localMeters?.unlocksQuotaRefresh ?? false)
+
+        let antigravity = descriptor?.method(id: "google-antigravity-login")
+        XCTAssertEqual(antigravity?.kind, .localRuntime)
+        XCTAssertTrue(antigravity?.unlocksQuotaRefresh ?? false)
+        XCTAssertFalse(antigravity?.unlocksProxyRouting ?? true)
+
+        let consumer = descriptor?.method(id: "google-ai-pro-consumer")
+        XCTAssertNotNil(consumer)
+        XCTAssertFalse(consumer?.unlocksQuotaRefresh ?? true)
+        XCTAssertFalse(consumer?.unlocksProxyRouting ?? true)
+
+        XCTAssertTrue(descriptor?.supportsQuotaRefresh ?? false)
+        XCTAssertNotNil(descriptor?.quotaHint)
+        XCTAssertFalse(descriptor?.quotaHint?.localizedCaseInsensitiveContains("firebase") ?? true)
     }
 
     func test_xaiDescriptor_exposesInferenceAndManagementMethods() {
@@ -241,6 +341,7 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         let methodIDs = Set(descriptor.methods.map(\.id))
         XCTAssertTrue(methodIDs.contains("xai-api-key"))
         XCTAssertTrue(methodIDs.contains("xai-management-key"))
+        XCTAssertTrue(methodIDs.contains("xai-grok-cli"))
 
         guard let management = descriptor.methods.first(where: { $0.id == "xai-management-key" }) else {
             XCTFail("Management-key method missing")
@@ -248,6 +349,14 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         }
         XCTAssertTrue(management.unlocksQuotaRefresh)
         XCTAssertEqual(management.prefixHint, "xai-mgmt-")
+
+        guard let grokCLI = descriptor.methods.first(where: { $0.id == "xai-grok-cli" }) else {
+            XCTFail("Grok CLI method missing")
+            return
+        }
+        XCTAssertEqual(grokCLI.kind, .localRuntime)
+        XCTAssertFalse(grokCLI.unlocksQuotaRefresh)
+        XCTAssertFalse(grokCLI.unlocksProxyRouting)
     }
 
     func test_storageScope_appKeychainHasAccountIdentifier() {

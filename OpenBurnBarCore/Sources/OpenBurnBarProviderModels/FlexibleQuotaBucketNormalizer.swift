@@ -1,5 +1,13 @@
 import Foundation
-import OpenBurnBarKernel
+import OpenBurnBarPlatformSupport
+
+/// Untyped JSON object at the schemaless provider-quota boundary.
+///
+/// Provider billing/subscription payloads have no stable schema, so navigation
+/// stays dictionary-based — but every site spells the type through this alias
+/// instead of repeating the raw untyped-dictionary literal, keeping the
+/// string-any boundary countable at one choke point.
+public typealias QuotaJSONObject = [String: Any]
 
 public enum FlexibleQuotaBucketNormalizer {
 
@@ -435,7 +443,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return nil
     }
 
-    static func date(in dictionary: QuotaJSONObject, keys: [String]) -> Date? {
+    public static func date(in dictionary: QuotaJSONObject, keys: [String]) -> Date? {
         for key in keys {
             guard let value = value(in: dictionary, matching: key) else { continue }
             if let date = parseDateValue(value) {
@@ -555,7 +563,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return dictionary
     }
 
-    static func parseDateValue(_ value: Any) -> Date? {
+    public static func parseDateValue(_ value: Any) -> Date? {
         if let date = value as? Date {
             return date
         }

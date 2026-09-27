@@ -119,6 +119,27 @@ final class UnifiedQuotaSignalCurrencyTests: XCTestCase {
         XCTAssertTrue(bucket.isDisplayableQuotaSignal)
     }
 
+    func test_usedOnlyMeterRendersUsedTokensWithoutFakeRemaining() {
+        let bucket = ProviderQuotaBucket(
+            key: "tokens-24h",
+            label: "Tokens used in the last 24 hours",
+            windowKind: .rollingHours,
+            usedValue: 165,
+            limitValue: nil,
+            remainingValue: nil,
+            usedPercent: nil,
+            resetsAt: nil,
+            unit: .tokens,
+            isEstimated: false,
+            limitKind: "used-only"
+        )
+        let view = UnifiedQuotaSignalView(bucket: bucket, provider: .geminiCLI, compact: false)
+        XCTAssertTrue(view.fullRemainingText.localizedCaseInsensitiveContains("165"))
+        XCTAssertTrue(view.fullRemainingText.localizedCaseInsensitiveContains("used"))
+        XCTAssertFalse(view.fullRemainingText.localizedCaseInsensitiveContains("0 remaining"))
+        XCTAssertFalse(view.fullRemainingText.contains("/ -1"))
+    }
+
     func test_fullRemainingTextFormattingForDisplayModes() {
         let bucket = ProviderQuotaBucket(
             name: "gpt-4o",

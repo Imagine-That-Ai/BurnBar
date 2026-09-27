@@ -134,7 +134,8 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable, Identifiable {
         usedPercent: Double?,
         resetsAt: Date?,
         unit: ProviderQuotaUnit,
-        isEstimated: Bool
+        isEstimated: Bool,
+        limitKind: String? = nil
     ) {
         self.key = key
         self.label = label
@@ -186,6 +187,12 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable, Identifiable {
         var meta: [String: String] = ["label": label, "unit": unit.rawValue]
         if isEstimated { meta["isEstimated"] = "true" }
         if let usedPercent { meta["usedPercent"] = String(usedPercent) }
+        if let limitKind {
+            let trimmed = limitKind.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                meta["limitKind"] = trimmed
+            }
+        }
         self.meta = meta.isEmpty ? nil : meta
     }
 
@@ -617,7 +624,33 @@ public extension ProviderQuotaBucket {
             }
         }
 
+        if isUsedOnlyMeter {
+            return used.isFinite && used >= 0
+        }
+
+        // Used-only currency spend (Together month-to-date) is a real meter
+        // without a remaining-credit window. Show the spend figure; do not
+        // require a remaining fraction that would invent prepaid headroom.
+        if isUsedOnlySpendSignal {
+            return true
+        }
+
         return displayRemainingFraction != nil
+    }
+
+    /// Used-token / used-request meters with no vendor remaining-quota API.
+    public var isUsedOnlyMeter: Bool {
+        meta?["limitKind"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "used-only"
+    }
+
+    /// Month-to-date (or similar) currency spend with no prepaid remaining
+    /// window. Display as used-only; never invent remaining % or a cap.
+    public var isUsedOnlySpendSignal: Bool {
+        unit == .currency
+            && usedValue != nil
+            && limitValue == nil
+            && remainingValue == nil
+            && usedPercent == nil
     }
 }
 

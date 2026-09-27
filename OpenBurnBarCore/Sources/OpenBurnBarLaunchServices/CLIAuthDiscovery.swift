@@ -312,23 +312,41 @@ public enum CLIAuthDiscovery {
                 configDirectoryOverride,
                 fallback: "\(home)/.grok"
             )
-            let sessionsDir = "\(configDir)/sessions"
             let hasConfig = FileManager.default.fileExists(atPath: configDir)
-            let hasSessions = FileManager.default.fileExists(atPath: sessionsDir)
-            let hasAPIKey = !(ProcessInfo.processInfo.environment["XAI_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            let authFile = GrokCLIAuthFile.inspect(
+                fileAt: URL(fileURLWithPath: configDir, isDirectory: true)
+                    .appendingPathComponent("auth.json", isDirectory: false)
+            )
+            let environment = environmentProvider()
+            let hasAPIKey = !(environment["XAI_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
             let authState: CLIAuthState = {
                 if executablePath == nil { return .notInstalled }
+                if let authFile {
+                    switch authFile.kind {
+                    case .oauthSession:
+                        return .authenticated(lastRefresh: nil)
+                    case .apiKey:
+                        return .apiKeyPresent
+                    }
+                }
                 if hasAPIKey { return .apiKeyPresent }
-                if hasConfig || hasSessions { return .authenticated(lastRefresh: nil) }
                 return .notAuthenticated
             }()
+            let accountDescription: String?
+            if let authFile {
+                accountDescription = authFile.accountDescription
+            } else if hasAPIKey {
+                accountDescription = "XAI_API_KEY"
+            } else {
+                accountDescription = nil
+            }
             return CLIAuthInfo(
                 cliType: cliType,
                 isInstalled: executablePath != nil,
                 executablePath: executablePath,
                 authState: authState,
                 configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
-                accountDescription: hasSessions ? "Grok Build local sessions" : nil
+                accountDescription: accountDescription
             )
         case .junie:
             let configDir = normalizedConfigDirectory(
