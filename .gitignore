@@ -124,6 +124,7 @@ crates/openburnbar-media/target-linux-release/
 
 # BurnBar local MCP (Python venv)
 tools/burnbar-mcp/.venv/
+tools/openburnbar-mcp/.venv.bootstrap.lock/
 
 # Internal AI agent memory (not for public consumption)
 .codex/

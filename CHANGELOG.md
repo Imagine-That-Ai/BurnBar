@@ -150,6 +150,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failed with `5 NOT_FOUND` and the background worker path was dead.
 
 ### Changed
+- **Chat send engine off the main thread** — `ChatSessionController` no
+  longer reduces token streams on the main actor. `ChatSendEngine`
+  consumes each backend stream on a background actor (leading/trailing
+  commit throttle included) and emits snapshots the controller applies,
+  while `ChatUsageTracker` prices and attributes usage off-main with
+  only the ledger write hopping back. The flush-before-rethrow
+  contract is pinned by `ChatSendEngineTests` alongside the existing
+  streaming-mutation suite; send-phase pure helpers
+  (`retrievalQueryText`, the workspace prompt section, transcript
+  appends) moved with the engine.
+- **Chat send orchestration moved into the engine** — `ChatSendEngine`
+  now drives the whole turn (`execute(request:pipeline:)`: routing
+  validation, retrieval, jump targets, strategy selection, oracle
+  execution, evidence formatting, prompt assembly, stream creation,
+  consumption) and emits the pre-stream phases as `ChatSendEvent`
+  cases; `ChatSessionController.send()` only commits the user message
+  and applies events. All eleven orchestration behaviors run exactly
+  as before (same phase order, same supersede guards, same
+  flush-before-rethrow contract, same `send()` return timing for
+  relay/mission/pet-bubble callers), and prompt history crosses into
+  the engine as a `Sendable` value. New `ChatSendExecuteTests`
+  pin each phase order, early exit, and the error flush path.
+- **Swarm background power gate on Android and Windows** — both ports
+  now enforce the iOS `SwarmBackgroundPowerPolicy` resolve chain
+  instead of hardcoding their own cadence. Disabled/static plans run
+  no loop; prominent runs 30fps and subtle 15fps with scaled
+  particles, no auto-cycling, and no sparkles. Android resolves the
+  plan inside `SwarmBackground` from prefs plus battery, network, and
+  lifecycle sensors; the Windows `SwarmCanvasHost` honors it through
+  the unit-tested `SwarmHostRenderGate`, and
+  `OpenBurnBar.Particles.Tests` joined the solution so CI runs the
+  gate suite. (Also repaired a missing `EndProject` line in
+  `windows/OpenBurnBar.sln`.)
+- **Settings gate cluster ported to Kotlin and C#** — the portable
+  `SettingsManager` core (`ChatBackendId`/`HermesModelId` identity and
+  CSV codecs, chat-model resolution, summary provider order, the
+  lossless JSON string-list codec) now lives in Android's
+  `SettingsGatePolicies` and five `OpenBurnBar.App.Settings` types
+  with byte-compatible wire values, covered by 18 Android and 124
+  Windows tests. `ChatBackendId` gains Junie, fx, Grok, and Kimi on
+  all three platforms.
 - **Receipts chat** — every slip now shows a summary of what the session
   was actually about, a Chat lens with the indexed transcript, and
   clickable links: `openburnbar://receipts/{id}` lands on that slip,
@@ -267,6 +308,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `burnbar://mission/{id}` deep link. ⌘⇧M is free again.
 
 ### Added
+- **Windows swarm resolve site: prefs + live sensors drive the render plan** —
+  the dashboard and Mission Control backdrops no longer run the
+  `SwarmCanvasHost` always-on default: a new `SwarmRenderPlanOwner`
+  (prefs/sensors owner) loads the persisted swarm prefs from
+  `%LOCALAPPDATA%\OpenBurnBar\swarm-background.json`, reads the live WinRT
+  sensors (battery plug state, Wi-Fi/wired-Ethernet connection, battery
+  saver, animations-enabled), and resolves
+  `SwarmBackgroundPowerPolicy.Resolve` into `SwarmCanvasHost.RenderPlan`,
+  re-resolving on every sensor transition. Every gating decision sits in
+  the portable `SwarmPlanResolver` (prefs + sensor snapshot →
+  visibility-constrain → condition-eval → resolve), covered by 25 new
+  `SwarmPlanResolverTests` alongside the file-backed `SwarmPreferencesStore`
+  (unset file preserves the historical always-on everywhere/always look;
+  corrupt payloads self-heal to the disabled codec default, matching the
+  Android store split). The plan's particle/motion scales still stay
+  Swift-Core FFI-side until the vend call carries them.
+- **Android swarm Where/When pickers with live sensors** — Settings → Theme
+  & SOTA UX gains the iOS `SwarmBackgroundSettingsView` Where/When sections:
+  Show Swarms (Disabled / Agents Tab Only / Everywhere, always visible) and
+  Condition (Always / Power Connected Only / Wi-Fi Only, shown while the
+  swarm is enabled somewhere), both searchable via Settings search and
+  persisted in DataStore (`burnbar.swarm.prefs`) so the choice survives
+  relaunches. The swarm gate now reads live platform sensors — a
+  `SwarmEnvironmentMonitor` port of the iOS shared monitor (battery-plugged
+  receiver, default-network callback, battery-saver receiver, all seeded
+  with a synchronous snapshot) plus the composition lifecycle — instead of
+  one-shot snapshot reads, so plug/unplug, Wi-Fi, and battery-saver
+  transitions recompose the gate immediately. The `SwarmBackgroundPowerPolicy`
+  guard chain is untouched: sensors and persisted prefs only supply its
+  inputs. Unset keys default to everywhere/always (Android's historical
+  always-on look); the JSON codec default stays disabled per the iOS
+  cross-platform contract. Wi-Fi detection now also counts wired Ethernet,
+  matching iOS.
 - **Agent Watch Live Activity push token path** — start requests ActivityKit
   `pushType: .token` when the running binary has `aps-environment`, then
   observes `pushTokenUpdates`. The probe reads the public

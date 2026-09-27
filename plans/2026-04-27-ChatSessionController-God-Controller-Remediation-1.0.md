@@ -110,7 +110,14 @@ These extractions have no async streaming dependencies and can be done safely fi
 
 ### Phase 3: Extract Chat Send Engine (High Impact, Off Main Thread)
 
-- [ ] **Task 3.1.** Create `AgentLens/Services/Chat/ChatSendEngine.swift` (actor, **not** `@MainActor`).
+> Status 2026-09-27: landed as a strangler extraction. `ChatSendEngine.execute(request:pipeline:)`
+> owns turn sequencing (routing → retrieval → stream → consumption) and runs stream
+> consumption + usage off the main actor; DataStore-bound phase bodies are injected as
+> `@MainActor` `ChatSendPipeline` closures because `DataStore` is a `@MainActor` facade.
+> Moving those bodies fully off-main awaits DataStore concurrency surgery. Task 3.3
+> (`buildConversationJumpTargets`) intentionally remains controller-side until then.
+
+- [x] **Task 3.1.** Create `AgentLens/Services/Chat/ChatSendEngine.swift` (actor, **not** `@MainActor`).
   - Define an actor that encapsulates everything currently in `send()` and its helpers.
   - Inject: `DataStore`, `CLIBridge`, `SettingsManager`, `searchService: SearchService`, `LocalIndexOracle`, `ChatUsageTracker`.
   - Define an `AsyncStream<ChatSendEvent>` output for streaming progress. Events:
@@ -121,7 +128,7 @@ These extractions have no async streaming dependencies and can be done safely fi
     - `.usageRecorded(assistantId:)`
   - *Rationale:* The engine performs heavy work (retrieval queries, database writes, CLI streaming, usage persistence) and must not block the main thread. Using an actor with an output stream preserves structured concurrency and makes the streaming lifecycle explicit.
 
-- [ ] **Task 3.2.** Move `send()` body into `ChatSendEngine.execute(request:)`.
+- [x] **Task 3.2.** Move `send()` body into `ChatSendEngine.execute(request:)`.
   - Preserve all existing logic:
     1. Backend availability validation (Hermes/OpenClaw/Codex/Claude checks).
     2. Retrieval query building (`retrievalQueryText`, `BurnBarSearchPlan.plan`).
@@ -141,13 +148,13 @@ These extractions have no async streaming dependencies and can be done safely fi
   - This method depends on `DataStore` and retrieval results. Keep it inside the engine since it is part of the pre-stream preparation phase.
   - *Rationale:* Jump targets are computed once per send, before streaming begins.
 
-- [ ] **Task 3.4.** Move `saveUsageIfNeeded` into `AgentLens/Services/Chat/ChatUsageTracker.swift` (actor, not `@MainActor`).
+- [x] **Task 3.4.** Move `saveUsageIfNeeded` into `AgentLens/Services/Chat/ChatUsageTracker.swift` (actor, not `@MainActor`).
   - Move: `saveUsageIfNeeded(_:backend:requestModel:responseMessageID:startedAt:endedAt:)`.
   - Move the provider/model/cost mapping logic currently inside the closure at lines 1040-1057.
   - *Rationale:* Usage tracking is a side effect that writes to `DataStore`. Isolating it removes ~70 lines and makes it testable.
   - *Verification:* Token usage records appear in database after a completed stream.
 
-- [ ] **Task 3.5.** Refactor `ChatSessionController.send()` to delegate to `ChatSendEngine` and consume the event stream.
+- [x] **Task 3.5.** Refactor `ChatSessionController.send()` to delegate to `ChatSendEngine` and consume the event stream.
   - `send()` becomes:
     1. Prepare user message and append to `messages` (MainActor).
     2. Call `await sendEngine.execute(request: ...)` and iterate the `AsyncStream`.
@@ -157,14 +164,14 @@ These extractions have no async streaming dependencies and can be done safely fi
   - `cancelGeneration()` cancels the stream task and the engine's CLI bridge.
   - *Rationale:* The controller stays `@MainActor` and `@Observable` but is now a thin event consumer rather than a heavy orchestrator.
 
-- [ ] **Task 3.6.** Move `retrievalQueryText(for:messages:)` and `isShortAffirmation(_:)` into `ChatSendEngine` (private static methods).
+- [x] **Task 3.6.** Move `retrievalQueryText(for:messages:)` and `isShortAffirmation(_:)` into `ChatSendEngine` (private static methods).
   - These are send-specific helpers with no UI dependency.
   - *Rationale:* Keep send-phase utilities with the engine.
 
-- [ ] **Task 3.7.** Move `burnBarWorkspacePromptSection(path:)` into `ChatSendEngine` or a shared `ChatPromptComposer` if prompt assembly grows further.
+- [x] **Task 3.7.** Move `burnBarWorkspacePromptSection(path:)` into `ChatSendEngine` or a shared `ChatPromptComposer` if prompt assembly grows further.
   - *Rationale:* Prompt sections are part of the send phase, not the controller.
 
-- [ ] **Task 3.8.** Move `appendStreamingText(_:to:)` into `ChatSendEngine` or `ChatTranscriptPiece` extension.
+- [x] **Task 3.8.** Move `appendStreamingText(_:to:)` into `ChatSendEngine` or `ChatTranscriptPiece` extension.
   - *Rationale:* This is a pure array-manipulation helper used only during streaming.
 
 ---
