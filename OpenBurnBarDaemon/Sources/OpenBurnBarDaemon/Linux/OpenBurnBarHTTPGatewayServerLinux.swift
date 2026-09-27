@@ -1422,11 +1422,20 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
+    private struct MemoryEgressDenialBody: Encodable {
+        struct Detail: Encodable {
+            let code: String
+            let message: String
+            var type = "memory_egress_denied"
+        }
+        let error: Detail
+    }
+
     /// Memory Pro denials use the OpenAI-style object error shape so the
     /// Python engine can read a stable `code` (same body as the Darwin gateway).
     private func memoryEgressDenialResponse(_ denial: BurnBarMemoryEgressDenial) -> Data {
-        let payload: [String: Any] = ["error": ["code": denial.code, "message": denial.message, "type": "memory_egress_denied"]]
-        let body = (try? JSONSerialization.data(withJSONObject: payload)).flatMap { String(data: $0, encoding: .utf8) }
+        let payload = MemoryEgressDenialBody(error: .init(code: denial.code, message: denial.message))
+        let body = (try? JSONEncoder().encode(payload)).flatMap { String(data: $0, encoding: .utf8) }
             ?? #"{"error":{"code":"\#(denial.code)","message":"denied"}}"#
         return httpResponse(status: 403, headers: ["Content-Type": "application/json"], body: body)
     }
