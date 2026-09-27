@@ -698,7 +698,7 @@ laptop too. The contract:
   nothing at all. The app also purges what may no longer drain on every state
   transition it observes, so the two halves agree.
 - **Consent.** A dedicated sub-toggle, "Sync memories to my other devices" in
-  **Settings → Privacy**, defaults off even when "Back up approved memories"
+  **Settings → Devices & Sync → Memory Sync**, defaults off even when "Back up approved memories"
   is already on — backing memory up is not the same consent as syncing it
   across devices. Both sit under the same Data Vault entitlement (Pro Max or
   Ultra): `firestore.rules` requires it on every `memory_facts` **write**, and

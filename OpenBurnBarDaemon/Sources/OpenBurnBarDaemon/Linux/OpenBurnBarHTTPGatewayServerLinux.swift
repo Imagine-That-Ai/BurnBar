@@ -130,6 +130,10 @@ public actor BurnBarHTTPGatewayServer {
     let factoryExecutor: FactoryDroidProviderExecutor
     let modelHealthStore: BurnBarGatewayModelHealthStore
     let logger: any BurnBarDaemonLogging
+    /// Memory Pro egress gate; nil means memory-purpose requests are refused.
+    /// Parity with the Darwin gateway: the daemon wires the same enforcer on
+    /// both platforms so a `memory-*` purpose never bypasses policy on Linux.
+    let memoryEgress: BurnBarMemoryEgressEnforcer?
     let rateLimiter: BurnBarRateLimiter?
     let unauthenticatedLoopbackRateLimiter: BurnBarRateLimiter?
 
@@ -142,8 +146,6 @@ public actor BurnBarHTTPGatewayServer {
 
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
-    /// Accepted for launch parity with the macOS server; the Linux gateway does not yet route memory publication.
-    let memoryEgress: BurnBarMemoryEgressEnforcer?
 
     public init(
         configuration: BurnBarGatewayConfiguration,
@@ -160,7 +162,6 @@ public actor BurnBarHTTPGatewayServer {
         memoryEgress: BurnBarMemoryEgressEnforcer? = nil,
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
-        self.memoryEgress = memoryEgress
         self.configuration = configuration
         self.configStore = configStore
         self.usageRecorder = usageRecorder
@@ -172,6 +173,7 @@ public actor BurnBarHTTPGatewayServer {
         self.modelHealthStore = modelHealthStore
         self.modelCatalogCacheTTL = max(0, modelCatalogCacheTTL)
         self.logger = logger
+        self.memoryEgress = memoryEgress
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
         }
@@ -403,7 +405,29 @@ public actor BurnBarHTTPGatewayServer {
             return .buffered(httpResponse(status: 204, headers: cors, body: Data()))
         }
 
-        if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+        let staticToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        let purpose = GatewayPurpose(header: request.headers[GatewayPurpose.headerName])
+        if let purpose {
+            // Memory Pro: a memory-purpose request may present the static token
+            // or a scoped token for that purpose, and may only hit the two proxy
+            // paths. Everything else is refused before routing — same rule as
+            // the Darwin gateway.
+            let presented = gatewayAuthToken(from: request.headers)
+            var authorized = false
+            if let presented, let staticToken, constantTimeTokensEqual(presented, staticToken) {
+                authorized = true
+            } else if let presented, let memoryEgress {
+                authorized = await memoryEgress.validateToken(presented, purpose: purpose)
+            }
+            guard authorized, BurnBarMemoryEgressEnforcer.allowedPaths.contains(request.path) else {
+                logger.warning("gateway_request_unauthorized", metadata: ["path": request.path, "purpose": purpose.rawValue])
+                return .buffered(httpResponse(
+                    status: 401,
+                    headers: ["Content-Type": "application/json"],
+                    body: #"{"error":{"message":"unauthorized"}}"#
+                ))
+            }
+        } else if let requiredToken = staticToken {
             guard let provided = gatewayAuthToken(from: request.headers),
                   constantTimeTokensEqual(provided, requiredToken) else {
                 logger.warning("gateway_request_unauthorized", metadata: ["path": request.path])
@@ -444,13 +468,13 @@ public actor BurnBarHTTPGatewayServer {
         case ("GET", "/v1/models/catalog"):
             response = .buffered(await linuxModelsListResponse(catalog: true))
         case ("POST", "/v1/chat/completions"):
-            response = await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
+            response = await handleModelEndpoint(.chatCompletions, request: request, purpose: purpose, fileDescriptor: fileDescriptor, corsHeaders: cors)
         case ("POST", "/v1/embeddings"):
             response = .buffered(jsonResponse(status: 501, message: "embeddings are not available on the Linux gateway yet"))
         case ("POST", "/v1/responses"):
-            response = await handleModelEndpoint(.responses, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
+            response = await handleModelEndpoint(.responses, request: request, purpose: purpose, fileDescriptor: fileDescriptor, corsHeaders: cors)
         case ("POST", "/v1/messages"):
-            response = await handleModelEndpoint(.anthropicMessages, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
+            response = await handleModelEndpoint(.anthropicMessages, request: request, purpose: purpose, fileDescriptor: fileDescriptor, corsHeaders: cors)
         default:
             response = .buffered(httpResponse(
                 status: 404,
@@ -464,16 +488,20 @@ public actor BurnBarHTTPGatewayServer {
     private func handleModelEndpoint(
         _ endpoint: LinuxGatewayEndpoint,
         request: LinuxHTTPRequest,
+        purpose: GatewayPurpose?,
         fileDescriptor: Int32,
         corsHeaders: [String: String]
     ) async -> LinuxGatewayResponse {
         let startedAt = Date()
-        let executionSource = UsageExecutionSourceResolver.fromClientMarker(
+        let clientExecutionSource = UsageExecutionSourceResolver.fromClientMarker(
             request.headers["x-openburnbar-client"],
             allowCustom: true
         ) ?? UsageExecutionSourceResolver.fromClientMarker(
             request.headers["user-agent"]
         ) ?? .unknown
+        // Memory Pro spend is attributed to its own execution source so the
+        // daily cap reads the right ledger rows (Darwin parity).
+        let executionSource = purpose == nil ? clientExecutionSource : BurnBarMemoryEgressEnforcer.executionSource
         guard !request.body.isEmpty else {
             return .buffered(jsonResponse(status: 400, message: "request body required"))
         }
@@ -522,8 +550,19 @@ public actor BurnBarHTTPGatewayServer {
                 for choice in choices {
                     let route = choice.route
                     let attemptStartedAt = Date()
+                    if let purpose {
+                        // Policy gate runs per route so a fail-over candidate is
+                        // judged on its own provider, never the first one's.
+                        if let denial = await memoryEgressDenial(purpose: purpose, route: route, requestBytes: request.body.count) {
+                            return .buffered(memoryEgressDenialResponse(denial))
+                        }
+                    }
                     do {
-                        if decoded.stream == true,
+                        // Memory-purpose requests are always buffered: the
+                        // egress chain needs the response size, and Darwin
+                        // never relays SSE for them either.
+                        if purpose == nil,
+                           decoded.stream == true,
                            let streamPlan = streamPlan(
                             for: route,
                             formatFamily: formatFamily,
@@ -585,13 +624,35 @@ public actor BurnBarHTTPGatewayServer {
                             }
                         }
 
-                        let response = try await proxyEndpoint(
-                            body: request.body,
-                            route: route,
-                            endpoint: endpoint,
-                            formatFamily: formatFamily,
-                            variant: resolvedModel.variant
-                        )
+                        let response: BurnBarProviderProxyResponse
+                        do {
+                            response = try await proxyEndpoint(
+                                body: request.body,
+                                route: route,
+                                endpoint: endpoint,
+                                formatFamily: formatFamily,
+                                variant: resolvedModel.variant
+                            )
+                        } catch {
+                            // The request left the machine; the content-free
+                            // chain records the attempt even when upstream failed.
+                            if let purpose, let memoryEgress {
+                                await memoryEgress.record(
+                                    purpose: purpose, providerID: route.providerID, modelID: route.resolvedModelID,
+                                    requestBytes: request.body.count, responseBytes: 0, outcome: "failed",
+                                    code: Self.memoryEgressFailureCode(error),
+                                    latencyMs: Int(Date().timeIntervalSince(attemptStartedAt) * 1_000)
+                                )
+                            }
+                            throw error
+                        }
+                        if let purpose, let memoryEgress {
+                            await memoryEgress.record(
+                                purpose: purpose, providerID: route.providerID, modelID: route.resolvedModelID,
+                                requestBytes: request.body.count, responseBytes: response.body.count, outcome: "allowed", code: nil,
+                                latencyMs: Int(Date().timeIntervalSince(attemptStartedAt) * 1_000)
+                            )
+                        }
                         await recordQuotaSignalIfAvailable(
                             headers: response.headers,
                             route: route,
@@ -1325,6 +1386,56 @@ public actor BurnBarHTTPGatewayServer {
 
     private func jsonResponse(status: Int, message: String) -> Data {
         httpResponse(status: status, headers: ["Content-Type": "application/json"], body: errorBody(message))
+    }
+
+    /// Evaluates the Memory Pro policy for one route. Returns the denial to
+    /// send (already logged to the egress chain) or nil when the request may
+    /// leave the machine. A daemon without an enforcer refuses every
+    /// memory-purpose request rather than silently proxying it.
+    private func memoryEgressDenial(
+        purpose: GatewayPurpose,
+        route: BurnBarProviderRoute,
+        requestBytes: Int
+    ) async -> BurnBarMemoryEgressDenial? {
+        guard let memoryEgress else {
+            return BurnBarMemoryEgressDenial(
+                code: "CLOUD_CONSENT_REQUIRED",
+                message: "Memory egress policy is not configured on this daemon."
+            )
+        }
+        do {
+            try await memoryEgress.evaluate(purpose: purpose, providerID: route.providerID)
+            return nil
+        } catch let denial as BurnBarMemoryEgressDenial {
+            await memoryEgress.record(
+                purpose: purpose, providerID: route.providerID, modelID: route.resolvedModelID,
+                requestBytes: requestBytes, responseBytes: 0, outcome: "denied", code: denial.code, latencyMs: 0
+            )
+            return denial
+        } catch {
+            return BurnBarMemoryEgressDenial(
+                code: "CLOUD_CONSENT_REQUIRED",
+                message: "Memory egress policy unavailable: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    /// Memory Pro denials use the OpenAI-style object error shape so the
+    /// Python engine can read a stable `code` (same body as the Darwin gateway).
+    private func memoryEgressDenialResponse(_ denial: BurnBarMemoryEgressDenial) -> Data {
+        let payload: [String: Any] = ["error": ["code": denial.code, "message": denial.message, "type": "memory_egress_denied"]]
+        let body = (try? JSONSerialization.data(withJSONObject: payload)).flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"error":{"code":"\#(denial.code)","message":"denied"}}"#
+        return httpResponse(status: 403, headers: ["Content-Type": "application/json"], body: body)
+    }
+
+    /// A short, content-free code for the egress chain when upstream fails.
+    private nonisolated static func memoryEgressFailureCode(_ error: Error) -> String {
+        if let providerError = error as? BurnBarProviderExecutorError,
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            return "UPSTREAM_\(statusAndBody.statusCode)"
+        }
+        return "UPSTREAM_ERROR"
     }
 
     private func errorBody(_ message: String) -> String {

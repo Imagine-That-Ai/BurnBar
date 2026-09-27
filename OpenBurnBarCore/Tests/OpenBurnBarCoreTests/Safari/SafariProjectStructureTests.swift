@@ -31,7 +31,7 @@ final class SafariProjectStructureTests: XCTestCase {
         )
     }
 
-    func test_entitlementsAreSandboxedAndClaimNoProfileRestrictedCapabilities() throws {
+    func test_entitlementsAreSandboxedAndShareOnlyProfileAuthorizedCapabilities() throws {
         let entitlements = try propertyList(
             at: repositoryRoot()
                 .appendingPathComponent(
@@ -45,24 +45,84 @@ final class SafariProjectStructureTests: XCTestCase {
             entitlements["com.apple.security.network.server"],
             "The Safari appex is a loopback client and must not listen for inbound traffic."
         )
-        XCTAssertNil(
-            entitlements["com.apple.security.application-groups"],
+
+        // App Groups and Keychain Sharing are profile-restricted for Developer ID.
+        // They are claimed here only because a MAC_APP_DIRECT profile for
+        // com.openburnbar.app.safari-extension now exists and the website release
+        // lane validates that it authorizes exactly these values.
+        XCTAssertEqual(
+            entitlements["com.apple.security.application-groups"] as? [String],
+            ["group.com.openburnbar.app"],
             """
-            App Groups are profile-restricted for Developer ID. Claiming one without a \
-            MAC_APP_DIRECT profile for com.openburnbar.app.safari-extension makes the \
-            website release lane fail closed. It lands with the native bridge and its profile.
+            The appex may claim only the App Group its MAC_APP_DIRECT profile \
+            authorizes; anything else makes the release lane fail closed.
             """
         )
-        XCTAssertNil(
-            entitlements["keychain-access-groups"],
+        XCTAssertEqual(
+            entitlements["keychain-access-groups"] as? [String],
+            ["$(AppIdentifierPrefix)com.openburnbar.app"],
             """
-            Keychain Sharing is profile-restricted for Developer ID; same constraint as \
-            App Groups above.
+            The Keychain group must match the host app's entry in \
+            AgentLens/Resources/OpenBurnBarRelease.entitlements — a group only \
+            shares when both sides name the same one — and must stay templated so \
+            the team identifier is never hard-coded.
             """
         )
         XCTAssertNil(
             entitlements["com.apple.security.keychain-access-groups"],
             "Use the canonical code-signing entitlement key, not a sandbox-prefixed lookalike."
+        )
+    }
+
+    func test_websiteReleaseValidatesAndEmbedsTheSafariExtensionProfile() throws {
+        let release = try String(
+            contentsOf: repositoryRoot()
+                .appendingPathComponent("scripts/build-macos-website-release.sh"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            release.contains("OPENBURNBAR_SAFARI_EXTENSION_PROFILE"),
+            "The appex profile must be overridable so CI can supply it from a secret."
+        )
+        XCTAssertTrue(
+            release.contains(
+                "cp \"$safari_extension_profile\" "
+                    + "\"$safari_extension_appex/Contents/embedded.provisionprofile\""
+            ),
+            """
+            An appex claiming profile-restricted entitlements must embed the profile \
+            that authorizes them, or macOS refuses to load the extension.
+            """
+        )
+        XCTAssertTrue(
+            release.contains("$safari_extension_signing_entitlements"),
+            """
+            The appex must be signed with the expanded entitlements, not the raw \
+            template — $(AppIdentifierPrefix) is not substituted by codesign.
+            """
+        )
+        XCTAssertTrue(
+            release.contains("group.com.openburnbar.app"),
+            "The release lane must verify the profile authorizes the claimed App Group."
+        )
+        XCTAssertTrue(
+            release.contains(
+                "grep -qx \"[[:space:]]*group\\.com\\.openburnbar\\.app[[:space:]]*\""
+            ),
+            """
+            The App Group grant must be matched EXACTLY. A team-prefixed wildcard \
+            (TEAM.*) is a different application-group namespace and does not \
+            authorize the unprefixed group the appex claims, so an OR against it \
+            would accept a renewed profile that signs but is rejected at runtime.
+            """
+        )
+        XCTAssertTrue(
+            release.contains("safari_extension_profile_team_id\" != \"$app_profile_team_id"),
+            """
+            A different team on the appex profile would silently break group and \
+            Keychain sharing with the host app, so the lane must reject it.
+            """
         )
     }
 

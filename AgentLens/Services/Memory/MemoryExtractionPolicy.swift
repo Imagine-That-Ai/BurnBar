@@ -41,8 +41,10 @@ enum MemoryExtractionPolicy {
     /// separately and far more tightly by `ChatTranscriptExtractor.maxWallClock`.
     static let maxPumpDuration: TimeInterval = 4 * 60
 
-    /// Reserved daily USD cap for a future explicit cloud-egress gate. Local-only v1
-    /// does not send transcripts to cloud providers.
+    /// Daily USD cap for cloud egress. Chat-memory extraction remains local-only
+    /// and never consults it; the usage-memory cloud lane (U5) realizes it
+    /// client-side as the default cap of `UsageMemoryBudgetLedger.cloudBudgetOK`,
+    /// the belt-and-braces second gate under the server's token metering.
     static let defaultDailyCapUSD: Double = 0.50
 
     /// Default per-request timeout (seconds) for the extraction LLM round-trip when no

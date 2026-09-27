@@ -253,6 +253,7 @@ func statusText(_ status: Int) -> String {
     case 204: return "No Content"
     case 400: return "Bad Request"
     case 401: return "Unauthorized"
+    case 403: return "Forbidden"
     case 413: return "Payload Too Large"
     case 404: return "Not Found"
     case 429: return "Too Many Requests"

@@ -59,6 +59,13 @@ final class SummarySettings {
         didSet { persistence.set(summaryLocalBaseURL, forKey: "summaryLocalBaseURL") }
     }
 
+    /// Local vision-language model for usage-memory image curation (U5), served
+    /// from the same Ollama endpoint as `summaryLocalModel`/`summaryLocalBaseURL`.
+    /// Empty string = images are skipped locally (text-only local curation).
+    var usageMemoryLocalVLModel: String = "qwen3-vl:8b" {
+        didSet { persistence.set(usageMemoryLocalVLModel, forKey: "usageMemoryLocalVLModel") }
+    }
+
     var summaryMLXModel: String = "mlx-community/Qwen3-4B-4bit" {
         didSet { persistence.set(summaryMLXModel, forKey: "summaryMLXModel") }
     }
@@ -143,6 +150,7 @@ final class SummarySettings {
         self.summaryOllamaBaseURL = persistence.string(forKey: "summaryOllamaBaseURL", defaultValue: "http://127.0.0.1:11434")
         self.summaryLocalModel = persistence.string(forKey: "summaryLocalModel", defaultValue: "qwen3.5:9b")
         self.summaryLocalBaseURL = persistence.string(forKey: "summaryLocalBaseURL", defaultValue: "http://127.0.0.1:11434")
+        self.usageMemoryLocalVLModel = persistence.string(forKey: "usageMemoryLocalVLModel", defaultValue: "qwen3-vl:8b")
         self.summaryMLXModel = persistence.string(forKey: "summaryMLXModel", defaultValue: "mlx-community/Qwen3-4B-4bit")
         self.summaryMLXBaseURL = persistence.string(forKey: "summaryMLXBaseURL", defaultValue: "http://127.0.0.1:8080")
         if persistence.objectExists(forKey: "summaryMaxPromptChars") {

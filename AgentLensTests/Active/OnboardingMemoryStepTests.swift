@@ -91,7 +91,8 @@ final class OnboardingMemoryStepTests: XCTestCase {
     func testSkipNoteNamesWhereEverythingLivesAfterwards() {
         let note = OnboardingMemoryContent.skipNote
         XCTAssertTrue(note.contains("Settings \u{203A} Agents \u{203A} CLIs"))
-        XCTAssertTrue(note.contains("Settings \u{203A} General \u{203A} Indexing"))
+        XCTAssertTrue(note.contains("Settings \u{203A} General \u{203A} Search & Memory"))
+        XCTAssertTrue(note.contains("Settings \u{203A} Devices & Sync \u{203A} Memory Sync"))
     }
 
     // MARK: Learn more

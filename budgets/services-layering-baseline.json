@@ -4,7 +4,7 @@
     "largestCycle": 34,
     "componentsInCycles": 34,
     "upwardReferences": 62,
-    "cyclicReferences": 1657,
+    "cyclicReferences": 1656,
     "servicesRootFiles": 58
   },
   "servicesRootFiles": [
@@ -272,7 +272,6 @@
     "Services/(root) -> Services/Settings : UsageMemoryAuthorityWriteGate": 1,
     "Services/(root) -> Services/Settings : UsageMemoryCloudGate": 1,
     "Services/(root) -> Services/Settings : UsageMemoryExtractionGate": 1,
-    "Services/(root) -> Services/Settings : UsageMemoryModelPlacement": 1,
     "Services/(root) -> Services/Settings : UsageMemoryRemoteConfigSnapshot": 1,
     "Services/(root) -> Services/Settings : VisualCapturePreferences": 1,
     "Services/(root) -> Services/Settings : VisualCaptureSource": 1,

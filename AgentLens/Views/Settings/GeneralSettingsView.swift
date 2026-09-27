@@ -123,8 +123,8 @@ struct GeneralSettingsView: View {
                     SettingsDrillRow(
                         icon: "magnifyingglass.circle.fill",
                         iconTint: DesignSystem.Colors.amber,
-                        title: "Indexing & Search",
-                        subtitle: "Local index, embeddings, cross-encoder reranking",
+                        title: "Search & Memory",
+                        subtitle: "Local index, embeddings, reranking, and the on-device Memory controls",
                         value: settingsManager.conversationIndexingEnabled ? "On" : "Off",
                         valueTint: settingsManager.conversationIndexingEnabled
                             ? DesignSystem.Colors.success
@@ -460,7 +460,7 @@ struct IndexingOverviewDetailView: View {
             }
         }
         .background(DesignSystem.Colors.background)
-        .navigationTitle("Indexing & Search")
+        .navigationTitle("Search & Memory")
     }
 }
 
