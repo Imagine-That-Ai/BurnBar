@@ -1013,10 +1013,9 @@ jobs:
     needs: [classify, apple]
     if: needs.classify.outputs.rust == 'true'
     # Routing (cost + security): pull-request and merge-queue candidates may both
-    # contain untrusted PR code, so they run only on isolated hosted macOS pools.
-    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
-    # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # contain untrusted PR code, so they run only on free GitHub-hosted macOS
+    # runners. No pool toggle: self-hosted and paid pools are retired.
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -1093,10 +1092,9 @@ jobs:
     # full OpenBurnBarTests corpus (including DomainCoreShadowEvidenceSpoolTests).
     timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 90 }}
     # Routing (cost + security): pull-request and merge-queue candidates may both
-    # contain untrusted PR code, so they run only on isolated hosted macOS pools.
-    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
-    # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # contain untrusted PR code, so they run only on free GitHub-hosted macOS
+    # runners. No pool toggle: self-hosted and paid pools are retired.
+    runs-on: macos-26
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1

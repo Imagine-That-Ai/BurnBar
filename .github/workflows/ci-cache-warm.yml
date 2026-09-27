@@ -45,9 +45,9 @@ name: CI cache warm (default branch)
 #                                 pr-native-fast (host target on hosted arm64)
 #   x86_64-apple-darwin           codeql (nightly Swift; codeql-pr is non-Swift)
 #
-# (burnbar-turbo intentionally does NOT restore these entries: it runs on the
-# isolated self-hosted turbo fleet, a different Xcode surface, and builds its
-# own artifacts under its turbo-* keys.)
+# (Retired note: the former burnbar-turbo local fleet built its own artifacts
+# under turbo-* keys and never restored these entries. All CI now runs on
+# free GitHub-hosted runners; these entries serve every consumer.)
 #
 # Whichever job saved first won, so a thin single-slice artifact could be
 # restored by a consumer that needed a different slice. This job deliberately
@@ -310,8 +310,8 @@ jobs:
 
   spm:
     name: Warm SwiftPM caches
-    # Same hosted macos-26 image as App PR Gate consumers. Do not route through
-    # MACOS_GATE_POOL — warm must stay on the image PRs/MQ restore from.
+    # Same hosted macos-26 image as App PR Gate consumers: warm must stay on
+    # the image PRs/MQ restore from. No pool toggle exists anymore.
     runs-on: macos-26
     timeout-minutes: 60
     steps:

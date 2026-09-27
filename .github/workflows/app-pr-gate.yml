@@ -53,10 +53,9 @@ jobs:
   app-build-test:
     name: AgentLens Rust + Swift build/test prerequisites
     # Routing (cost + security): post-merge main is trusted, but this lane still
-    # uses the isolated hosted macOS pools so MACOS_GATE_POOL / CI_POOL policy
-    # stays unchanged. Set repo var MACOS_GATE_POOL=paid to force the capped
-    # hosted pool for a billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # uses free GitHub-hosted macOS runners. No pool toggle: self-hosted and
+    # paid pools are retired.
+    runs-on: macos-26
     # Cold cache + libsignal FFI + the full app build plus the bounded smoke
     # catalog run serially here. Observed on merge_group 2026-09-26 (run
     # 36254294865): CPU-gate build ~32m + smoke ~32m ≈ 65m of this 90m budget.
@@ -204,9 +203,9 @@ jobs:
 
   app-lab-gate:
     name: AgentLens Lab build + test
-    # Routing (cost + security): same pool policy as app-build-test — hosted
-    # macOS lanes, MACOS_GATE_POOL=paid still opts into the capped paid group.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # Routing (cost + security): same as app-build-test — free GitHub-hosted
+    # macOS runners, no pool toggle.
+    runs-on: macos-26
     # A separate job, not a second step inside app-build-test: the Lab lane is
     # a second full xcodebuild of a different scheme (OpenBurnBarLab), and
     # running it serially doubled app-build-test's wall clock — merge_group
@@ -308,14 +307,10 @@ jobs:
   mobile-build-gate:
     name: Mobile build + unit test
     # Routing (cost + security): post-merge main is trusted, but this lane still
-    # uses the isolated hosted macOS pools so MACOS_GATE_POOL / CI_POOL policy
-    # stays unchanged. Set repo var MACOS_GATE_POOL=paid to force the capped
-    # hosted pool for a billed fast burst.
-    # Hosted macos-26 (or the paid pool). Do not send this lane to
-    # burnbar-swift: that self-hosted fleet is missing cmake/protobuf on
-    # some machines, which is why scheduled App PR Gate went red. cmake
-    # is still ensured below for any runner that needs libsignal FFI.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # uses free GitHub-hosted macOS runners. No pool toggle: self-hosted and
+    # paid pools are retired.
+    # cmake is still ensured below for any runner that needs libsignal FFI.
+    runs-on: macos-26
     # Compile + unit test execution: Signal FFI + full mobile app-and-tests
     # compile, THEN run the unit-test bundle on a booted simulator.
     # Observing-first: build-for-testing first (fail fast on compile errors),

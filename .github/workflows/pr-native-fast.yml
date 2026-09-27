@@ -138,9 +138,9 @@ jobs:
     name: Mac app smoke + impacted tests
     needs: [classify]
     if: needs.classify.outputs.macos == 'true' && vars.MACOS_APP_SMOKE_ENABLED == 'true'
-    # Routing (cost + security): same isolated hosted macOS pools as the
+    # Routing (cost + security): same free GitHub-hosted macOS runners as the
     # other native PR jobs — PR/merge-queue code is untrusted.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: macos-26
     timeout-minutes: 40
     steps:
       - name: Check out repository
@@ -254,10 +254,9 @@ jobs:
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
     # Routing (cost + security): pull-request and merge-queue candidates may both
-    # contain untrusted PR code, so they run only on isolated hosted macOS pools.
-    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
-    # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # contain untrusted PR code, so they run only on free GitHub-hosted macOS
+    # runners. No pool toggle: self-hosted and paid pools are retired.
+    runs-on: macos-26
     # `swift test` on both packages compiles the libsignal Swift FFI on a cold
     # cache; the Swift Core lane uses 40 min for the same work.
     timeout-minutes: 40
@@ -368,10 +367,9 @@ jobs:
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
     # Routing (cost + security): pull-request and merge-queue candidates may both
-    # contain untrusted PR code, so they run only on isolated hosted macOS pools.
-    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
-    # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # contain untrusted PR code, so they run only on free GitHub-hosted macOS
+    # runners. No pool toggle: self-hosted and paid pools are retired.
+    runs-on: macos-26
     timeout-minutes: 15
     steps:
       - name: Check out repository

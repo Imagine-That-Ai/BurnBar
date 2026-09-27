@@ -1,5 +1,12 @@
 # BurnBar turbo runners
 
+> **RETIRED 2026-09-27:** CI no longer dispatches to any local fleet — the
+> `burnbar-turbo.yml` dispatcher is deleted and `verify-github-hosted-runners-only`
+> fails closed on any reintroduction. Everything runs on free GitHub-hosted
+> runners, except the consent-gated physical-hardware jobs in
+> `linux-product-parity.yml`. This runbook stays for the local host tooling
+> (`scripts/ci/burnbar-turbo-runner-host.sh`) until the fleet is decommissioned.
+
 BurnBar's urgent native lane uses owned Apple-silicon hardware without exposing
 either physical Mac to code from a public pull request. The fleet target is one
 disposable worker on the 24 GB M4 Pro Mac mini and two disposable workers on the

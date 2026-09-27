@@ -30,7 +30,8 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
-      - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
+      - "scripts/ci/verify-github-hosted-runners-only.mjs"
+      - "scripts/ci/verify-github-hosted-runners-only.test.mjs"
       - "scripts/ci/burnbar-turbo-runner-host.sh"
       - "scripts/ci/burnbar-turbo-runner-guest.sh"
       - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
@@ -197,7 +198,8 @@ on:
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
       - "scripts/ci/await-burnbar-ci-gate.mjs"
       - "scripts/ci/await-burnbar-ci-gate.test.mjs"
-      - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
+      - "scripts/ci/verify-github-hosted-runners-only.mjs"
+      - "scripts/ci/verify-github-hosted-runners-only.test.mjs"
       - "scripts/ci/burnbar-turbo-runner-host.sh"
       - "scripts/ci/burnbar-turbo-runner-guest.sh"
       - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
@@ -500,13 +502,14 @@ jobs:
       - name: Verify PR secret boundaries
         run: node scripts/ci/verify-pr-secret-boundaries.mjs
 
-      - name: Verify BurnBar turbo runner boundary
+      - name: Verify GitHub-hosted runners only (turbo retired)
         run: |
           bash -n scripts/ci/burnbar-turbo-runner-host.sh
           bash -n scripts/ci/burnbar-turbo-runner-guest.sh
           node --test \
-            scripts/ci/verify-burnbar-turbo-workflow.test.mjs \
+            scripts/ci/verify-github-hosted-runners-only.test.mjs \
             scripts/ci/burnbar-turbo-runner-host.test.mjs
+          node scripts/ci/verify-github-hosted-runners-only.mjs
 
       - name: Self-test curl bearer-token argv boundary
         run: bash scripts/ci/verify-curl-bearer-token-boundary.test.sh

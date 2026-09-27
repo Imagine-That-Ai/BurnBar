@@ -64,6 +64,11 @@ on:
         description: Successful first-attempt Linux Release Candidate run at this exact commit
         required: true
         type: string
+      confirm_local_runners:
+        description: Explicit consent to run on local self-hosted hardware (physical-iPad host + distro boxes). Default off; all other CI runs only on free GitHub-hosted runners.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -79,7 +84,9 @@ concurrency:
 jobs:
   p16-ipad-producer:
     name: P-16 physical iPad trust-cycle producer
-    if: inputs.requirement == 'P-16'
+    if: inputs.requirement == 'P-16' && inputs.confirm_local_runners
+    # Physical-hardware exception (deliberate, consent-gated): needs the paired
+    # iPad on this exact host. Everything else in CI is GitHub-hosted-only.
     runs-on:
       - self-hosted
       - macos
@@ -268,7 +275,10 @@ jobs:
   validate:
     name: ${{ inputs.requirement }} on ${{ inputs.environment }}
     needs: [p32-macos-producer, p39-macos-producer]
-    if: always() && (inputs.requirement != 'P-32' || needs.p32-macos-producer.result == 'success') && (inputs.requirement != 'P-39' || needs.p39-macos-producer.result == 'success')
+    if: always() && (inputs.requirement != 'P-32' || needs.p32-macos-producer.result == 'success') && (inputs.requirement != 'P-39' || needs.p39-macos-producer.result == 'success') && inputs.confirm_local_runners
+    # Distro-box exception (deliberate, consent-gated): installs and validates
+    # signed candidate packages on the target distro. Everything else in CI is
+    # GitHub-hosted-only.
     runs-on:
       - self-hosted
       - linux
