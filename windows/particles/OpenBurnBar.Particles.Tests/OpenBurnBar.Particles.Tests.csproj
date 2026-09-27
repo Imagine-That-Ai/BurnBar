@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable particle-engine renderer core.
+    Runs today via `dotnet test` on the authoring host — the SAME managed
+    assembly that ships on Windows. Mirrors the proven cloudsync/storage
+    test pattern (net10.0, xUnit): a higher-runtime test project references
+    the net8.0 library.
+
+    Coverage:
+      • SwarmBackgroundPolicyTests — the swarm gate-policy layer (power
+        policy resolve chain, visibility lattice, decorative-effects gate,
+        environment truth table, persisted-preference codec) proven against
+        OpenBurnBarMobile/Models/SwarmBackgroundPreferences.swift, plus the
+        glyph-token table cross-check against the Settings catalog so the
+        renderer's default glyphs can never drift from the provider list.
+      • SwarmPlanResolverTests — the Windows resolve site the WinUI owner
+        calls (prefs + sensor snapshot → visibility-constrain →
+        condition-eval → resolve) and the file-backed prefs store
+        (unset/corrupt/round-trip defaults).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Particles/OpenBurnBar.Particles.csproj" />
+    <ProjectReference Include="../../app/OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj" />
+  </ItemGroup>
+
+</Project>

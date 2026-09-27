@@ -34,6 +34,7 @@ namespace OpenBurnBar.App.Dashboard;
 public sealed class DashboardBackdrop : IDisposable
 {
     private readonly SwarmCanvasHost _host = new();
+    private readonly SwarmRenderPlanOwner _planOwner;
     private readonly UISettings _uiSettings = new();
     private SwarmSubstrateDot[] _dots = Array.Empty<SwarmSubstrateDot>();
     private double _fieldWidth;
@@ -46,6 +47,7 @@ public sealed class DashboardBackdrop : IDisposable
     {
         _stage = BuildStage(_family);
         _host.FrameProvider = ProvideFrame;
+        _planOwner = new SwarmRenderPlanOwner(_host);
         SetLayout(DashboardLayoutMeta.Default);
     }
 
@@ -195,5 +197,9 @@ public sealed class DashboardBackdrop : IDisposable
         return new SubstrateStage(accent, accent2, ink, dark: _isDark);
     }
 
-    public void Dispose() => _host.Dispose();
+    public void Dispose()
+    {
+        _planOwner.Dispose();
+        _host.Dispose();
+    }
 }

@@ -29,6 +29,10 @@ public sealed class ChatBackendIdTests
                 ChatBackendId.Forge,
                 ChatBackendId.Antigravity,
                 ChatBackendId.CursorAgent,
+                ChatBackendId.Junie,
+                ChatBackendId.Fx,
+                ChatBackendId.Grok,
+                ChatBackendId.Kimi,
             },
             ChatBackendMetadata.AllCases);
     }
@@ -45,6 +49,10 @@ public sealed class ChatBackendIdTests
     [InlineData(ChatBackendId.Forge, "forge")]
     [InlineData(ChatBackendId.Antigravity, "antigravity")]
     [InlineData(ChatBackendId.CursorAgent, "cursorAgent")]
+    [InlineData(ChatBackendId.Junie, "junie")]
+    [InlineData(ChatBackendId.Fx, "fx")]
+    [InlineData(ChatBackendId.Grok, "grok")]
+    [InlineData(ChatBackendId.Kimi, "kimi")]
     public void RawValue_MatchesSwiftRawValue(ChatBackendId backend, string expected)
     {
         Assert.Equal(expected, backend.RawValue());
@@ -94,6 +102,10 @@ public sealed class ChatBackendIdTests
     [InlineData(ChatBackendId.Forge, AgentProviderBrand.ForgeDev)]
     [InlineData(ChatBackendId.Antigravity, AgentProviderBrand.Antigravity)]
     [InlineData(ChatBackendId.CursorAgent, AgentProviderBrand.CursorAgent)]
+    [InlineData(ChatBackendId.Junie, AgentProviderBrand.Junie)]
+    [InlineData(ChatBackendId.Fx, AgentProviderBrand.Fx)]
+    [InlineData(ChatBackendId.Grok, AgentProviderBrand.XAI)]
+    [InlineData(ChatBackendId.Kimi, AgentProviderBrand.Kimi)]
     public void AgentProvider_MapsToSwiftLogoProvider(ChatBackendId backend, AgentProviderBrand expected)
     {
         Assert.Equal(expected, backend.AgentProvider());
@@ -120,5 +132,49 @@ public sealed class ChatBackendIdTests
             Assert.False(string.IsNullOrEmpty(backend.ShortLabel()));
             Assert.False(string.IsNullOrEmpty(backend.Glyph()));
         }
+    }
+
+    [Fact]
+    public void NewBackends_CarrySwiftDisplayMetadata()
+    {
+        Assert.Equal("Junie", ChatBackendId.Junie.DisplayName());
+        Assert.Equal("fx", ChatBackendId.Fx.DisplayName());
+        Assert.Equal("Grok", ChatBackendId.Grok.DisplayName());
+        Assert.Equal("Kimi", ChatBackendId.Kimi.DisplayName());
+        Assert.Equal("✽", ChatBackendId.Junie.Glyph());
+        Assert.Equal("ƒ", ChatBackendId.Fx.Glyph());
+        Assert.Equal("⚡", ChatBackendId.Grok.Glyph());
+        Assert.Equal("☾", ChatBackendId.Kimi.Glyph());
+    }
+
+    [Fact]
+    public void WithEnabled_AppendsDeduped_AndRemoves()
+    {
+        var start = new[] { ChatBackendId.Codex, ChatBackendId.Hermes };
+        Assert.Equal(
+            new[] { ChatBackendId.Codex, ChatBackendId.Hermes, ChatBackendId.Grok },
+            ChatBackendMetadata.WithEnabled(start, ChatBackendId.Grok, true));
+        Assert.Equal(
+            start,
+            ChatBackendMetadata.WithEnabled(start, ChatBackendId.Codex, true));
+        Assert.Equal(
+            new[] { ChatBackendId.Hermes },
+            ChatBackendMetadata.WithEnabled(start, ChatBackendId.Codex, false));
+        Assert.Equal(
+            start,
+            ChatBackendMetadata.WithEnabled(start, ChatBackendId.Kimi, false));
+    }
+
+    [Theory]
+    [InlineData("codex,hermes", "grok", "codex,hermes")]
+    [InlineData(null, "grok", "grok")]
+    [InlineData(null, "nope", "")]
+    [InlineData(null, null, "")]
+    public void MigrateCsv_UpgradesLegacySingleSelection(
+        string? existingCsv,
+        string? legacySingle,
+        string expected)
+    {
+        Assert.Equal(expected, ChatBackendMetadata.MigrateCsv(existingCsv, legacySingle));
     }
 }

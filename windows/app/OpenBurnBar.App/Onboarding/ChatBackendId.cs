@@ -31,6 +31,10 @@ public enum ChatBackendId
     Forge,
     Antigravity,
     CursorAgent,
+    Junie,
+    Fx,
+    Grok,
+    Kimi,
 }
 
 /// <summary>Metadata for <see cref="ChatBackendId"/>, parity with the Swift enum members.</summary>
@@ -39,8 +43,9 @@ public static class ChatBackendMetadata
     /// <summary>
     /// Enabled/ordered list order. Swift: the hand-built <c>static var allCases</c>
     /// (codex, claude, hermes, piAgent, openclaw, openClaude, omp, droid, forge,
-    /// antigravity, cursorAgent) — NOT declaration order. This is the order enabled
-    /// backends render in and the order a default engine falls back through.
+    /// antigravity, cursorAgent, junie, fx, grok, kimi) — NOT declaration order.
+    /// This is the order enabled backends render in and the order a default
+    /// engine falls back through.
     /// </summary>
     public static readonly ChatBackendId[] AllCases =
     {
@@ -55,6 +60,10 @@ public static class ChatBackendMetadata
         ChatBackendId.Forge,
         ChatBackendId.Antigravity,
         ChatBackendId.CursorAgent,
+        ChatBackendId.Junie,
+        ChatBackendId.Fx,
+        ChatBackendId.Grok,
+        ChatBackendId.Kimi,
     };
 
     /// <summary>The persisted raw value (Swift <c>rawValue</c>). Drives CSV round-trip.</summary>
@@ -71,6 +80,10 @@ public static class ChatBackendMetadata
         ChatBackendId.Forge => "forge",
         ChatBackendId.Antigravity => "antigravity",
         ChatBackendId.CursorAgent => "cursorAgent",
+        ChatBackendId.Junie => "junie",
+        ChatBackendId.Fx => "fx",
+        ChatBackendId.Grok => "grok",
+        ChatBackendId.Kimi => "kimi",
         _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, null),
     };
 
@@ -103,6 +116,10 @@ public static class ChatBackendMetadata
         ChatBackendId.Forge => "Forge",
         ChatBackendId.Antigravity => "Antigravity",
         ChatBackendId.CursorAgent => "Cursor Agent",
+        ChatBackendId.Junie => "Junie",
+        ChatBackendId.Fx => "fx",
+        ChatBackendId.Grok => "Grok",
+        ChatBackendId.Kimi => "Kimi",
         _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, null),
     };
 
@@ -120,6 +137,10 @@ public static class ChatBackendMetadata
         ChatBackendId.Forge => "Forge",
         ChatBackendId.Antigravity => "AGY",
         ChatBackendId.CursorAgent => "Cursor",
+        ChatBackendId.Junie => "Junie",
+        ChatBackendId.Fx => "fx",
+        ChatBackendId.Grok => "Grok",
+        ChatBackendId.Kimi => "Kimi",
         _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, null),
     };
 
@@ -137,6 +158,10 @@ public static class ChatBackendMetadata
         ChatBackendId.Forge => "▰",
         ChatBackendId.Antigravity => "✧",
         ChatBackendId.CursorAgent => "➤",
+        ChatBackendId.Junie => "✽",
+        ChatBackendId.Fx => "ƒ",
+        ChatBackendId.Grok => "⚡",
+        ChatBackendId.Kimi => "☾",
         _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, null),
     };
 
@@ -155,6 +180,10 @@ public static class ChatBackendMetadata
         ChatBackendId.Forge => AgentProviderBrand.ForgeDev,
         ChatBackendId.Antigravity => AgentProviderBrand.Antigravity,
         ChatBackendId.CursorAgent => AgentProviderBrand.CursorAgent,
+        ChatBackendId.Junie => AgentProviderBrand.Junie,
+        ChatBackendId.Fx => AgentProviderBrand.Fx,
+        ChatBackendId.Grok => AgentProviderBrand.XAI,
+        ChatBackendId.Kimi => AgentProviderBrand.Kimi,
         _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, null),
     };
 
@@ -164,6 +193,7 @@ public static class ChatBackendMetadata
     {
         ChatBackendId.Codex or ChatBackendId.Claude or ChatBackendId.Droid
             or ChatBackendId.Forge or ChatBackendId.Antigravity or ChatBackendId.CursorAgent
+            or ChatBackendId.Junie or ChatBackendId.Fx or ChatBackendId.Grok or ChatBackendId.Kimi
             or ChatBackendId.OpenClaude or ChatBackendId.Omp => true,
         ChatBackendId.Hermes or ChatBackendId.OpenClaw or ChatBackendId.PiAgent => false,
         _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, null),
@@ -191,4 +221,33 @@ public static class ChatBackendMetadata
     /// <summary>Swift <c>encodeEnabledList(_:)</c>.</summary>
     public static string EncodeEnabledList(IEnumerable<ChatBackendId> backends) =>
         string.Join(",", backends.Select(backend => backend.RawValue()));
+
+    /// <summary>Swift <c>ChatBackendSettings.setChatBackendEnabled</c> as a pure
+    /// list transform: enabling appends (deduped), disabling removes all copies.</summary>
+    public static IReadOnlyList<ChatBackendId> WithEnabled(
+        IReadOnlyList<ChatBackendId> current,
+        ChatBackendId id,
+        bool enabled)
+    {
+        if (enabled)
+        {
+            return current.Contains(id) ? current : current.Concat(new[] { id }).ToList();
+        }
+
+        return current.Where(backend => backend != id).ToList();
+    }
+
+    /// <summary>Swift <c>ChatBackendSettings.init</c> migration: a persisted CSV
+    /// wins; else a legacy single <c>chatBackendID</c> token upgrades to a
+    /// one-element CSV; else the list starts empty.</summary>
+    public static string MigrateCsv(string? existingCsv, string? legacySingleRawValue)
+    {
+        if (existingCsv is not null)
+        {
+            return existingCsv;
+        }
+
+        ChatBackendId? only = legacySingleRawValue is null ? null : FromRawValue(legacySingleRawValue);
+        return only is null ? string.Empty : EncodeEnabledList(new[] { only.Value });
+    }
 }

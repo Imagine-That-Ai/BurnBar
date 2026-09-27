@@ -21,6 +21,10 @@ architecture, the FFI vend contract, and the measured perf numbers.
   loop in macOS `SwarmCanvasView`). Each frame it pulls the decoded
   `SwarmSubstrateFrame` from `FrameProvider` (the FFI vend), wraps the drawing
   session, and calls the active `ISwarmSubstrate`.
+- `SwarmRenderPlanOwner.cs` — the prefs/sensors owner: loads the persisted
+  swarm prefs, reads the live WinRT sensors (battery, network, battery-saver,
+  animations), and resolves `SwarmBackgroundPowerPolicy` into the host's
+  `RenderPlan` via the unit-tested portable `SwarmPlanResolver`.
 
 ## Why it does not build on macOS
 
@@ -41,5 +45,7 @@ host.FrameProvider = (size, elapsed) =>
     // Returns the immutable per-frame snapshot from Swift Core SwarmSimulation.
     return VendCurrentFrame(size, elapsed);
 };
+// Resolve prefs + live sensors into host.RenderPlan (dispose with the host).
+var planOwner = new SwarmRenderPlanOwner(host);
 someGrid.Children.Add(host.Control);
 ```

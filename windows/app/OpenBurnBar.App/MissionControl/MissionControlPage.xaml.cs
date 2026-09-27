@@ -20,6 +20,7 @@ public sealed partial class MissionControlPage : Page
     private readonly MissionConsoleViewModel _viewModel;
     private readonly MissionBackdropFrameProvider _backdrop = new();
     private SwarmCanvasHost? _canvas;
+    private SwarmRenderPlanOwner? _planOwner;
 
     public MissionControlPage()
     {
@@ -68,6 +69,7 @@ public sealed partial class MissionControlPage : Page
                 FrameProvider = (size, elapsed) =>
                     _backdrop.Build(size.Width, size.Height, elapsed.TotalSeconds),
             };
+            _planOwner = new SwarmRenderPlanOwner(_canvas);
             BackdropHost.Child = _canvas.Control;
         }
         catch (Exception ex)
@@ -86,6 +88,8 @@ public sealed partial class MissionControlPage : Page
         }
 
         BackdropHost.Child = null;
+        _planOwner?.Dispose();
+        _planOwner = null;
         _canvas.Dispose();
         _canvas = null;
     }

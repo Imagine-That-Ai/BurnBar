@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenBurnBar.Particles.Model;
+using OpenBurnBar.Particles.Policy;
 using OpenBurnBar.Particles.Substrates;
 using WinColor = Windows.UI.Color;
 
@@ -52,6 +53,8 @@ public sealed class SwarmCanvasHost : IDisposable
     private bool _rendering;
     private bool _disposed;
     private TimeSpan _lastFrame;
+    private SwarmBackgroundRenderPlan _renderPlan = SwarmBackgroundRenderPlan.ProminentLive;
+    private bool _staticFrameRendered;
 
     public SwarmCanvasHost()
     {
@@ -97,6 +100,30 @@ public sealed class SwarmCanvasHost : IDisposable
     /// </summary>
     public Func<Windows.Foundation.Size, TimeSpan, SwarmSubstrateFrame?>? FrameProvider { get; set; }
 
+    /// <summary>
+    /// The resolved swarm render plan (see <see cref="SwarmBackgroundPowerPolicy"/>).
+    /// Defaults to prominent-live — the host's historical always-on behavior.
+    /// Disabled plans never render, static plans render one frame, and live
+    /// plans honor the plan's fps cap (see <see cref="SwarmHostRenderGate"/>).
+    /// The prefs/sensors owner resolves this from
+    /// <c>SwarmBackgroundPowerPolicy.Resolve</c>; particle-scale and
+    /// motion-scale stay Swift-Core FFI-side until the vend call carries them.
+    /// </summary>
+    public SwarmBackgroundRenderPlan RenderPlan
+    {
+        get => _renderPlan;
+        set
+        {
+            if (_renderPlan == value)
+            {
+                return;
+            }
+
+            _renderPlan = value;
+            _staticFrameRendered = false;
+        }
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (_renderingSubscribed)
@@ -119,9 +146,12 @@ public sealed class SwarmCanvasHost : IDisposable
         }
 
         TimeSpan now = _clock.Elapsed;
-        // The substrate field is ambient. Thirty frames per second keeps it fluid while
-        // avoiding duplicate redraws on high-refresh displays.
-        if (now - _lastFrame < TimeSpan.FromMilliseconds(30))
+        // The swarm gate owns the mode → frame-budget decision: disabled plans
+        // never render, static plans render one frame, live plans honor the
+        // plan's fps cap (30 prominent, 15 subtle).
+        SwarmHostFrameAction action = SwarmHostRenderGate.DecideAction(
+            _renderPlan, now - _lastFrame, _staticFrameRendered);
+        if (action != SwarmHostFrameAction.Render)
         {
             return;
         }
@@ -131,6 +161,10 @@ public sealed class SwarmCanvasHost : IDisposable
         {
             RenderFrame(now);
             _lastFrame = now;
+            if (_renderPlan.Mode == SwarmRenderMode.StaticBackdrop)
+            {
+                _staticFrameRendered = true;
+            }
         }
         catch (Exception ex) when (_device.IsDeviceLost(ex.HResult))
         {

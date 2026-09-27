@@ -288,11 +288,14 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "cloudsync-appcheck-windows", "cloudsync-appcheck-windows", "{EE08816B-51CB-20BF-0B85-F1F0598F77D4}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBurnBar.CloudSync.AppCheck.Windows.Tests", "tests\cloudsync-appcheck-windows\OpenBurnBar.CloudSync.AppCheck.Windows.Tests.csproj", "{DE97BEFD-AE2A-4A79-BBCA-33B2E8EF4DF6}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBurnBar.App.SharedUi", "app\OpenBurnBar.App.SharedUi\OpenBurnBar.App.SharedUi.csproj", "{128A373A-6EAF-44A4-B9F5-46E4D35519C7}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "shared-ui", "shared-ui", "{2821BCD0-21D6-F0A3-8AF0-DF073FB38573}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBurnBar.App.SharedUi.Tests", "tests\shared-ui\OpenBurnBar.App.SharedUi.Tests.csproj", "{97920C27-4426-4B2A-81C1-17FEC39B8B12}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBurnBar.Particles.Tests", "particles\OpenBurnBar.Particles.Tests\OpenBurnBar.Particles.Tests.csproj", "{726193B6-EF80-4799-B01D-7719CF70ECC8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -1858,6 +1861,22 @@ Global
 		{97920C27-4426-4B2A-81C1-17FEC39B8B12}.Release|x86.Build.0 = Release|Any CPU
 		{97920C27-4426-4B2A-81C1-17FEC39B8B12}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{97920C27-4426-4B2A-81C1-17FEC39B8B12}.Release|Any CPU.Build.0 = Release|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Debug|ARM64.Build.0 = Debug|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Debug|x64.Build.0 = Debug|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Debug|x86.Build.0 = Debug|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Release|ARM64.Build.0 = Release|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Release|x64.ActiveCfg = Release|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Release|x64.Build.0 = Release|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Release|x86.ActiveCfg = Release|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Release|x86.Build.0 = Release|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{726193B6-EF80-4799-B01D-7719CF70ECC8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1995,5 +2014,6 @@ Global
 		{128A373A-6EAF-44A4-B9F5-46E4D35519C7} = {F95F473B-E98A-ACD6-1986-755F447BE36F}
 		{2821BCD0-21D6-F0A3-8AF0-DF073FB38573} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{97920C27-4426-4B2A-81C1-17FEC39B8B12} = {2821BCD0-21D6-F0A3-8AF0-DF073FB38573}
+		{726193B6-EF80-4799-B01D-7719CF70ECC8} = {D4753522-31B0-7A5F-0250-AB71BE0A7DC1}
 	EndGlobalSection
 EndGlobal
