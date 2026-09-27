@@ -16,6 +16,10 @@ export function redisOptionsForConfig(config: RedisClientConfig): RedisOptions {
     lazyConnect: false,
     connectTimeout: 10_000,
     commandTimeout: 30_000,
+    // ioredis 6 defaults to RESP3 (HELLO 3). Keep the RESP2 wire protocol the
+    // relay's pub/sub + quota paths were built and proven against, and stay
+    // compatible with managed Redis endpoints that reject HELLO.
+    protocol: 2,
   };
   if (tlsEnabled) {
     options.tls = {

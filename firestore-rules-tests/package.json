@@ -28,8 +28,8 @@
     "test:plaintext-secret-fields": "firebase emulators:exec --only firestore --project burnbar-test 'node plaintext-secret-fields.test.js'"
   },
   "dependencies": {
-    "@firebase/rules-unit-testing": "^5.0.1",
-    "firebase": "12.17.1"
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "12.19.0"
   },
   "license": "AGPL-3.0-only"
 }

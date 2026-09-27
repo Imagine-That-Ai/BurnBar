@@ -18,6 +18,10 @@ test("defaults Redis to local plaintext development", () => {
   assert.equal(redisOptionsForConfig(config).tls, undefined);
 });
 
+test("pins Redis to the RESP2 wire protocol", () => {
+  assert.equal(redisOptionsForConfig(loadRelayConfig({})).protocol, 2);
+});
+
 test("configures TLS for rediss Redis URLs with a PEM CA", () => {
   const config = loadRelayConfig({
     REDIS_URL: "rediss://:secret@10.1.2.3:6378",

@@ -14,12 +14,7 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
-import type {
-  AuthenticationResponseJSON,
-  AuthenticatorTransportFuture,
-  RegistrationResponseJSON,
-  WebAuthnCredential,
-} from "@simplewebauthn/server";
+import type { AuthenticationResponseJSON, RegistrationResponseJSON, WebAuthnCredential } from "@simplewebauthn/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
@@ -45,7 +40,7 @@ interface StoredPasskeyCredential {
   credentialId: string;
   publicKey: string;
   counter: number;
-  transports?: AuthenticatorTransportFuture[];
+  transports?: string[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -98,7 +93,7 @@ function parseStoredPasskeyCredential(raw: unknown): StoredPasskeyCredential | u
   if (typeof raw.counter !== "number" || !Number.isFinite(raw.counter)) return undefined;
   if (!(raw.createdAt instanceof Timestamp) || !(raw.updatedAt instanceof Timestamp)) return undefined;
   const transports = Array.isArray(raw.transports)
-    ? raw.transports.filter((item): item is AuthenticatorTransportFuture => typeof item === "string")
+    ? raw.transports.filter((item): item is string => typeof item === "string")
     : undefined;
   return {
     credentialId: raw.credentialId,
