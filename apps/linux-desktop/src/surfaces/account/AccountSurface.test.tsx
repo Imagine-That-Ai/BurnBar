@@ -103,6 +103,9 @@ describe('AccountSurface', () => {
   });
   afterEach(() => {
     cleanup();
+    // Spies sit on zustand state objects that setState copies forward; since
+    // Vitest 4, restore alone leaves those copies mocked, so reset first.
+    vi.resetAllMocks();
     vi.restoreAllMocks();
   });
 

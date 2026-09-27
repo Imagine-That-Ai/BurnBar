@@ -259,34 +259,34 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
-    "@size-limit/file": "12.1.0",
+    "@size-limit/file": "14.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.6.0",
     "@types/vscode": "^1.95.0",
     "@typescript-eslint/eslint-plugin": "8.60.0",
     "@typescript-eslint/parser": "8.60.0",
-    "@vitest/coverage-v8": "4.1.8",
-    "@vscode/test-electron": "^2.5.2",
-    "dependency-cruiser": "18.1.0",
+    "@vitest/coverage-v8": "5.0.1",
+    "@vscode/test-electron": "^3.1.0",
+    "dependency-cruiser": "18.4.0",
     "eslint": "9.39.4",
     "eslint-config-prettier": "10.1.8",
     "knip": "5.88.1",
-    "mocha": "^11.7.2",
+    "mocha": "^12.0.2",
     "prettier": "3.8.3",
-    "size-limit": "12.1.0",
+    "size-limit": "14.0.0",
     "typescript": "^5.9.3",
-    "vitest": "4.1.8"
+    "vitest": "5.0.1"
   },
   "dependencies": {
     "@sentry/node": "10.69.0",
-    "globals": "17.9.0"
+    "globals": "17.12.0"
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",
     "diff": "^8.0.4",
     "vite": "^7.3.2",
     "postcss": "^8.5.10",
-    "esbuild": "0.28.1",
+    "esbuild": "0.28.2",
     "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3"
   },

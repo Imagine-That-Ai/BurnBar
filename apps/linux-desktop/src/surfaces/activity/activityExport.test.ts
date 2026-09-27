@@ -82,11 +82,18 @@ describe('activity export', () => {
   });
 
   it('fails closed when the shell cannot provide a document download surface', () => {
-    expect(() => downloadActivityExport({
-      filename: 'activity.json',
-      content: '{}\n',
-      mimeType: 'application/json'
-    }, undefined)).toThrow(/unavailable/i);
+    // Model a webview without object-URL support explicitly instead of
+    // relying on the test DOM's URL global lacking createObjectURL.
+    vi.stubGlobal('URL', {});
+    try {
+      expect(() => downloadActivityExport({
+        filename: 'activity.json',
+        content: '{}\n',
+        mimeType: 'application/json'
+      })).toThrow(/unavailable/i);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('exports a complete daemon snapshot only after resolving every source and body', async () => {

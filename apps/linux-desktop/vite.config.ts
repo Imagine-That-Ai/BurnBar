@@ -61,7 +61,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       target: 'es2021',
-      minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
+      minify: !process.env.TAURI_DEBUG ? 'oxc' : false,
       sourcemap: !!process.env.TAURI_DEBUG,
       outDir: windowsWebview ? 'dist-windows' : 'dist'
     }

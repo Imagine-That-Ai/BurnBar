@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 /** @type {import('next').NextConfig} */
 
 // In development the Next client runtime (webpack HMR / react-refresh)
@@ -66,6 +68,9 @@ const nextConfig = {
   // Static export keeps this deployable to Firebase Hosting like the rest of the repo.
   output: "export",
   images: { unoptimized: true },
+  // The console imports workspace sources from ../../packages, so Turbopack's
+  // root is the repo root (pinned so it is not inferred from lockfiles).
+  turbopack: { root: fileURLToPath(new URL("../..", import.meta.url)) },
   // `output: export` does not run next.config headers in production hosting; the
   // equivalent CSP block is returned to the primary agent for firebase.json. We
   // still set headers here so `next dev` and any server runtime carry them.
