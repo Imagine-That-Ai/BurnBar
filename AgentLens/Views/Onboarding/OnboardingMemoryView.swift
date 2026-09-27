@@ -71,7 +71,7 @@ enum OnboardingMemoryContent {
     /// Deliberately a link and not a step: it opens in the member's browser, it
     /// is never the way forward, and the step works with no network at all —
     /// nothing here is fetched, the copy above is compiled in.
-    static let learnMoreURL = URL(string: "https://burnbar.ai/memory#duties")!
+    static let learnMoreURL = URL(staticString: "https://burnbar.ai/memory#duties")
 
     static let learnMoreTitle = "Read the long version at burnbar.ai/memory"
 
