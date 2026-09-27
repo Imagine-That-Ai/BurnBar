@@ -337,12 +337,18 @@ needs a local model and says so on the page.
 | Cloud models for memory: two consents, own key or own CLI subscription, **BurnBar receives nothing**                                                               | `docs/PRIVACY.md:83-85`                                                                                         |
 | Encrypted backup: sealed blob, opaque keyed-hash id, keyed source hashes, kind, review status, three timestamps — and nothing else, enforced by the server's rules | `docs/PRIVACY.md:87-93`                                                                                         |
 | Retained secrets, unreviewed memories, injection-flagged memories and repository knowledge never leave                                                             | `docs/PRIVACY.md:91`                                                                                            |
-| **Not shipped:** cross-device pull and merge. Backup is on `main`; the pull half is in review                                                                      | `docs/superpowers/plans/2026-09-03-memory-blind-sync.md` § Shipping shape — PR 1 shipped, PR 2 is the pull half |
+| **Device sync ships, and is conditional:** this Mac also pulls your own sealed facts back down, verifies them, and the engine merges them into recall            | PR #2519 (`77527f23c5`, an ancestor of `main`) — `AgentLens/Services/CloudSync/MemoryCloudPullService.swift` + `MemoryCloudSyncDomain.sync()`; `agent_memory_inbox` (migration v67); `daemon.memory.sync.inbox.list` / `.ack` in `BurnBarRPCContracts.swift:183-184`; `memory_engine/_sync.py` `merge_remote`; `server.py` `burnbar_memory_sync_pull`. `docs/PRIVACY.md` § Optional Memory Backup and Device Sync describes it as live |
+| **Not shipped:** a second device that is not a Mac. Device sync is Mac-to-Mac                                                                                       | No memory engine exists under `OpenBurnBarMobile/`; the Memory MCP's platform statement (invariant 14) already says macOS only                                                                                                                                                                                                                                    |
+| **Not shipped:** a merge that happens on its own. Nothing folds parked facts into recall until something calls `burnbar_memory_sync_pull`                          | No caller of `syncInboxList` exists in `AgentLens/`; the only drain is `server.py:3632`, reached by an agent, by hand, or by `hooks/claude-code-session-start.sh` — which is itself default-off behind `OPENBURNBAR_MEMORY_SYNC_HOOK`                                                                                                                              |
 
-The page states the unshipped half explicitly rather than omitting it, in its
-own visually distinct "Not shipped" lane. Do not promote that lane to
-"available" until the pull PR is merged and `docs/PRIVACY.md` describes device
-sync as live.
+The page states what is missing explicitly rather than omitting it, in its own
+visually distinct "Not shipped" lane. That lane named the pull-and-merge half
+until PR #2519 landed it; the lane now names the two gaps that remain. **The
+lesson that cost us a wrong page:** `test-memory-copy.mjs` invariant 7 pinned
+the *sentence* "cross-device sync is not shipped", so when the feature shipped
+the gate kept the stale copy in place and failed anyone who corrected it. It
+now derives the shipped/unshipped question from `burnbar_memory_sync_pull` and
+`merge_remote` on every run. Pin the fact, never a sentence about the fact.
 
 **A second precedent, named rather than left implicit.** Item 7 of the pricing
 rules above sets one: _"Team plan copy — kept off the page until built."_
@@ -353,7 +359,8 @@ absence is right when the surrounding section would otherwise imply the
 feature exists — a boundary diagram with backup on it invites the question
 "and the way back?", so the page answers it. The rule is the same either way:
 never render an unshipped thing as available, and let the gate hold the line
-(`test-memory-copy.mjs` invariant 7 refuses three overclaim phrasings). When
+(`test-memory-copy.mjs` invariant 7 refuses five overclaim phrasings, and three
+phrasings of the *stale* claim that sync is still in review). When
 in doubt between the two, prefer silence; a named absence needs a lane of its
 own and a gate behind it.
 
@@ -553,7 +560,7 @@ rather than hides.
 | *Remember, then recall* · a stored fact returned for a question sharing none of its words — `bm25` no lexical overlap, `vector 0.86`, `rrf rank 1`                                     | Restates § 03; `docs/superpowers/2026-09-02-memory-mcp-v2-design.md` §4.2. The 0.86 is the film's illustration of a fused rank, not a published measurement, and is not in `MEASUREMENTS` — the bench in § 12 remains the only place this page publishes a number as a number |
 | *The gate* · a credential shape `REFUSED · SECRET_DETECTED` with nothing stored; steering text `QUARANTINED · INJECTION_SUSPECT`, stored but never returned to an agent, never synced  | Restates § 02; `README.md` § Secrets and PII, § Untrusted recall boundary                                                                                                           |
 | *Forget is real* · body, vector, history and relations struck in one transaction                                                                                                       | Restates § 05; `memory_engine/_read.py` `forget`                                                                                                                                    |
-| **exception** · *Forget is real* also shows a forget receipt reaching a second device and emptying it                                                                                  | **This is the designed shape, not `main`.** The push half (backup) ships; pull-and-merge is in review — `docs/superpowers/plans/2026-09-03-memory-blind-sync.md` § Shipping shape. The card prints an "In review, not shipped" correction next to the player and links to § 13, and the `Not shipped` lane in § 13 is unchanged. `scripts/test-memory-copy.mjs` invariant 7 still passes |
+| **exception** · *Forget is real* shows the forget receipt reaching an **iPhone** and emptying it                                                                                        | **The receipt is real; the phone is not.** Pull-and-merge is on `main` (PR #2519) and `_sync.py` `_apply_remote_receipt` tombstones the copy on the receiving machine — but device sync is Mac-to-Mac, and no memory engine exists on iOS. The frames are burned in and cannot be re-rendered in a copy PR, so the card keeps a **narrowed** correction next to the player — the tag now reads "Mac to Mac" and comes from `Film.caveat.label`, not from the template — and links to § 13, whose `Not shipped` lane names the same gap. `scripts/test-memory-copy.mjs` invariant 7 pins that lane |
 | *Team memory* · the server holds a sealed body, an opaque `docID`, the kind, the review status and timestamps — no text, no body, no vector                                            | `website/src/data/trust.generated.ts` — `team_pensieve` `serverSees`; `docs/PRIVACY.md` § Team spaces                                                                                |
 | *Team memory* · "every active member can read every team memory", a contribution and display control rather than a boundary between members                                            | `docs/PRIVACY.md:111` verbatim in substance; `trust.generated.ts` `team_pensieve.blurb`. The film states the limit on screen and the card's copy restates it — the page never says a team space keeps one member's memories from another |
 
