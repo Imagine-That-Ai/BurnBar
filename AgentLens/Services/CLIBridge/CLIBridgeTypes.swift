@@ -3,7 +3,7 @@ import OpenBurnBarAssistantModels
 import OpenBurnBarKernel
 
 /// Parsed from Claude `stream-json` lines (and Codex text deltas).
-enum CLIChatStreamEvent: Hashable {
+enum CLIChatStreamEvent: Hashable, Sendable {
     case text(String)
     case reasoning(String)
     case refusal(String)

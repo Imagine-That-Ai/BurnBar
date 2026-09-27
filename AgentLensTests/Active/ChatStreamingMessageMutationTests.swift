@@ -69,6 +69,16 @@ final class ChatStreamingMessageMutationTests: XCTestCase {
         XCTAssertEqual(record.content, "chunk-1chunk-2")
     }
 
+    func testChatMessageRecord_sendableCrossesIsolationBoundary() async {
+        // The engine's `ChatSendRetrieval` carries prompt history off the main
+        // actor. Passing a record through a detached task pins the `Sendable`
+        // conformance intentionally: a future non-`Sendable` member fails this
+        // test's compilation instead of rotting silently.
+        let record = ChatMessageRecord(role: .user, content: "cross me")
+        let echoed = await Task.detached { record.content }.value
+        XCTAssertEqual(echoed, "cross me")
+    }
+
     func testChatMessageRecord_otherFieldsRemainImmutable() {
         let timestamp = Date()
         var record = ChatMessageRecord(

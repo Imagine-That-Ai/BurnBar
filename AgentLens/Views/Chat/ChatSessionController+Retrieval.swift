@@ -55,104 +55,35 @@ extension ChatSessionController {
         startedAt: Date,
         endedAt: Date
     ) async {
-        guard let usageSnapshot else { return }
-
-        let (provider, projectLabel, model): (AgentProvider, String, String) = {
-            switch backend {
-            case .hermes:
-                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                    ?? hermesModelName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                    ?? "hermes"
-                return (.hermes, "OpenBurnBar Hermes Chat", m)
-            case .openclaw:
-                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "unselected"
-                return (.openClaw, "OpenBurnBar OpenClaw Chat", m)
-            case .piAgent:
-                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                    ?? piAgentModelName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                    ?? "pi"
-                return (.piAgent, "OpenBurnBar Pi Agent Chat", m)
-            case .codex:
-                let m = chatModelCodex.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "codex"
-                return (.codex, "OpenBurnBar Codex Chat", m)
-            case .claude:
-                let m = chatModelClaude.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "claude"
-                return (.claudeCode, "OpenBurnBar Claude Chat", m)
-            case .droid:
-                let m = chatModelDroid.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "droid"
-                return (.factory, "OpenBurnBar Droid Chat", m)
-            case .forge:
-                let m = chatModelForge.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "forge"
-                return (.forgeDev, "OpenBurnBar Forge Chat", m)
-            case .antigravity:
-                let m = chatModelAntigravity.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "antigravity"
-                return (.antigravity, "OpenBurnBar Antigravity Chat", m)
-            case .cursorAgent:
-                let m = chatModelCursorAgent.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "cursor-agent"
-                return (.cursorAgent, "OpenBurnBar Cursor Agent Chat", m)
-            case .openClaude:
-                let m = chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "openclaude"
-                return (.openClaude, "OpenBurnBar OpenClaude Chat", m)
-            case .omp:
-                let m = chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "omp"
-                return (.omp, "OpenBurnBar OMP Chat", m)
-            case .junie:
-                let m = chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "junie"
-                return (.junie, "OpenBurnBar Junie Chat", m)
-            case .fx:
-                let m = chatModelFx.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "fx"
-                return (.fx, "OpenBurnBar fx Chat", m)
-            // The provider spelling for Grok is `.xAI`; `AgentProvider` has no `.grok`
-            // member, and Kimi has its own `.kimi` rather than being filed under Grok.
-            // Honour an explicitly requested model like every other backend above,
-            // rather than always reporting the default (from #2384).
-            case .grok:
-                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "grok"
-                return (.xAI, "OpenBurnBar Grok Chat", m)
-            case .kimi:
-                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "kimi"
-                return (.kimi, "OpenBurnBar Kimi Chat", m)
-            }
-        }()
-
-        let pricing = OpenBurnBarLogParsers.ModelPricing.lookup(model: model)
-        let cost: Double
-        do {
-            cost = try pricing.cost(
-                inputTokens: usageSnapshot.inputTokens,
-                outputTokens: usageSnapshot.outputTokens,
-                cacheCreationTokens: usageSnapshot.cacheCreationTokens,
-                cacheReadTokens: usageSnapshot.cacheReadTokens,
-                reasoningTokens: usageSnapshot.reasoningTokens
-            )
-        } catch {
-            AppLogger.chat.silentFailure("price in-app chat usage", error: error)
-            return
-        }
-        let usage = TokenUsage(
-            provider: provider,
-            sessionId: "\(activeThreadID)/\(responseMessageID)",
-            projectName: projectLabel,
-            model: model,
-            inputTokens: usageSnapshot.inputTokens,
-            outputTokens: usageSnapshot.outputTokens,
-            cacheCreationTokens: usageSnapshot.cacheCreationTokens,
-            cacheReadTokens: usageSnapshot.cacheReadTokens,
-            reasoningTokens: usageSnapshot.reasoningTokens,
-            costUSD: cost,
-            startTime: startedAt,
-            endTime: endedAt,
-            usageSource: .inAppChat,
-            provenanceMethod: .inAppChat,
-            provenanceConfidence: .exact
+        // Attribution mapping + pricing run off the main actor in the tracker;
+        // the controller only snapshots its MainActor-owned model names.
+        await usageTracker.saveUsageIfNeeded(
+            usageSnapshot,
+            backend: backend,
+            requestModel: requestModel,
+            modelNames: usageTrackerModelNames(),
+            threadID: activeThreadID,
+            responseMessageID: responseMessageID,
+            startedAt: startedAt,
+            endedAt: endedAt
         )
+    }
 
-        do {
-            try await dataStore.insert(usage)
-            await dataStore.reloadUsagesIfChanged()
-        } catch {
-            AppLogger.chat.silentFailure("insert in-app chat usage", error: error)
-        }
+    private func usageTrackerModelNames() -> ChatUsageTracker.ModelNames {
+        ChatUsageTracker.ModelNames(
+            hermesModelName: hermesModelName,
+            piAgentModelName: piAgentModelName,
+            codex: chatModelCodex,
+            claude: chatModelClaude,
+            droid: chatModelDroid,
+            forge: chatModelForge,
+            antigravity: chatModelAntigravity,
+            cursorAgent: chatModelCursorAgent,
+            openClaude: chatModelOpenClaude,
+            omp: chatModelOMP,
+            junie: chatModelJunie,
+            fx: chatModelFx
+        )
     }
 
     func buildConversationJumpTargets(

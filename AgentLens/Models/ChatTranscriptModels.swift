@@ -7,15 +7,15 @@ import OpenBurnBarCore
 
 // MARK: - Chat Message (persisted)
 
-enum ChatMessageRole: String, Codable {
+enum ChatMessageRole: String, Codable, Sendable {
     case user
     case assistant
     case system
 }
 
 /// Ordered segments for assistant messages (text interleaved with tool calls). User messages use `content` only.
-struct ChatTranscriptPiece: Codable, Identifiable, Hashable {
-    enum Kind: String, Codable {
+struct ChatTranscriptPiece: Codable, Identifiable, Hashable, Sendable {
+    enum Kind: String, Codable, Sendable {
         case text
         case reasoning
         case refusal
@@ -37,7 +37,36 @@ struct ChatTranscriptPiece: Codable, Identifiable, Hashable {
     }
 }
 
-struct ChatMessageRecord: Codable, Identifiable, Hashable {
+extension ChatTranscriptPiece {
+    /// Streaming hot-path append: coalesces `chunk` into the trailing piece
+    /// when its kind matches, so a token stream costs amortized O(1) per chunk
+    /// instead of a full copy-on-write of the accumulated string.
+    static func appendStreamingText(_ chunk: String, to pieces: inout [ChatTranscriptPiece]) {
+        appendStreamingChunk(chunk, kind: .text, to: &pieces)
+    }
+
+    static func appendStreamingChunk(
+        _ chunk: String,
+        kind: Kind,
+        to pieces: inout [ChatTranscriptPiece]
+    ) {
+        guard !chunk.isEmpty else { return }
+        if let i = pieces.indices.last, pieces[i].kind == kind {
+            // Mutate through the subscript so the append stays amortized
+            // O(1). The old copy-out (`var last = pieces[i]`) shared string
+            // storage with the array element, forcing a full copy-on-write
+            // of the accumulated value on EVERY chunk — O(n²) per stream.
+            pieces[i].value += chunk
+        } else {
+            pieces.append(ChatTranscriptPiece(kind: kind, value: chunk, detail: nil))
+        }
+    }
+}
+
+/// `Sendable` (all members are values of `Sendable` types) so prompt-history
+/// snapshots can cross from the `@MainActor` controller into the
+/// non-`@MainActor` ``ChatSendEngine`` as part of `ChatSendRetrieval`.
+struct ChatMessageRecord: Codable, Identifiable, Hashable, Sendable {
     let id: String
     let role: ChatMessageRole
     /// `var` so the streaming hot path can mutate content in-place via

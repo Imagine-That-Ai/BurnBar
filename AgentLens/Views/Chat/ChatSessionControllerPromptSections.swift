@@ -71,15 +71,7 @@ extension ChatSessionController {
     }
 
     static func burnBarWorkspacePromptSection(path: String) -> String {
-        """
-
-        ## OpenBurnBar workspace (required)
-        Treat this directory as the root for all new files and for terminal commands that create or modify files, unless the user explicitly names a different absolute path in their message:
-        \(path)
-
-        Change to this directory before running shell commands that write files. Write every new file under this path (subdirectories are allowed).
-        A `openburnbar-mcp.config.json` may be present to wire OpenBurnBar’s local index into MCP-capable tools.
-        """
+        ChatSendEngine.burnBarWorkspacePromptSection(path: path)
     }
 
     static func desktopControlPromptSection(for grant: AgentCapabilityGrant) -> String {

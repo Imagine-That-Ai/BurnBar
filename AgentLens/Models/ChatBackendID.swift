@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// User-selected chat engine (replaces the old Index vs Hermes mode split).
-enum ChatBackendID: String, Identifiable, Codable {
+enum ChatBackendID: String, Identifiable, Codable, Sendable {
     case codex
     case claude
     case hermes

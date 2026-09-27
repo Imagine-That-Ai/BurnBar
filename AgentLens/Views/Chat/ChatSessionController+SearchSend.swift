@@ -9,79 +9,14 @@ import OpenBurnBarAnalytics
 import AppKit
 #endif
 
-/// Leading + trailing edge throttle for streamed transcript commits.
-///
-/// Leading edge alone (commit when the interval has elapsed, drop otherwise)
-/// is only correct while events keep arriving: a chunk that lands inside the
-/// interval is dropped, and if the stream then pauses — a slow model, a long
-/// tool call — nothing re-commits it, so the visible transcript sits stale
-/// until the next event or stream termination instead of the intended
-/// `interval`. Arming a trailing flush bounds that staleness at `interval`
-/// regardless of what the producer does next.
-@MainActor
-private final class ChatStreamCommitThrottle {
-    private let interval: Duration
-    private let apply: () async -> Void
-    private var lastCommit: ContinuousClock.Instant
-    private var trailingFlush: Task<Void, Never>?
-
-    init(interval: Duration, apply: @escaping () async -> Void) {
-        self.interval = interval
-        self.apply = apply
-        self.lastCommit = ContinuousClock.now - interval
-    }
-
-    /// Records staged transcript state. Commits immediately when `force` is set
-    /// or the interval has elapsed; otherwise arms a single trailing flush for
-    /// the remainder of the interval.
-    func record(force: Bool) async {
-        let now = ContinuousClock.now
-        guard force || now - lastCommit >= interval else {
-            armTrailingFlush(after: interval - (now - lastCommit))
-            return
-        }
-        await flush()
-    }
-
-    /// Commits the staged state now and disarms any pending trailing flush, so
-    /// a settled stream can never be followed by a late commit.
-    func flush() async {
-        cancel()
-        lastCommit = ContinuousClock.now
-        await apply()
-    }
-
-    func cancel() {
-        trailingFlush?.cancel()
-        trailingFlush = nil
-    }
-
-    private func armTrailingFlush(after delay: Duration) {
-        // A flush already scheduled for this interval covers every chunk staged
-        // since — re-arming would only move the same commit later.
-        guard trailingFlush == nil else { return }
-        trailingFlush = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled, let self else { return }
-            // Clear first so `flush()`'s cancel() cannot target the very task
-            // that is running it.
-            self.trailingFlush = nil
-            await self.flush()
-        }
-    }
-}
-
 extension ChatSessionController {
-
-    struct ChatStreamConsumptionResult {
-        let pieces: [ChatTranscriptPiece]
-        let joinedText: String
-        let usageSnapshot: CLIUsageSnapshot?
-    }
 
     /// Consumes one desktop chat stream while keeping transcript work bounded.
     /// The callbacks make the performance-critical state machine testable
     /// without booting a real CLI or HTTP gateway.
+    ///
+    /// The reduction itself runs off the main actor in ``ChatSendEngine``; this
+    /// adapter maps the engine's `ChatSendEvent` flow onto the callback shape.
     @MainActor
     static func consumeChatStream(
         _ stream: AsyncThrowingStream<CLIChatStreamEvent, Error>,
@@ -89,65 +24,22 @@ extension ChatSessionController {
         onCommit: @escaping (String, [ChatTranscriptPiece]) async -> Void,
         onStructuralEvent: @escaping (CLIChatStreamEvent) async -> Void = { _ in }
     ) async throws -> ChatStreamConsumptionResult {
-        var pieces: [ChatTranscriptPiece] = []
-        var usageSnapshot: CLIUsageSnapshot?
-        var joinedText = ""
-
-        let throttle = ChatStreamCommitThrottle(interval: commitInterval) {
-            await onCommit(joinedText, pieces)
-        }
-        // The success and rethrow routes both end in `flush()`, which disarms
-        // the trailing task; this covers the third exit — a cancelled parent
-        // task — so no armed flush ever outlives the stream.
-        defer { throttle.cancel() }
-
-        do {
-            for try await event in stream {
-                var forceCommit = false
-                switch event {
-                case .text(let chunk):
-                    forceCommit = pieces.isEmpty
-                    appendStreamingText(chunk, to: &pieces)
-                    joinedText += chunk
-                case .reasoning(let chunk):
-                    forceCommit = pieces.isEmpty
-                    appendStreamingTranscriptChunk(chunk, kind: .reasoning, to: &pieces)
-                case .refusal(let chunk):
-                    forceCommit = pieces.isEmpty
-                    appendStreamingTranscriptChunk(chunk, kind: .refusal, to: &pieces)
-                case .toolUse(let name, let detail):
-                    pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
-                    forceCommit = true
-                    await onStructuralEvent(event)
-                case .toolResult(let name, let detail):
-                    pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
-                    forceCommit = true
-                    await onStructuralEvent(event)
-                case .usage(let usage):
-                    if let previous = usageSnapshot {
-                        usageSnapshot = usage.totalTokens >= previous.totalTokens ? usage : previous
-                    } else {
-                        usageSnapshot = usage
-                    }
-                    continue
-                case .sessionID:
-                    await onStructuralEvent(event)
-                    continue
-                }
-
-                await throttle.record(force: forceCommit)
+        var terminal: ChatStreamConsumptionResult?
+        for try await event in ChatSendEngine.shared.consume(stream, commitInterval: commitInterval) {
+            switch event {
+            case .transcriptCommitted(let content, let pieces):
+                await onCommit(content, pieces)
+            case .structural(let upstream):
+                await onStructuralEvent(upstream)
+            case .finished(let result):
+                terminal = result
+            case .routingFailed, .retrievalCompleted, .oracleSettledLocally, .streamDispatch, .sendStopped:
+                // Orchestration events are emitted by `execute(request:pipeline:)`
+                // only; `consume(_:)` never produces them.
+                break
             }
-        } catch {
-            await throttle.flush()
-            throw error
         }
-
-        await throttle.flush()
-        return ChatStreamConsumptionResult(
-            pieces: pieces,
-            joinedText: joinedText,
-            usageSnapshot: usageSnapshot
-        )
+        return terminal ?? ChatStreamConsumptionResult(pieces: [], joinedText: "", usageSnapshot: nil)
     }
 
     /// Builds the pinned focus-session prompt section (empty when no context is selected).
@@ -199,94 +91,57 @@ extension ChatSessionController {
         }
 
         // Synchronous reentrancy sentinel: set before any await so a second
-        // programmatic/relay `send()` arriving in the await window before
-        // `isStreaming` flips is rejected. Cleared on every return path.
+        // programmatic/relay `send()` arriving before the thinking placeholder
+        // paints is rejected. Ownership transfers to `streamTask` below, which
+        // clears it on the first engine event (every engine path yields at
+        // least one) and again unconditionally when the task ends.
         sendInFlight = true
-        defer { sendInFlight = false }
 
+        // Step 1: prepare the user message (MainActor).
         await commitUserTurn(trimmed: trimmed, attachmentsToSend: attachmentsToSend)
 
-        guard await checkModelRouting() else { return }
-
-        guard let retrieval = await runRetrievalPhase(trimmed: trimmed) else { return }
-        let assistantId = retrieval.assistantId
-        let streamStartedAt = retrieval.streamStartedAt
-
-        guard let prompt = await assemblePrompt(trimmed: trimmed, retrieval: retrieval) else { return }
-        let augmentedSystem = prompt.augmentedSystem
-        let multiTurnHistory = prompt.multiTurnHistory
-        let requestModel = prompt.requestModel
-        let activeToolBroker = prompt.activeToolBroker
-        let activeDesktopGrant = prompt.activeDesktopGrant
-
-        // `requestModel` is resolved above (G9 prompt token arbiter) and reused here.
-        // Load bytes for any attachments referenced by history. We load lazily
-        // so re-opened threads don't pay the cost when nothing was attached.
-        let attachmentByteMap: [String: Data] = Self.collectAttachmentBytes(
-            history: multiTurnHistory,
-            workspaceURL: chatWorkspaceURL
-        )
-        let backendCapabilities = backendCapabilities(for: chatBackend, modelID: requestModel)
-
+        // Steps 2-4: the engine drives routing, retrieval, prompt assembly,
+        // and stream consumption; this loop only applies events to UI state.
+        // `send()` does not return until the turn is past prompt assembly (or
+        // a terminal pre-stream outcome): relay/mission callers poll
+        // `isStreaming` immediately after `await send()`, and the pet bubble
+        // clears `personaCoreOverride` on return, which is only safe once the
+        // prompt is baked. The gate opens idempotently from the event loop, so
+        // `send()` keeps the return timing the inlined phases produced.
+        let gate = ChatSendReadyGate()
+        let request = ChatSendRequest(trimmed: trimmed, commitInterval: .milliseconds(80))
+        let pipeline = makeSendPipeline()
         streamTask = Task { [weak self] in
             guard let self else { return }
-            var didRouteThroughFusion = false
+            // Dispatch facts stashed from `.streamDispatch`, which always
+            // precedes transcript/structural events and settles.
+            var streamContext: (assistantId: String, streamStartedAt: Date, requestModel: String, didRouteThroughFusion: Bool)?
+            var usageSnapshot: CLIUsageSnapshot?
+            var sendFlightCleared = false
             do {
-                let elderWandPlugins = await MainActor.run {
-                    self.settingsManager.elderWandPluginsPayload()
-                }
-                let fusionActive = elderWandPlugins != nil
-                didRouteThroughFusion = fusionActive
-                let fusionGatewayBaseURL = fusionActive
-                    ? await MainActor.run { self.burnBarGatewayBaseURL }
-                    : nil
-                let hostedSearchHeaders: [String: String]
-                if let fusionGatewayBaseURL {
-                    hostedSearchHeaders = await Self.elderWandHostedSearchHeaders(for: fusionGatewayBaseURL)
-                } else {
-                    hostedSearchHeaders = [:]
-                }
-                let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
-                    self.makeBackendStream(
-                        augmentedSystem: augmentedSystem,
-                        multiTurnHistory: multiTurnHistory,
-                        requestModel: requestModel,
-                        attachmentByteMap: attachmentByteMap,
-                        backendCapabilities: backendCapabilities,
-                        activeToolBroker: activeToolBroker,
-                        activeDesktopGrant: activeDesktopGrant,
-                        elderWandPlugins: elderWandPlugins,
-                        fusionActive: fusionActive,
-                        fusionGatewayBaseURL: fusionGatewayBaseURL,
-                        hostedSearchHeaders: hostedSearchHeaders,
-                        trimmed: trimmed
-                    )
-                }
-                let consumption = try await Self.consumeChatStream(
-                    stream,
-                    onCommit: { [weak self] joined, snapshot in
-                        guard let self else { return }
-                        await Task { @MainActor in
-                            if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                                // In-place mutation keeps each commit bounded
-                                // while the streaming tick remains the single
-                                // observation broadcast for mirror views.
-                                self.messages[idx].content = joined
-                                self.messages[idx].transcriptPieces = snapshot
-                                self.streamingTick &+= 1
-                            }
-                        }.value
-                    },
-                    onStructuralEvent: { [weak self] event in
-                        guard let self else { return }
-                        switch event {
+                for try await event in self.sendEngine.execute(request: request, pipeline: pipeline) {
+                    if !sendFlightCleared {
+                        sendFlightCleared = true
+                        self.sendInFlight = false
+                    }
+                    switch event {
+                    case .transcriptCommitted(let joined, let snapshot):
+                        if let assistantId = streamContext?.assistantId,
+                           let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
+                            // In-place mutation keeps each commit bounded
+                            // while the streaming tick remains the single
+                            // observation broadcast for mirror views.
+                            self.messages[idx].content = joined
+                            self.messages[idx].transcriptPieces = snapshot
+                            self.streamingTick &+= 1
+                        }
+                    case .structural(let upstream):
+                        switch upstream {
                         case .toolUse(let name, _):
-                            Task { @MainActor in
-                                Analytics.shared.track(.chatToolInvoked, [
-                                    "tool_name": .string(AnalyticsBuckets.toolName(name)),
-                                    "backend": .string(self.chatBackend.rawValue)
-                                ])
-                            }
+                            Analytics.shared.track(.chatToolInvoked, [
+                                "tool_name": .string(AnalyticsBuckets.toolName(name)),
+                                "backend": .string(self.chatBackend.rawValue)
+                            ])
                         case .sessionID(let sessionID):
                             // fx multi-turn: remember the provider session so
                             // the next send continues it via `--resume`.
@@ -294,11 +149,12 @@ extension ChatSessionController {
                         case .toolResult(let name, let detail):
                             #if canImport(AppKit) && !DISTRIBUTION_MAS
                             if let detail {
+                                let toolCallId = streamContext?.assistantId ?? ""
                                 Task { @MainActor in
                                     await SystemPermissionToolFailureWatcher.shared.observe(
                                         toolName: name,
                                         detail: detail,
-                                        toolCallId: assistantId
+                                        toolCallId: toolCallId
                                     )
                                 }
                             }
@@ -306,24 +162,68 @@ extension ChatSessionController {
                         default:
                             break
                         }
+                    case .finished(let consumption):
+                        usageSnapshot = consumption.usageSnapshot
+                    case .routingFailed(let message):
+                        gate.open()
+                        let err = ChatMessageRecord(
+                            role: .assistant,
+                            content: message,
+                            cliUsed: nil
+                        )
+                        self.messages.append(err)
+                        do {
+                            try await self.dataStore.saveChatMessage(err, threadID: self.activeThreadID)
+                        } catch {
+                            AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
+                        }
+                        self.refreshHistory()
+                        self.selectedContext = nil
+                    case .retrievalCompleted(let targets, let hadNoEvidence):
+                        self.conversationJumpTargets = targets
+                        self.lastRetrievalHadNoEvidence = hadNoEvidence
+                    case .oracleSettledLocally(let assistantId, let content, let targets):
+                        gate.open()
+                        self.conversationJumpTargets = targets
+                        await self.settleAssistantPlaceholder(
+                            id: assistantId,
+                            content: content,
+                            isTerminalAssistantCommit: true
+                        )
+                        self.selectedContext = nil
+                    case .streamDispatch(let assistantId, let streamStartedAt, let requestModel, let didRouteThroughFusion):
+                        gate.open()
+                        streamContext = (assistantId, streamStartedAt, requestModel, didRouteThroughFusion)
+                    case .sendStopped:
+                        gate.open()
                     }
-                )
-                let usageSnapshot = consumption.usageSnapshot
-                await self.settleStreamSuccess(
-                    assistantId: assistantId,
-                    requestModel: requestModel,
-                    streamStartedAt: streamStartedAt,
-                    usageSnapshot: usageSnapshot,
-                    didRouteThroughFusion: didRouteThroughFusion
-                )
+                }
+                // Normal end: settle success only when a stream actually ran.
+                // Early exits applied (or deliberately skipped) their own
+                // persistence above — matching the inlined `send()`, which
+                // returned without settling and without `onStreamSettled`.
+                if let context = streamContext {
+                    await self.settleStreamSuccess(
+                        assistantId: context.assistantId,
+                        requestModel: context.requestModel,
+                        streamStartedAt: context.streamStartedAt,
+                        usageSnapshot: usageSnapshot,
+                        didRouteThroughFusion: context.didRouteThroughFusion
+                    )
+                }
             } catch {
-                await self.settleStreamFailure(
-                    assistantId: assistantId,
-                    error: error,
-                    didRouteThroughFusion: didRouteThroughFusion
-                )
+                if let context = streamContext {
+                    await self.settleStreamFailure(
+                        assistantId: context.assistantId,
+                        error: error,
+                        didRouteThroughFusion: context.didRouteThroughFusion
+                    )
+                }
             }
+            gate.open()
+            self.sendInFlight = false
         }
+        await gate.wait()
     }
 
     /// Commits the accepted user turn: resets per-turn UI state, appends the
@@ -357,10 +257,10 @@ extension ChatSessionController {
     /// Phase 2 of `send()`: route + backend availability. Backend gates model
     /// selection — selection can force a reroute, but availability never
     /// rewrites selection. Re-probes once on a stale empty-catalog error, then
-    /// fails closed with a red bubble before paying retrieval. Returns false
-    /// when the send must stop.
-    private func checkModelRouting() async -> Bool {
-        guard await validateChatBackendAvailability() else { return false }
+    /// fails closed before paying retrieval. The engine emits `.routingFailed`
+    /// for `.failed` so the event loop can surface the red bubble.
+    private func checkModelRouting() async -> ChatSendRoutingOutcome {
+        guard await validateChatBackendAvailability() else { return .stopped }
 
         // Hermes gate hardening (build #769 symptom "could not read its live model
         // catalog"): the routing error fires when `liveAdvertisedModels` is empty,
@@ -391,40 +291,17 @@ extension ChatSessionController {
         // and before painting a thinking placeholder. The old order ran the
         // local index first, so a dead gateway looked like a hung send.
         if let routingError = pendingModelRoutingError {
-            let err = ChatMessageRecord(
-                role: .assistant,
-                content: routingError,
-                cliUsed: nil
-            )
-            messages.append(err)
-            do {
-                try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-            } catch {
-                AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
-            }
-            refreshHistory()
-            selectedContext = nil
-            return false
+            return .failed(message: routingError)
         }
-        return true
-    }
-
-    /// Phase 3 output: everything later phases of `send()` need from retrieval.
-    private struct RetrievalPhaseOutput {
-        let promptHistory: [ChatMessageRecord]
-        let assistantId: String
-        let streamStartedAt: Date
-        let searchService: SearchService?
-        let retrievalResults: [RetrievalResult]
-        let queryRun: OpenBurnBarQueryRunResult
-        let oracleContextSection: String
+        return .proceed
     }
 
     /// Phase 3 of `send()`: paint the thinking placeholder, run typed or
     /// fallback retrieval, build jump targets, and run the local-index oracle.
-    /// Returns nil when the send must stop (superseded stream, or the oracle
-    /// settled the turn locally without an LLM call).
-    private func runRetrievalPhase(trimmed: String) async -> RetrievalPhaseOutput? {
+    /// Returns nil when the send must stop (superseded stream). UI state
+    /// (jump targets, evidence flag, local-oracle settle) is returned in the
+    /// outcome for the event loop to apply; nothing is mutated here.
+    private func runRetrievalPhase(trimmed: String) async -> ChatSendRetrieval? {
         // Capture the transcript the model should see *before* the empty
         // assistant placeholder is appended. Hermes/OpenClaw/Pi send the
         // in-memory history; an empty assistant turn would look like a reply.
@@ -497,45 +374,41 @@ extension ChatSessionController {
             )
         }
         let retrievalResults = queryRun.retrievalResults
-        conversationJumpTargets = await buildConversationJumpTargets(
+        var jumpTargets = await buildConversationJumpTargets(
             queryText: retrievalText,
             queryRun: queryRun,
             retrievalResults: retrievalResults,
             desiredCount: requestedJumpTargetCount
         )
-        lastRetrievalHadNoEvidence = retrievalResults.isEmpty && (queryRun.aggregateOccurrenceCount ?? 0) == 0
+        let hadNoEvidence = retrievalResults.isEmpty && (queryRun.aggregateOccurrenceCount ?? 0) == 0
 
         let indexedResponseStrategy = Self.indexedQueryResponseStrategy(
             queryText: retrievalText,
             plan: queryRun.plan,
-            hasJumpTargets: conversationJumpTargets.isEmpty == false,
+            hasJumpTargets: jumpTargets.isEmpty == false,
             retrievalResultCount: retrievalResults.count
         )
         let oracleResult = indexedResponseStrategy == .llmOnly ? nil : await buildLocalIndexOracleResponse(
             queryText: retrievalText,
             queryRun: queryRun,
             retrievalResults: retrievalResults,
-            jumpTargets: conversationJumpTargets,
+            jumpTargets: jumpTargets,
             desiredCount: requestedJumpTargetCount
         )
         if let oracleResult, oracleResult.jumpTargets.isEmpty == false {
-            conversationJumpTargets = oracleResult.jumpTargets
+            jumpTargets = oracleResult.jumpTargets
         }
 
         guard isStreaming, activeStreamMessageId == assistantId else { return nil }
 
+        let localOracleMessage: String?
         if indexedResponseStrategy == .localOracle, let oracleResult {
             let response = oracleResult.message.trimmingCharacters(in: .whitespacesAndNewlines)
-            let finalResponse = response.isEmpty
+            localOracleMessage = response.isEmpty
                 ? "I found indexed material for that request, but failed to format the local answer. Use the matched-session buttons below."
                 : response
-            await settleAssistantPlaceholder(
-                id: assistantId,
-                content: finalResponse,
-                isTerminalAssistantCommit: true
-            )
-            selectedContext = nil
-            return nil
+        } else {
+            localOracleMessage = nil
         }
 
         let oracleContextSection: String
@@ -555,14 +428,18 @@ extension ChatSessionController {
             oracleContextSection = ""
         }
 
-        return RetrievalPhaseOutput(
+        return ChatSendRetrieval(
+            trimmed: trimmed,
             promptHistory: promptHistory,
             assistantId: assistantId,
             streamStartedAt: streamStartedAt,
             searchService: searchSvc,
             retrievalResults: retrievalResults,
             queryRun: queryRun,
-            oracleContextSection: oracleContextSection
+            oracleContextSection: oracleContextSection,
+            jumpTargets: jumpTargets,
+            hadNoEvidence: hadNoEvidence,
+            localOracleMessage: localOracleMessage
         )
     }
 
@@ -579,7 +456,7 @@ extension ChatSessionController {
     /// Phase 4 of `send()`: format evidence, build prompt sections, and
     /// assemble the augmented system prompt under the token arbiter. Returns
     /// nil when the stream was superseded before dispatch.
-    private func assemblePrompt(trimmed: String, retrieval: RetrievalPhaseOutput) async -> AssembledPrompt? {
+    private func assemblePrompt(trimmed: String, retrieval: ChatSendRetrieval) async -> AssembledPrompt? {
         let retrievalPack = OpenBurnBarChatEvidenceFormatting.formatPack(
             results: retrieval.retrievalResults,
             maxTotalChars: OpenBurnBarChatContextBudget.maxEvidenceChars
@@ -685,6 +562,77 @@ extension ChatSessionController {
             requestModel: requestModel,
             activeToolBroker: activeToolBroker,
             activeDesktopGrant: activeDesktopGrant
+        )
+    }
+
+    /// Phases 4-5 of `send()` as one engine pipeline phase: assemble the
+    /// prompt, resolve Elder Wand fusion, and open the backend stream. Returns
+    /// nil when superseded before dispatch (silent stop, no settle) — the same
+    /// guard the inlined `send()` applied inside `assemblePrompt`.
+    private func openBackendStream(retrieval: ChatSendRetrieval) async -> ChatSendOpenedStream? {
+        guard let prompt = await assemblePrompt(trimmed: retrieval.trimmed, retrieval: retrieval) else { return nil }
+        let augmentedSystem = prompt.augmentedSystem
+        let multiTurnHistory = prompt.multiTurnHistory
+        let requestModel = prompt.requestModel
+        let activeToolBroker = prompt.activeToolBroker
+        let activeDesktopGrant = prompt.activeDesktopGrant
+
+        // `requestModel` is resolved above (G9 prompt token arbiter) and reused here.
+        // Load bytes for any attachments referenced by history. We load lazily
+        // so re-opened threads don't pay the cost when nothing was attached.
+        let attachmentByteMap: [String: Data] = Self.collectAttachmentBytes(
+            history: multiTurnHistory,
+            workspaceURL: chatWorkspaceURL
+        )
+        let backendCapabilities = backendCapabilities(for: chatBackend, modelID: requestModel)
+
+        let elderWandPlugins = settingsManager.elderWandPluginsPayload()
+        let fusionActive = elderWandPlugins != nil
+        let fusionGatewayBaseURL = fusionActive ? burnBarGatewayBaseURL : nil
+        let hostedSearchHeaders: [String: String]
+        if let fusionGatewayBaseURL {
+            hostedSearchHeaders = await Self.elderWandHostedSearchHeaders(for: fusionGatewayBaseURL)
+        } else {
+            hostedSearchHeaders = [:]
+        }
+        let stream = makeBackendStream(
+            augmentedSystem: augmentedSystem,
+            multiTurnHistory: multiTurnHistory,
+            requestModel: requestModel,
+            attachmentByteMap: attachmentByteMap,
+            backendCapabilities: backendCapabilities,
+            activeToolBroker: activeToolBroker,
+            activeDesktopGrant: activeDesktopGrant,
+            elderWandPlugins: elderWandPlugins,
+            fusionActive: fusionActive,
+            fusionGatewayBaseURL: fusionGatewayBaseURL,
+            hostedSearchHeaders: hostedSearchHeaders,
+            trimmed: retrieval.trimmed
+        )
+        return ChatSendOpenedStream(
+            stream: stream,
+            requestModel: requestModel,
+            didRouteThroughFusion: fusionActive
+        )
+    }
+
+    /// Builds the engine pipeline from this controller's send phases. Closures
+    /// capture the controller weakly: if it deallocates mid-send they report a
+    /// silent stop so the engine task finishes instead of retaining dead UI.
+    private func makeSendPipeline() -> ChatSendPipeline {
+        ChatSendPipeline(
+            checkRouting: { [weak self] in
+                guard let self else { return .stopped }
+                return await self.checkModelRouting()
+            },
+            runRetrieval: { [weak self] request in
+                guard let self else { return nil }
+                return await self.runRetrievalPhase(trimmed: request.trimmed)
+            },
+            openStream: { [weak self] retrieval in
+                guard let self else { return nil }
+                return await self.openBackendStream(retrieval: retrieval)
+            }
         )
     }
 
@@ -1067,6 +1015,37 @@ extension ChatSessionController {
                     weeklyRemainingPercent: snapshot.weeklyBucket?.remainingPercent,
                     statusMessage: snapshot.statusMessage
                 )
+            }
+        }
+    }
+}
+
+/// One-shot readiness latch between `send()` and its `streamTask` event loop.
+///
+/// Both sides are main-actor-confined: the loop opens the gate once the turn
+/// is past prompt assembly (or a terminal pre-stream outcome), and `send()`
+/// waits for it before returning so relay/mission/pet-bubble callers observe
+/// the same post-`send()` state the inlined phases produced. Opens
+/// idempotently, including open-before-wait.
+@MainActor
+private final class ChatSendReadyGate {
+    private var isOpen = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func open() {
+        guard !isOpen else { return }
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { cont in
+            if isOpen {
+                cont.resume()
+            } else {
+                continuation = cont
             }
         }
     }

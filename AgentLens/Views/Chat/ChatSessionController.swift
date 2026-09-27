@@ -361,6 +361,14 @@ final class ChatSessionController {
 
     let cliBridge: CLIBridge
 
+    /// Non-`@MainActor` send orchestrator. `send()` commits the user message,
+    /// then the engine drives routing, retrieval, prompt assembly, and stream
+    /// reduction while `send()` applies the emitted `ChatSendEvent` snapshots.
+    let sendEngine: ChatSendEngine
+
+    /// Non-`@MainActor` usage attribution. `saveUsageIfNeeded` forwards here.
+    let usageTracker: ChatUsageTracker
+
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     weak var computerUseRuntimeController: ComputerUseRuntimeController?
     #endif
@@ -412,7 +420,9 @@ final class ChatSessionController {
         initialThreadID: String? = nil,
         persistsViewState: Bool = true,
         initialBackend: ChatBackendID? = nil,
-        agentDeck: AgentDeck = AgentDeck()
+        agentDeck: AgentDeck = AgentDeck(),
+        sendEngine: ChatSendEngine = .shared,
+        usageTracker: ChatUsageTracker? = nil
     ) {
         self.persistsViewState = persistsViewState
         self.agentDeck = agentDeck
@@ -434,6 +444,16 @@ final class ChatSessionController {
         }
         self.retrievalHealthService = RetrievalHealthService(dataStore: dataStore)
         self.cliBridge = cliBridge ?? CLIBridge()
+        self.sendEngine = sendEngine
+        if let usageTracker {
+            self.usageTracker = usageTracker
+        } else {
+            let store = dataStore
+            self.usageTracker = ChatUsageTracker(dependencies: .init(
+                insertUsage: { usage in try await store.insert(usage) },
+                reloadUsages: { await store.reloadUsagesIfChanged() }
+            ))
+        }
 
         Self.migrateLegacyChatModeIfNeeded()
         Self.migrateThreadIDSlotsIfNeeded()

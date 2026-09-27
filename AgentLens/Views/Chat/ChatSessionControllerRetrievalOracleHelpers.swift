@@ -20,27 +20,11 @@ extension ChatSessionController {
     }
     /// Combines the prior user turn with short replies like "yes please" so hybrid search still runs the original question.
     static func retrievalQueryText(for current: String, messages: [ChatMessageRecord]) -> String {
-        let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isShortAffirmation(trimmed), messages.count >= 2 else { return trimmed }
-        let withoutLatest = messages.dropLast()
-        guard let prior = withoutLatest.last(where: { $0.role == .user })?.content else { return trimmed }
-        let p = prior.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard p.isEmpty == false, p.caseInsensitiveCompare(trimmed) != .orderedSame else { return trimmed }
-        return "\(p) \(trimmed)"
+        ChatSendEngine.retrievalQueryText(for: current, messages: messages)
     }
 
     static func isShortAffirmation(_ text: String) -> Bool {
-        let t = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.count > 80 { return false }
-        let known: Set<String> = [
-            "yes", "yes please", "yeah", "yep", "sure", "ok", "okay", "please",
-            "do it", "go ahead", "try again", "search", "go for it", "sounds good",
-            "please do", "that works", "k", "yup", "absolutely", "please search",
-            "do that", "run it"
-        ]
-        if known.contains(t) { return true }
-        if t.hasPrefix("yes ") || t.hasPrefix("sure ") || t.hasPrefix("ok ") { return true }
-        return false
+        ChatSendEngine.isShortAffirmation(text)
     }
 
     static func indexedQueryResponseStrategy(
@@ -149,7 +133,7 @@ extension ChatSessionController {
     }
 
     static func appendStreamingText(_ chunk: String, to pieces: inout [ChatTranscriptPiece]) {
-        appendStreamingTranscriptChunk(chunk, kind: .text, to: &pieces)
+        ChatTranscriptPiece.appendStreamingText(chunk, to: &pieces)
     }
 
     static func appendStreamingTranscriptChunk(
@@ -157,16 +141,7 @@ extension ChatSessionController {
         kind: ChatTranscriptPiece.Kind,
         to pieces: inout [ChatTranscriptPiece]
     ) {
-        guard !chunk.isEmpty else { return }
-        if let i = pieces.indices.last, pieces[i].kind == kind {
-            // Mutate through the subscript so the append stays amortized
-            // O(1). The old copy-out (`var last = pieces[i]`) shared string
-            // storage with the array element, forcing a full copy-on-write
-            // of the accumulated value on EVERY chunk — O(n²) per stream.
-            pieces[i].value += chunk
-        } else {
-            pieces.append(ChatTranscriptPiece(kind: kind, value: chunk, detail: nil))
-        }
+        ChatTranscriptPiece.appendStreamingChunk(chunk, kind: kind, to: &pieces)
     }
 
     /// Loads bytes for attachments in `history` that the encoder will need.
