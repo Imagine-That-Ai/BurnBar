@@ -934,10 +934,11 @@ check("App and Headless AgentLens builds are post-merge/nightly, not PR walls", 
   );
 });
 
-check("macOS gates never run pull-request or merge-group code on persistent self-hosted runners", () => {
+check("macOS gates run pull-request or merge-group code only on free GitHub-hosted runners", () => {
   // A merge-group ref is still pre-merge candidate code. It receives the same
-  // isolation boundary as pull_request: GitHub-hosted macos-26, or the
-  // explicitly selected isolated paid runner group.
+  // isolation boundary as pull_request: bare macos-26, no pool toggle, no
+  // paid group, no fleet labels. (Cross-enforced by
+  // verify-github-hosted-runners-only.mjs, which also covers every workflow.)
   for (const [workflow, expectedCount] of [
     [APP_WORKFLOW, 3],
     [DAEMON_WORKFLOW, 2],
@@ -946,14 +947,15 @@ check("macOS gates never run pull-request or merge-group code on persistent self
     [NATIVE_WORKFLOW, 3],
   ]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
-    // Paid opt-in arm present and still the isolated capped pool (never inline group:).
-    assert.equal(source.split("vars.MACOS_GATE_POOL == 'paid'").length - 1, expectedCount);
-    assert.equal(source.split('{"group":"burnbar-ci-paid"}').length - 1, expectedCount);
-    assert.equal(source.split("group: burnbar-ci-paid").length - 1, 0);
-    assert.doesNotMatch(source, /burnbar-turbo-ephemeral|BurnBar-macos-26-xlarge/);
-    const selfHosted = source.split('"self-hosted","macOS","ARM64","burnbar-swift"').length - 1;
-    assert.equal(selfHosted, 0, `${workflow}: candidate code must not reach persistent self-hosted runners`);
-    assert.equal(source.split("|| 'macos-26'").length - 1, expectedCount);
+    assert.doesNotMatch(source, /MACOS_GATE_POOL/u);
+    assert.doesNotMatch(source, /burnbar-ci-paid/u);
+    assert.doesNotMatch(source, /burnbar-turbo-ephemeral|BurnBar-macos-26-xlarge/u);
+    assert.doesNotMatch(source, /"self-hosted","macOS"/u);
+    assert.equal(
+      source.split("runs-on: macos-26").length - 1,
+      expectedCount,
+      `${workflow}: expected ${expectedCount} pinned macos-26 jobs`,
+    );
   }
 });
 
