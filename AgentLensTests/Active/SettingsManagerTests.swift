@@ -860,13 +860,19 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(dict["port"] as? Int, 8317)
 
         settings.gatewayEnabled = true
-        settings.gatewayHost = "0.0.0.0"
+        settings.gatewayHost = "10.0.0.2"
         settings.gatewayPort = 9090
 
         let dict2 = settings.gatewayConfigurationDict
         XCTAssertEqual(dict2["enabled"] as? Bool, true)
-        XCTAssertEqual(dict2["host"] as? String, "0.0.0.0")
+        XCTAssertEqual(dict2["host"] as? String, "10.0.0.2")
         XCTAssertEqual(dict2["port"] as? Int, 9090)
+
+        // The local-service registry is loopback-only by construction: a
+        // wildcard bind address normalizes to 127.0.0.1 rather than exposing
+        // the gateway on every interface.
+        settings.gatewayHost = "0.0.0.0"
+        XCTAssertEqual(settings.gatewayConfigurationDict["host"] as? String, "127.0.0.1")
     }
 
     func test_gatewayConfigurationDict_usesDefaultsForEmptyHostAndZeroPort() {
