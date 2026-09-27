@@ -382,6 +382,7 @@ export const CALLABLE_RATE_POLICIES = {
     "security",
     "Redeems a mission approval answer — grant redemption; failure lockouts bound retries only.",
   ),
+  redeemPromoCode: enforced("checkPromoRedeemRateLimit", "functions-identity/src/domains/billing/promoRedemption.ts"),
   registerBrowserEscrowDevice: limited(
     "security",
     "Registers a browser escrow device and fans out approval pushes to companion devices.",

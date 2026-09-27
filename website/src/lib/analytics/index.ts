@@ -10,7 +10,10 @@ import { FirstPartyCollectorTransport } from "./collectorTransport";
 import { clearStoredAttribution, resolveAttribution, type AttributionStorage } from "./attribution";
 import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./events";
 import { eventsToEmit } from "./funnelAlias";
-import { FUNNEL_PRODUCT, isBoundedSessionId } from "../../../../services/analytics-collector/contract/funnel-contract";
+import {
+  FUNNEL_PRODUCT,
+  isBoundedSessionId
+} from "../../../../services/analytics-collector/contract/funnel-contract";
 import {
   isReviewedCollectorOrigin,
   resolveCollectorLane

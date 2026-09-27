@@ -597,11 +597,11 @@ struct PrivacyIndexingSettingsView: View {
 
     // MARK: - Usage memory subsection (U2)
 
-    /// Master toggle for usage memory. Turning it ON for the very first time
+    /// Primary toggle for usage memory. Turning it ON for the very first time
     /// routes through the consent sheet instead of flipping the key directly
     /// (mirroring how the chat Memory consent works); once the prompt has been
     /// shown, turning it back ON simply re-grants. Turning it OFF revokes.
-    private var usageMemoryMasterBinding: Binding<Bool> {
+    private var usageMemoryEnabledBinding: Binding<Bool> {
         Binding(
             get: { settingsManager.usageMemoryConsentGranted },
             set: { isOn in
@@ -623,7 +623,7 @@ struct PrivacyIndexingSettingsView: View {
             SettingsToggle(
                 title: "Usage memory",
                 subtitle: "Propose durable memories from what you actually do — questions you ask in Safari and your recorded agent sessions. Everything is quarantined until you approve it in the review inbox; forget is permanent.",
-                isOn: usageMemoryMasterBinding
+                isOn: usageMemoryEnabledBinding
             )
 
             if settingsManager.usageMemoryConsentGranted {
@@ -1023,7 +1023,6 @@ struct PrivacyIndexingSettingsView: View {
         return String(format: "%.1f MB", kb / 1024)
     }
 }
-
 
 // MARK: - Memory Sync
 

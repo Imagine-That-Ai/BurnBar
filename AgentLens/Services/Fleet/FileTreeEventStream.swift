@@ -77,7 +77,7 @@ final class FileTreeEventStream: @unchecked Sendable {
     /// Kernel flags for the stream. `UseCFTypes` is the crash invariant:
     /// dropping it turns `eventPaths` into `char **` and the callback into a
     /// use-after-type-confusion. Tests assert this bitmask directly.
-    static let creationFlags: FSEventStreamCreateFlags = FSEventStreamCreateFlags(
+    static let creationFlags = FSEventStreamCreateFlags(
         kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes
     )
 #endif

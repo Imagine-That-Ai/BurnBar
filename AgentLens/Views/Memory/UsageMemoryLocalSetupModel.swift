@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Usage-memory local model setup (U3)
 
@@ -72,7 +73,7 @@ final class UsageMemoryLocalSetupModel {
 
     private var baseURL: String {
         let raw = settings.summaryLocalBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        return raw.isEmpty ? "http://127.0.0.1:11434" : raw
+        return raw.isEmpty ? LocalService.ollama.defaultBaseURL.absoluteString : raw
     }
 
     /// The curation text model. Falls back to the shipped default when the

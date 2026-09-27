@@ -189,7 +189,7 @@ final class SettingsManager {
             .desktopWallpaperProviderGlyphsDidChange,
             .enableSwarmSparklesDidChange,
             .excludeBrandShapesFromSwarmDidChange,
-            .popoverTrayLayoutDidChange,
+            .popoverTrayLayoutDidChange
         ]
         for name in appearanceNotifications {
             NotificationCenter.default.addObserver(

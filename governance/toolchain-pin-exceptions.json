@@ -1,7 +1,7 @@
 [
   {
     "path": ".github/workflows/deploy-hosting.yml",
-    "line": 183,
+    "line": 188,
     "pin": 24,
     "reason": "Deploy-lane release code (classifier FULL pattern) — cannot be validated on a PR. Convert when the deploy lane has one green deploy-hosting run whose Node version can be observed (human queue items 11-14).",
     "owner": "Ajnunezg",
@@ -9,7 +9,7 @@
   },
   {
     "path": ".github/workflows/deploy-hosting.yml",
-    "line": 580,
+    "line": 591,
     "pin": 22,
     "reason": "The credentialed deploy-hosting job never checks out the repo, so node-version-file cannot resolve .nvmrc in its workspace — the #2483 pin-file conversion broke this lane (setup-node exited 'node version file does not exist'). Bare literal equals the .nvmrc pin (22). Convert to a pin-file form only with a mechanism that materializes the pin without a checkout.",
     "owner": "Ajnunezg",
