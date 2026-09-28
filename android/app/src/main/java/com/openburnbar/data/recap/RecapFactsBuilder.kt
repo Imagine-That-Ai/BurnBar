@@ -45,7 +45,7 @@ object RecapFactsBuilder {
         val modelStats = mutableMapOf<String, ModelAccumulator>()
         val providerStats = mutableMapOf<String, ProviderAccumulator>()
         val pairingStats = mutableMapOf<String, PairingAccumulator>()
-        val sessionList = mutableListOf<RecapSessionInfo>()
+        val sessions = linkedMapOf<String, SessionAccumulator>()
 
         for (u in usages) {
             val cost = u.effectiveCost.coerceAtLeast(0.0)
@@ -57,12 +57,20 @@ object RecapFactsBuilder {
             cacheReadTokens += u.cacheReadTokens.coerceAtLeast(0).toLong()
             reasoningTokens += u.reasoningTokens.coerceAtLeast(0).toLong()
 
-            accumulateTimeStats(u, zone, daysInMonth, dailyCost, dailyTokens, dailySessions, hourCost, hourTokens, weekdayCost, weekdaySessions, matrix)
+            accumulateTimeStats(u, zone, daysInMonth, dailyCost, dailyTokens, hourCost, hourTokens, weekdayCost, matrix)
             accumulateModelAndProvider(u, modelStats, providerStats, pairingStats)
-            accumulateSession(u, sessionList)
+            accumulateSession(u, sessions)
         }
 
-        val totalSessionsCount = max(usages.size, sessionList.map { it.id }.distinct().size)
+        // Session counts are distinct sessions (rows grouped by sessionId), each
+        // attributed to the local day and weekday it started on.
+        for (session in sessions.values) {
+            val zdt = localStart(session.firstStartMillis, zone)
+            dailySessions[(zdt.dayOfMonth - 1).coerceIn(0, daysInMonth - 1)]++
+            weekdaySessions[zdt.dayOfWeek.value % RecapConstants.DAYS_PER_WEEK]++
+        }
+        val sessionList = sessions.values.map { it.toInfo() }
+        val totalSessionsCount = sessions.size
 
         return assembleFacts(
             window, builtAtEpochMillis, isPartial, zone,
@@ -79,19 +87,12 @@ object RecapFactsBuilder {
         daysInMonth: Int,
         dailyCost: DoubleArray,
         dailyTokens: LongArray,
-        dailySessions: IntArray,
         hourCost: DoubleArray,
         hourTokens: LongArray,
         weekdayCost: DoubleArray,
-        weekdaySessions: IntArray,
         matrix: Array<DoubleArray>,
     ) {
-        val startMillis = u.startTime
-        val zdt = if (startMillis > 0L) {
-            Instant.ofEpochMilli(startMillis).atZone(zone)
-        } else {
-            ZonedDateTime.now(zone)
-        }
+        val zdt = localStart(u.startTime, zone)
 
         val dayIdx = (zdt.dayOfMonth - 1).coerceIn(0, daysInMonth - 1)
         val hourIdx = zdt.hour.coerceIn(0, RecapConstants.HOURS_PER_DAY - 1)
@@ -102,11 +103,9 @@ object RecapFactsBuilder {
 
         dailyCost[dayIdx] += cost
         dailyTokens[dayIdx] += tokens
-        dailySessions[dayIdx]++
         hourCost[hourIdx] += cost
         hourTokens[hourIdx] += tokens
         weekdayCost[weekdayIdx] += cost
-        weekdaySessions[weekdayIdx]++
         matrix[weekdayIdx][hourIdx] += cost
     }
 
@@ -126,38 +125,42 @@ object RecapFactsBuilder {
         val mAcc = modelStats.getOrPut(modelKey) { ModelAccumulator(modelKey) }
         mAcc.cost += cost
         mAcc.tokens += tokens
-        mAcc.events++
+        mAcc.sessionIds += sessionKey(u)
 
         val pAcc = providerStats.getOrPut(providerKey) { ProviderAccumulator(providerKey) }
         pAcc.cost += cost
         pAcc.tokens += tokens
-        pAcc.events++
+        pAcc.sessionIds += sessionKey(u)
 
         val pairAcc = pairingStats.getOrPut(pairingKey) { PairingAccumulator(providerKey, modelKey) }
         pairAcc.cost += cost
         pairAcc.tokens += tokens
-        pairAcc.events++
+        pairAcc.sessionIds += sessionKey(u)
     }
 
-    private fun accumulateSession(u: TokenUsage, sessionList: MutableList<RecapSessionInfo>) {
-        val durationSecs = if (u.endTime > u.startTime && u.startTime > 0L) {
-            (u.endTime - u.startTime) / MILLIS_PER_SECOND
-        } else {
-            0.0
-        }
-        val sId = u.sessionId ?: u.id
-        val modelKey = (u.model?.ifEmpty { "unknown-model" }) ?: "unknown-model"
-        sessionList.add(
-            RecapSessionInfo(
-                id = sId,
-                model = modelKey,
+    private fun localStart(startMillis: Long, zone: ZoneId): ZonedDateTime =
+        if (startMillis > 0L) Instant.ofEpochMilli(startMillis).atZone(zone) else ZonedDateTime.now(zone)
+
+    /** A row's session identity; rows without a sessionId stand alone as their own session. */
+    private fun sessionKey(u: TokenUsage): String = u.sessionId?.takeIf { it.isNotEmpty() } ?: u.id
+
+    private fun accumulateSession(u: TokenUsage, sessions: MutableMap<String, SessionAccumulator>) {
+        val id = sessionKey(u)
+        val acc = sessions.getOrPut(id) {
+            SessionAccumulator(
+                id = id,
+                model = (u.model?.ifEmpty { "unknown-model" }) ?: "unknown-model",
                 providerKey = u.provider,
-                startTimeEpochMillis = u.startTime,
-                cost = u.effectiveCost.coerceAtLeast(0.0),
-                tokens = u.totalTokens.coerceAtLeast(0).toLong(),
-                durationSeconds = durationSecs,
-            ),
-        )
+                firstStartMillis = u.startTime,
+            )
+        }
+        acc.cost += u.effectiveCost.coerceAtLeast(0.0)
+        acc.tokens += u.totalTokens.coerceAtLeast(0).toLong()
+        if (u.startTime > 0L && (acc.firstStartMillis <= 0L || u.startTime < acc.firstStartMillis)) acc.firstStartMillis = u.startTime
+        if (u.startTime > 0L && u.endTime > u.startTime) {
+            acc.spanStartMillis = if (acc.spanStartMillis > 0L) minOf(acc.spanStartMillis, u.startTime) else u.startTime
+            acc.spanEndMillis = max(acc.spanEndMillis, u.endTime)
+        }
     }
 
     private fun assembleFacts(
@@ -286,13 +289,13 @@ object RecapFactsBuilder {
     private fun computeModelShares(modelStats: Map<String, ModelAccumulator>, totalCost: Double, totalSessions: Int): List<RecapShare> {
         return modelStats.values.map {
             val costShare = if (totalCost > 0.0) it.cost / totalCost else 0.0
-            val sessionShare = if (totalSessions > 0) it.events.toDouble() / totalSessions else 0.0
+            val sessionShare = if (totalSessions > 0) it.sessionIds.size.toDouble() / totalSessions else 0.0
             RecapShare(
                 key = it.key,
                 label = it.key,
                 costUSD = it.cost,
                 tokens = it.tokens,
-                sessions = it.events,
+                sessions = it.sessionIds.size,
                 costShare = costShare,
                 sessionShare = sessionShare,
             )
@@ -302,13 +305,13 @@ object RecapFactsBuilder {
     private fun computeProviderShares(providerStats: Map<String, ProviderAccumulator>, totalCost: Double, totalSessions: Int): List<RecapShare> {
         return providerStats.values.map {
             val costShare = if (totalCost > 0.0) it.cost / totalCost else 0.0
-            val sessionShare = if (totalSessions > 0) it.events.toDouble() / totalSessions else 0.0
+            val sessionShare = if (totalSessions > 0) it.sessionIds.size.toDouble() / totalSessions else 0.0
             RecapShare(
                 key = it.key,
                 label = it.key,
                 costUSD = it.cost,
                 tokens = it.tokens,
-                sessions = it.events,
+                sessions = it.sessionIds.size,
                 costShare = costShare,
                 sessionShare = sessionShare,
             )
@@ -318,13 +321,13 @@ object RecapFactsBuilder {
     private fun computePairingShares(pairingStats: Map<String, PairingAccumulator>, totalCost: Double, totalSessions: Int): List<RecapShare> {
         return pairingStats.values.map {
             val costShare = if (totalCost > 0.0) it.cost / totalCost else 0.0
-            val sessionShare = if (totalSessions > 0) it.events.toDouble() / totalSessions else 0.0
+            val sessionShare = if (totalSessions > 0) it.sessionIds.size.toDouble() / totalSessions else 0.0
             RecapShare(
                 key = "${it.provider}$PAIRING_SEPARATOR${it.model}",
                 label = "${it.provider} • ${it.model}",
                 costUSD = it.cost,
                 tokens = it.tokens,
-                sessions = it.events,
+                sessions = it.sessionIds.size,
                 costShare = costShare,
                 sessionShare = sessionShare,
             )
@@ -421,9 +424,37 @@ object RecapFactsBuilder {
         )
     }
 
-    private class ModelAccumulator(val key: String, var cost: Double = 0.0, var tokens: Long = 0L, var events: Int = 0)
-    private class ProviderAccumulator(val key: String, var cost: Double = 0.0, var tokens: Long = 0L, var events: Int = 0)
-    private class PairingAccumulator(val provider: String, val model: String, var cost: Double = 0.0, var tokens: Long = 0L, var events: Int = 0)
+    private class ModelAccumulator(val key: String, var cost: Double = 0.0, var tokens: Long = 0L, val sessionIds: MutableSet<String> = mutableSetOf())
+    private class ProviderAccumulator(val key: String, var cost: Double = 0.0, var tokens: Long = 0L, val sessionIds: MutableSet<String> = mutableSetOf())
+    private class PairingAccumulator(
+        val provider: String,
+        val model: String,
+        var cost: Double = 0.0,
+        var tokens: Long = 0L,
+        val sessionIds: MutableSet<String> = mutableSetOf(),
+    )
+
+    /** One session folded from all of its usage rows. Duration spans the earliest start to the latest end. */
+    private class SessionAccumulator(
+        val id: String,
+        val model: String,
+        val providerKey: String,
+        var firstStartMillis: Long,
+        var cost: Double = 0.0,
+        var tokens: Long = 0L,
+        var spanStartMillis: Long = 0L,
+        var spanEndMillis: Long = 0L,
+    ) {
+        fun toInfo() = RecapSessionInfo(
+            id = id,
+            model = model,
+            providerKey = providerKey,
+            startTimeEpochMillis = firstStartMillis,
+            cost = cost,
+            tokens = tokens,
+            durationSeconds = if (spanEndMillis > spanStartMillis) (spanEndMillis - spanStartMillis) / MILLIS_PER_SECOND else 0.0,
+        )
+    }
     private class RecapSessionInfo(
         val id: String,
         val model: String,
