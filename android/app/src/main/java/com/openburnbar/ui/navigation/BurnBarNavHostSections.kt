@@ -232,16 +232,24 @@ private fun androidx.navigation.NavGraphBuilder.burnBarInsightsRoutes(navControl
         )
     }
     composable("insights_workspace") {
-        if (isCloudMember) {
-            InsightsScreen()
-        } else {
-            com.openburnbar.ui.pro.LockedFeatureVeil(
-                headline = "Insights, surfaced.",
-                detail = "Cross-agent patterns, weekly retros, and forecast cohorts — included with OpenBurnBar Cloud.",
-                onCta = { navController.navigate("cloud_store") },
-            ) {
-                InsightsTeaserBackground()
-            }
+        InsightsWorkspaceRoute(isCloudMember = isCloudMember, onOpenCloudStore = { navController.navigate("cloud_store") })
+    }
+}
+
+// Its own composable rather than inline in the route lambda: Kotlin 2.4.20's
+// JVM backend fails to transform that lambda when it captures both the
+// NavHostController and the membership flag (compileBenchmarkReleaseKotlin).
+@Composable
+private fun InsightsWorkspaceRoute(isCloudMember: Boolean, onOpenCloudStore: () -> Unit) {
+    if (isCloudMember) {
+        InsightsScreen()
+    } else {
+        com.openburnbar.ui.pro.LockedFeatureVeil(
+            headline = "Insights, surfaced.",
+            detail = "Cross-agent patterns, weekly retros, and forecast cohorts — included with OpenBurnBar Cloud.",
+            onCta = onOpenCloudStore,
+        ) {
+            InsightsTeaserBackground()
         }
     }
 }

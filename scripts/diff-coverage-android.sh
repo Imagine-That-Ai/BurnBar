@@ -349,9 +349,14 @@ def consume_annotation(source_line, start):
         end = index
     return end
 
+KOTLIN_DIRECTIVE = re.compile(
+    r"^\s*(?:package|import)\s+[A-Za-z_][\w`]*(?:\.[A-Za-z_`][\w`]*)*(?:\.\*)?(?:\s+as\s+[A-Za-z_]\w*)?\s*;?\s*(?://.*)?$"
+)
+
+
 def non_executable_lines(rel_path):
-    """Return source line numbers containing only whitespace, comments, and
-    standalone annotations.
+    """Return source line numbers containing only whitespace, comments,
+    standalone annotations, and `package` / `import` directives.
 
     JaCoCo intentionally emits no executable-line entry for KDoc, ordinary
     comments, or annotation lines (annotation arguments are compile-time
@@ -369,6 +374,12 @@ def non_executable_lines(rel_path):
     in_triple_string = False
 
     for line_number, source_line in enumerate(source_lines, start=1):
+        # `package`/`import` directives compile to no bytecode, so JaCoCo has
+        # no line for them. Only a whole line matching the directive grammar
+        # outside any comment or string is safe; anything else stays gated.
+        if block_depth == 0 and not in_triple_string and KOTLIN_DIRECTIVE.match(source_line):
+            result.add(line_number)
+            continue
         index = 0
         has_code = in_triple_string
 

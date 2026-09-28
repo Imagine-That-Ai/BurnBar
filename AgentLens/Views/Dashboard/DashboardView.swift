@@ -423,7 +423,7 @@ struct DashboardView: View {
         @Bindable var chatController = chatController
         let activeReadabilityProfile = dashboardActiveReadabilityProfile
         let adaptiveColors = BackdropAdaptiveColors(profile: activeReadabilityProfile)
-        return VStack(spacing: 0) {
+        let core = VStack(spacing: 0) {
             dashboardWindowTitleStrip
             dashboardCommandDeck
 
@@ -670,86 +670,7 @@ struct DashboardView: View {
         } message: {
             Text("OpenBurnBar can index your conversation history for search and chat. This data stays on your Mac.")
         }
-        .sheet(isPresented: $showCLIConsentSheet, onDismiss: handleFleetChatConsentDismissed) {
-            CLIAssistantConsentSheet(settingsManager: settingsManager) {
-                showCLIConsentSheet = false
-            }
-            .presentationBackground(Material.ultraThinMaterial)
-        }
-        .sheet(isPresented: $showSessionLogCloudConsent) {
-            SessionLogCloudConsentSheet(settingsManager: settingsManager) {
-                showSessionLogCloudConsent = false
-            }
-            .presentationBackground(Material.ultraThinMaterial)
-        }
-        .sheet(isPresented: Binding(
-            get: { consentCoordinator?.showMemoryConsent ?? false },
-            set: { consentCoordinator?.showMemoryConsent = $0 }
-        )) {
-            MemoryConsentSheet { grant in
-                consentCoordinator?.confirmMemoryConsent(grant: grant)
-                consentCoordinator?.showMemoryConsent = false
-            }
-            .presentationBackground(Material.ultraThinMaterial)
-        }
-        .sheet(isPresented: Binding(
-            get: { consentCoordinator?.showUsageMemoryConsent ?? false },
-            set: { consentCoordinator?.showUsageMemoryConsent = $0 }
-        )) {
-            UsageMemoryConsentSheet(settings: settingsManager) { grant in
-                consentCoordinator?.confirmUsageMemoryConsent(grant: grant)
-                consentCoordinator?.showUsageMemoryConsent = false
-            }
-            // U3: "Set up local model…" on the placement step posts the setup
-            // notification; presenting from the sheet content stacks the
-            // wizard on top of the consent sheet.
-            .usageMemoryLocalSetupPresenter(settings: settingsManager)
-            .presentationBackground(Material.ultraThinMaterial)
-        }
-        .sheet(isPresented: $showAnalyticsConsent) {
-            AnalyticsConsentPromptView { granted in
-                if granted {
-                    AnalyticsConsentStore.shared.grant()
-                    Analytics.shared.consentDidChange()
-                    Analytics.trackFunnelSessionStartIfConsented()
-                } else {
-                    AnalyticsConsentStore.shared.decline()
-                }
-                showAnalyticsConsent = false
-            }
-            .presentationBackground(Material.ultraThinMaterial)
-        }
-        .sheet(isPresented: $showMacWandComposer) {
-            MacWandComposerSheet(accountManager: accountManager) { _ in
-                Task { await MissionConsoleWindowController.bind(to: operatingLayer).host.refresh() }
-            }
-            .presentationBackground(Material.ultraThinMaterial)
-        }
-        .onAppear {
-            presentAnalyticsConsentIfNeeded()
-            presentMemoryConsentIfNeeded()
-            presentUsageMemoryConsentIfNeeded()
-        }
-        .onChange(of: showIndexingConsent) { wasShowing, isShowing in
-            if wasShowing && !isShowing {
-                presentAnalyticsConsentIfNeeded()
-                presentMemoryConsentIfNeeded()
-                presentUsageMemoryConsentIfNeeded()
-            }
-        }
-        .onChange(of: showAnalyticsConsent) { wasShowing, isShowing in
-            if wasShowing && !isShowing {
-                presentMemoryConsentIfNeeded()
-                presentUsageMemoryConsentIfNeeded()
-            }
-        }
-        .onChange(of: consentCoordinator?.showMemoryConsent ?? false) { wasShowing, isShowing in
-            if wasShowing && !isShowing {
-                // Chat-memory consent just settled; usage-memory consent is the
-                // next (third) link in the one-at-a-time first-run chain.
-                presentUsageMemoryConsentIfNeeded()
-            }
-        }
+        return applyingConsentFlows(to: core)
         .onChange(of: accountManager.isSignedIn) { _, isSignedIn in
             chatController.refreshRetrievalHealth(sharedFeaturesAvailable: isSignedIn)
             if isSignedIn && !settingsManager.sessionLogCloudBackupConsentShown {
@@ -805,6 +726,92 @@ struct DashboardView: View {
         )
         .environment(settingsManager)
         .environment(\.burnBarWindowState, fieldWindowState)
+    }
+    /// First-run consent sheets and the one-at-a-time chain that presents them.
+    /// Split out of `body` so the dashboard chain stays within the type
+    /// checker's budget on the CI toolchain.
+    private func applyingConsentFlows<Content: View>(to content: Content) -> some View {
+        content
+            .sheet(isPresented: $showCLIConsentSheet, onDismiss: handleFleetChatConsentDismissed) {
+                CLIAssistantConsentSheet(settingsManager: settingsManager) {
+                    showCLIConsentSheet = false
+                }
+                .presentationBackground(Material.ultraThinMaterial)
+            }
+            .sheet(isPresented: $showSessionLogCloudConsent) {
+                SessionLogCloudConsentSheet(settingsManager: settingsManager) {
+                    showSessionLogCloudConsent = false
+                }
+                .presentationBackground(Material.ultraThinMaterial)
+            }
+            .sheet(isPresented: Binding(
+                get: { consentCoordinator?.showMemoryConsent ?? false },
+                set: { consentCoordinator?.showMemoryConsent = $0 }
+            )) {
+                MemoryConsentSheet { grant in
+                    consentCoordinator?.confirmMemoryConsent(grant: grant)
+                    consentCoordinator?.showMemoryConsent = false
+                }
+                .presentationBackground(Material.ultraThinMaterial)
+            }
+            .sheet(isPresented: Binding(
+                get: { consentCoordinator?.showUsageMemoryConsent ?? false },
+                set: { consentCoordinator?.showUsageMemoryConsent = $0 }
+            )) {
+                UsageMemoryConsentSheet(settings: settingsManager) { grant in
+                    consentCoordinator?.confirmUsageMemoryConsent(grant: grant)
+                    consentCoordinator?.showUsageMemoryConsent = false
+                }
+                // U3: "Set up local model…" on the placement step posts the setup
+                // notification; presenting from the sheet content stacks the
+                // wizard on top of the consent sheet.
+                .usageMemoryLocalSetupPresenter(settings: settingsManager)
+                .presentationBackground(Material.ultraThinMaterial)
+            }
+            .sheet(isPresented: $showAnalyticsConsent) {
+                AnalyticsConsentPromptView { granted in
+                    if granted {
+                        AnalyticsConsentStore.shared.grant()
+                        Analytics.shared.consentDidChange()
+                        Analytics.trackFunnelSessionStartIfConsented()
+                    } else {
+                        AnalyticsConsentStore.shared.decline()
+                    }
+                    showAnalyticsConsent = false
+                }
+                .presentationBackground(Material.ultraThinMaterial)
+            }
+            .sheet(isPresented: $showMacWandComposer) {
+                MacWandComposerSheet(accountManager: accountManager) { _ in
+                    Task { await MissionConsoleWindowController.bind(to: operatingLayer).host.refresh() }
+                }
+                .presentationBackground(Material.ultraThinMaterial)
+            }
+            .onAppear {
+                presentAnalyticsConsentIfNeeded()
+                presentMemoryConsentIfNeeded()
+                presentUsageMemoryConsentIfNeeded()
+            }
+            .onChange(of: showIndexingConsent) { wasShowing, isShowing in
+                if wasShowing && !isShowing {
+                    presentAnalyticsConsentIfNeeded()
+                    presentMemoryConsentIfNeeded()
+                    presentUsageMemoryConsentIfNeeded()
+                }
+            }
+            .onChange(of: showAnalyticsConsent) { wasShowing, isShowing in
+                if wasShowing && !isShowing {
+                    presentMemoryConsentIfNeeded()
+                    presentUsageMemoryConsentIfNeeded()
+                }
+            }
+            .onChange(of: consentCoordinator?.showMemoryConsent ?? false) { wasShowing, isShowing in
+                if wasShowing && !isShowing {
+                    // Chat-memory consent just settled; usage-memory consent is the
+                    // next (third) link in the one-at-a-time first-run chain.
+                    presentUsageMemoryConsentIfNeeded()
+                }
+            }
     }
 
     // MARK: - Hidden keyboard shortcuts

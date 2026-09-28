@@ -247,6 +247,39 @@ check "comment-only diff passes without JaCoCo evidence" "0" "$rc"
 check "comment-only method is reported" \
   "comment_or_annotation_only" "$(json_get "$tmp_root/comment-only.json" 'v["details"][0]["method"]')"
 
+# Swapping an import (e.g. a Firebase BoM -ktx migration) changes no bytecode,
+# so an import-only diff has nothing to attest even with no JaCoCo source.
+repo="$tmp_root/import-only"
+new_repo "$repo"
+mkdir -p "$repo/android/app/src/main/java/sample/imports"
+printf 'package sample.imports\nimport com.google.firebase.ktx.Firebase\nfun importedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/imports/Imported.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "add imported source"
+printf 'package sample.imports\nimport com.google.firebase.Firebase\nimport com.google.firebase.firestore.firestore as fs\nfun importedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/imports/Imported.kt"
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/import-only.json" "$tmp_root/import-only.err")"
+check "import-only diff passes without JaCoCo evidence" "0" "$rc"
+
+# An import line that also carries code is not a directive and stays gated.
+repo="$tmp_root/import-plus-code"
+new_repo "$repo"
+mkdir -p "$repo/android/app/src/main/java/sample/imports"
+printf 'package sample.imports\nfun importedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/imports/Imported.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "add source"
+printf 'package sample.imports\nimport com.google.firebase.Firebase; val leaked = 2\nfun importedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/imports/Imported.kt"
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/import-plus-code.json" "$tmp_root/import-plus-code.err")"
+check "import line carrying code stays coverage-gated" "1" "$rc"
+
 # A standalone annotation line (e.g. a justified detekt @Suppress) has no
 # JaCoCo executable-line entry — annotation arguments are compile-time
 # constants with no bytecode — so an annotation-plus-comment diff has
