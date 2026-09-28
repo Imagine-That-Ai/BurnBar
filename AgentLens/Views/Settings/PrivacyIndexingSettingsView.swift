@@ -157,7 +157,9 @@ struct PrivacyIndexingSettingsView: View {
                     .buttonStyle(.plain)
 
                     // MARK: Usage memory (U2: consent UI over the U1 gate lattice)
-                    usageMemorySubsection
+                    if UsageMemoryRollout.surfacesUserControls {
+                        usageMemorySubsection
+                    }
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 // Deep-link target for the Memory walkthrough's "Show me" and

@@ -11,10 +11,17 @@ final class DashboardConsentCoordinator {
     var showSessionLogCloudConsent = false
     var showMemoryConsent = false
     var showUsageMemoryConsent = false
+    /// See `UsageMemoryRollout`; injectable so the consent chain stays testable.
+    let usageMemoryControlsEnabled: Bool
 
-    init(settingsManager: SettingsManager, accountManager: AccountManager) {
+    init(
+        settingsManager: SettingsManager,
+        accountManager: AccountManager,
+        usageMemoryControlsEnabled: Bool = UsageMemoryRollout.surfacesUserControls
+    ) {
         self.settingsManager = settingsManager
         self.accountManager = accountManager
+        self.usageMemoryControlsEnabled = usageMemoryControlsEnabled
     }
 
     var shouldShowIndexingConsent: Bool {
@@ -37,7 +44,8 @@ final class DashboardConsentCoordinator {
     /// chat-memory consent have been settled (shown, whatever the decision), so
     /// the permission moments arrive one per visit instead of stacking.
     var shouldShowUsageMemoryConsent: Bool {
-        !settingsManager.usageMemoryConsentShown
+        usageMemoryControlsEnabled
+            && !settingsManager.usageMemoryConsentShown
             && settingsManager.memoryConsentShown
             && settingsManager.conversationIndexingConsentShown
     }

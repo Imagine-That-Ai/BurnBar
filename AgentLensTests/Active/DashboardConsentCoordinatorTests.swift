@@ -24,32 +24,32 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
     }
 
     func test_shouldShowIndexingConsent_whenNotShown() {
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         XCTAssertTrue(coordinator.shouldShowIndexingConsent)
     }
 
     func test_shouldNotShowIndexingConsent_whenShown() {
         settingsManager.conversationIndexingConsentShown = true
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         XCTAssertFalse(coordinator.shouldShowIndexingConsent)
     }
 
     func test_confirmIndexingConsent_enablesIndexing() {
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         coordinator.confirmIndexingConsent(enable: true, aggregator: nil)
         XCTAssertTrue(settingsManager.conversationIndexingEnabled)
         XCTAssertTrue(settingsManager.conversationIndexingConsentShown)
     }
 
     func test_confirmIndexingConsent_disablesIndexing() {
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         coordinator.confirmIndexingConsent(enable: false, aggregator: nil)
         XCTAssertFalse(settingsManager.conversationIndexingEnabled)
         XCTAssertTrue(settingsManager.conversationIndexingConsentShown)
     }
 
     func test_onDashboardAppear_showsConsentWhenNotShown() {
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         XCTAssertFalse(coordinator.showIndexingConsent)
         coordinator.onDashboardAppear(aggregator: nil)
         XCTAssertTrue(coordinator.showIndexingConsent)
@@ -57,13 +57,13 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
 
     func test_onDashboardAppear_doesNotShowConsentWhenAlreadyShown() {
         settingsManager.conversationIndexingConsentShown = true
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         coordinator.onDashboardAppear(aggregator: nil)
         XCTAssertFalse(coordinator.showIndexingConsent)
     }
 
     func test_openChatPanelIfConsented_showsCLIConsentWhenNotShown() throws {
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         XCTAssertFalse(coordinator.showCLIConsentSheet)
@@ -73,7 +73,7 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
 
     func test_openChatPanelIfConsented_callsOpenWhenConsented() throws {
         settingsManager.cliAssistantConsentShown = true
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
         var didOpen = false
@@ -85,7 +85,7 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
     // MARK: - Usage-memory consent (U2: third link in the first-run chain)
 
     func test_onDashboardAppear_showsOnlyIndexingConsentWhenNothingShown() {
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         coordinator.onDashboardAppear(aggregator: nil)
         XCTAssertTrue(coordinator.showIndexingConsent)
         XCTAssertFalse(coordinator.showMemoryConsent)
@@ -94,7 +94,7 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
 
     func test_onDashboardAppear_showsMemoryConsentSecond_notUsageConsent() {
         settingsManager.conversationIndexingConsentShown = true
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         coordinator.onDashboardAppear(aggregator: nil)
         XCTAssertFalse(coordinator.showIndexingConsent)
         XCTAssertTrue(coordinator.showMemoryConsent)
@@ -104,18 +104,27 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
     func test_onDashboardAppear_showsUsageMemoryConsentThird() {
         settingsManager.conversationIndexingConsentShown = true
         settingsManager.memoryConsentShown = true
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         coordinator.onDashboardAppear(aggregator: nil)
         XCTAssertFalse(coordinator.showIndexingConsent)
         XCTAssertFalse(coordinator.showMemoryConsent)
         XCTAssertTrue(coordinator.showUsageMemoryConsent)
     }
 
+    func test_usageMemoryConsent_staysHiddenUntilRolloutShipsTheControls() {
+        settingsManager.conversationIndexingConsentShown = true
+        settingsManager.memoryConsentShown = true
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        XCTAssertEqual(coordinator.usageMemoryControlsEnabled, UsageMemoryRollout.surfacesUserControls)
+        coordinator.onDashboardAppear(aggregator: nil)
+        XCTAssertEqual(coordinator.showUsageMemoryConsent, UsageMemoryRollout.surfacesUserControls)
+    }
+
     func test_onDashboardAppear_showsNothingWhenAllThreeShown() {
         settingsManager.conversationIndexingConsentShown = true
         settingsManager.memoryConsentShown = true
         settingsManager.usageMemoryConsentShown = true
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         coordinator.onDashboardAppear(aggregator: nil)
         XCTAssertFalse(coordinator.showIndexingConsent)
         XCTAssertFalse(coordinator.showMemoryConsent)
@@ -124,13 +133,13 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
 
     func test_shouldShowUsageMemoryConsent_requiresIndexingConsentShown() {
         settingsManager.memoryConsentShown = true
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         XCTAssertFalse(coordinator.shouldShowUsageMemoryConsent)
     }
 
     func test_shouldShowUsageMemoryConsent_requiresMemoryConsentShown() {
         settingsManager.conversationIndexingConsentShown = true
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         XCTAssertFalse(coordinator.shouldShowUsageMemoryConsent)
     }
 
@@ -138,19 +147,19 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
         settingsManager.conversationIndexingConsentShown = true
         settingsManager.memoryConsentShown = true
         settingsManager.usageMemoryConsentShown = true
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         XCTAssertFalse(coordinator.shouldShowUsageMemoryConsent)
     }
 
     func test_confirmUsageMemoryConsent_grantSetsGrantedAndShown() {
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         coordinator.confirmUsageMemoryConsent(grant: true)
         XCTAssertTrue(settingsManager.usageMemoryConsentGranted)
         XCTAssertTrue(settingsManager.usageMemoryConsentShown)
     }
 
     func test_confirmUsageMemoryConsent_declineOnlyMarksShown() {
-        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared)
+        let coordinator = DashboardConsentCoordinator(settingsManager: settingsManager, accountManager: .shared, usageMemoryControlsEnabled: true)
         coordinator.confirmUsageMemoryConsent(grant: false)
         XCTAssertFalse(settingsManager.usageMemoryConsentGranted)
         XCTAssertTrue(settingsManager.usageMemoryConsentShown)
