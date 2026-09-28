@@ -3,11 +3,11 @@ package com.openburnbar.data.stores
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.Firebase
 import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.firestore
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
 import com.openburnbar.data.policy.MobileAuthSessionEpoch
 import com.openburnbar.data.policy.MobileAuthSessionPolicy
 import com.openburnbar.data.policy.MobileSyncFreshness

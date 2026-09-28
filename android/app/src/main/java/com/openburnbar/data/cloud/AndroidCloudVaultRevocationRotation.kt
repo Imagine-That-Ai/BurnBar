@@ -2,11 +2,11 @@
 // a P0 migration gate.
 package com.openburnbar.data.cloud
 
-import com.google.firebase.Firebase
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
-import com.google.firebase.functions.functions
+import com.google.firebase.functions.ktx.functions
+import com.google.firebase.ktx.Firebase
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.tasks.await
 
