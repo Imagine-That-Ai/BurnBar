@@ -23,14 +23,14 @@
     "@openburnbar/functions-shared": "file:vendor/openburnbar/functions-shared"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "@types/node": "^24.6.0",
-    "eslint": "9.39.4",
-    "@typescript-eslint/eslint-plugin": "8.60.0",
-    "@typescript-eslint/parser": "8.60.0",
+    "typescript": "^7.0.2",
+    "@types/node": "^26.6.2",
+    "eslint": "10.11.0",
+    "@typescript-eslint/eslint-plugin": "8.70.1",
+    "@typescript-eslint/parser": "8.70.1",
     "eslint-config-prettier": "10.1.8",
-    "prettier": "3.8.3",
-    "knip": "5.88.1"
+    "prettier": "3.9.9",
+    "knip": "6.38.0"
   },
   "overrides": {
     "@tootallnate/once": "^3.0.1",
