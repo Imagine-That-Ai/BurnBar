@@ -45,7 +45,8 @@ const REQUIRED_PROVIDER_IDS = [
   'prime-agent',
   'muse',
   'devin',
-  'fx'
+  'fx',
+  'together'
 ] as const;
 
 describe('providerPathRegistry', () => {
@@ -60,9 +61,9 @@ describe('providerPathRegistry', () => {
 
   it('makes non-parser coverage explicit instead of implying local ingestion', () => {
     expect(providerCoverageCounts()).toEqual({
-      total: 37,
+      total: 38,
       localParser: 32,
-      apiBacked: 4,
+      apiBacked: 5,
       unavailable: 1
     });
     expect(providerPathById('openclaude')?.coverage).toBe('local-parser');
@@ -72,9 +73,10 @@ describe('providerPathRegistry', () => {
     expect(providerPathById('fx')?.coverage).toBe('local-parser');
     expect(providerPathById('openai')?.coverage).toBe('api-backed');
     expect(providerPathById('mimo')?.coverage).toBe('api-backed');
+    expect(providerPathById('together')?.coverage).toBe('api-backed');
     expect(providerPathById('devin')?.coverage).toBe('unavailable');
     expect(providerCoverageSummary()).toBe(
-      '32 local parsers, 4 API-backed sources, 1 unavailable local sources (37 canonical providers)'
+      '32 local parsers, 5 API-backed sources, 1 unavailable local sources (38 canonical providers)'
     );
   });
 
@@ -127,7 +129,7 @@ describe('providerPathRegistry', () => {
     expect(paths.length).toBe(LINUX_PROVIDER_PATH_REGISTRY.length);
   });
 
-  it('table-driven golden resolutions for all 37 providers under custom XDG', () => {
+  it('table-driven golden resolutions for all 38 providers under custom XDG', () => {
     const home = '/home/alice';
     const env = { XDG_CONFIG_HOME: '/xdg/config', XDG_DATA_HOME: '/xdg/data' };
     const expected: Record<string, string> = {
@@ -139,6 +141,7 @@ describe('providerPathRegistry', () => {
       openai: '/home/alice/.codex',
       openburnbar: '/home/alice/.codex',
       deepseek: '/home/alice/.codex',
+      together: '/home/alice/.codex',
       codex: '/home/alice/.codex/sessions',
       grok: '/home/alice/.grok/sessions',
       opencode: '/xdg/data/opencode',

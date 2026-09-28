@@ -338,6 +338,7 @@ class SwarmBackgroundPolicyTest {
                 "Warp",
                 "Cursor Agent",
                 "Muse",
+                "Together",
                 "fx",
             )
         assertEquals(expected, AgentProvider.swarmGlyphProviders.map { it.displayName })

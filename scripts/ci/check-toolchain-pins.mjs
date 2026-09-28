@@ -344,9 +344,9 @@ function selfTest() {
   expect("expired exception fails closed", 1);
   mutate("governance/toolchain-pin-exceptions.json", '"expiresOn": "2020-01-01"', '"expiresOn": "2026-12-01"');
 
-  mutate("governance/toolchain-pin-exceptions.json", '"line": 183', '"line": 9999');
+  mutate("governance/toolchain-pin-exceptions.json", '"line": 188', '"line": 9999');
   expect("stale exception (line no longer matches) fails", 1);
-  mutate("governance/toolchain-pin-exceptions.json", '"line": 9999', '"line": 183');
+  mutate("governance/toolchain-pin-exceptions.json", '"line": 9999', '"line": 188');
 
   mutate(".github/workflows/confidentiality-guard.yml", "node-version-file: .nvmrc", "node-version: 20");
   expect("Node version drifting off .nvmrc fails", 1);
