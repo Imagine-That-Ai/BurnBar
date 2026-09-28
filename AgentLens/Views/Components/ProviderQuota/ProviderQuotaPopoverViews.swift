@@ -824,9 +824,7 @@ struct QuotaPopoverBar: View {
             localFactoryTier = settingsManager.factoryQuotaPlanTier
         case .xAI:
             localXaiTier = settingsManager.xaiQuotaPlanTier
-            localXaiManagementKey = ks.apiKey(for: "xai_management_key")
-                ?? ks.apiKey(for: "provider.xai.managementKey")
-                ?? ""
+            localXaiManagementKey = ks.xaiManagementKey() ?? ""
             grokCLIAuth = CLIAuthDiscovery.discoverAuthState(for: .grok)
         case .mimo:
             localMimoRegion = settingsManager.mimoTokenPlanRegion
@@ -868,16 +866,11 @@ struct QuotaPopoverBar: View {
         case .factory:
             settingsManager.factoryQuotaPlanTier = localFactoryTier
         case .xAI:
+            settingsManager.xaiQuotaPlanTier = localXaiTier
             do {
-                let trimmed = localXaiManagementKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    try ks.removeAPIKey(for: "xai_management_key")
-                } else {
-                    try ks.setAPIKey(trimmed, for: "xai_management_key")
-                }
-                settingsManager.xaiQuotaPlanTier = localXaiTier
+                try ks.setXAIManagementKey(localXaiManagementKey)
             } catch {
-                AppLogger.dataStore.silentFailure("saveAPIKey(xai_management_key)", error: error)
+                AppLogger.dataStore.silentFailure("saveAPIKey(\(ProviderAPIKeyStore.xaiManagementKeyAccount))", error: error)
             }
         case .mimo:
             settingsManager.mimoTokenPlanRegion = localMimoRegion

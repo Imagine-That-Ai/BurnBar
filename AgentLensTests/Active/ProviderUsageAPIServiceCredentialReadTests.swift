@@ -262,4 +262,45 @@ final class ProviderUsageAPIServiceCredentialReadTests: XCTestCase {
 
         XCTAssertFalse(result, "An unconfigured provider must fail closed.")
     }
+
+    // MARK: - xAI Management Key (canonical account + legacy alias)
+
+    private final class InMemoryKeychainBackend: KeychainStoreBackend, @unchecked Sendable {
+        private(set) var items: [String: Data] = [:]
+
+        func set(_ value: Data, service _: String, account: String) throws { items[account] = value }
+
+        func data(for _: String, account: String, allowUserInteraction _: Bool) throws -> Data? { items[account] }
+
+        func delete(service _: String, account: String) throws { items[account] = nil }
+    }
+
+    /// The popover loads the canonical key when no legacy alias exists; blanking
+    /// the field must remove that canonical key, not just the alias.
+    func testBlankXAIManagementKeyRemovesCanonicalAndLegacyAccounts() throws {
+        let backend = InMemoryKeychainBackend()
+        let keyStore = ProviderAPIKeyStore(keychain: makeStore(backend: backend))
+        try keyStore.setAPIKey("xai-mgmt-canonical", for: ProviderAPIKeyStore.xaiManagementKeyAccount)
+        XCTAssertEqual(keyStore.xaiManagementKey(), "xai-mgmt-canonical")
+
+        try keyStore.setXAIManagementKey("   ")
+
+        XCTAssertNil(keyStore.xaiManagementKey())
+        XCTAssertTrue(backend.items.isEmpty)
+    }
+
+    /// Saving writes the canonical account and retires the legacy alias so a
+    /// stale alias can never shadow the new key.
+    func testSaveXAIManagementKeyWritesCanonicalAndDropsLegacyAlias() throws {
+        let backend = InMemoryKeychainBackend()
+        let keyStore = ProviderAPIKeyStore(keychain: makeStore(backend: backend))
+        try keyStore.setAPIKey("xai-mgmt-old", for: ProviderAPIKeyStore.legacyXAIManagementKeyAccount)
+        XCTAssertEqual(keyStore.xaiManagementKey(), "xai-mgmt-old")
+
+        try keyStore.setXAIManagementKey(" xai-mgmt-new ")
+
+        XCTAssertEqual(keyStore.apiKey(for: ProviderAPIKeyStore.xaiManagementKeyAccount), "xai-mgmt-new")
+        XCTAssertNil(keyStore.apiKey(for: ProviderAPIKeyStore.legacyXAIManagementKeyAccount))
+        XCTAssertEqual(keyStore.xaiManagementKey(), "xai-mgmt-new")
+    }
 }

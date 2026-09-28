@@ -116,7 +116,7 @@ type PromoResolution<T> = { ok: true; value: T } | { ok: false; reason: PromoRej
  * assert its way past validation, and every field here has been range- and
  * type-checked by {@link resolvePromoCampaign}.
  */
-interface PromoGrantPlan {
+export interface PromoGrantPlan {
   campaignID: string;
   entitlementID: string;
   productID: string;
@@ -184,6 +184,31 @@ export function resolvePromoCampaign(raw: unknown, options: { nowMillis: number 
     ok: true,
     value: { campaignID, entitlementID, productID, grantExpiresAtMillis, label: stringField(raw, "label") },
   };
+}
+
+/**
+ * Validates a `promo_campaigns/{id}/redemptions/{uid}` ledger entry into the
+ * grant it recorded, or `undefined` when the entry is unusable.
+ *
+ * A recorded redemption is re-asserted from these fields rather than from the
+ * current campaign policy: once the ledger holds a slot for a uid, the grant it
+ * reserved is owed even after the campaign fills up, ends, or is paused.
+ * `grantExpiresAt` is stored as a Firestore Timestamp, read here by shape so
+ * this module stays free of Firestore imports.
+ */
+export function resolveRecordedPromoGrant(raw: unknown, campaignID: string): PromoGrantPlan | undefined {
+  if (!isRecord(raw)) return undefined;
+  const entitlementID = stringField(raw, "entitlementID");
+  const productID = stringField(raw, "productID");
+  const grantExpiresAt = raw.grantExpiresAt;
+  const grantExpiresAtMillis =
+    isRecord(grantExpiresAt) && typeof grantExpiresAt.toMillis === "function"
+      ? Number((grantExpiresAt.toMillis as () => unknown)())
+      : undefined;
+  if (!entitlementID || !productID || grantExpiresAtMillis === undefined || !Number.isFinite(grantExpiresAtMillis)) {
+    return undefined;
+  }
+  return { campaignID, entitlementID, productID, grantExpiresAtMillis };
 }
 
 /**

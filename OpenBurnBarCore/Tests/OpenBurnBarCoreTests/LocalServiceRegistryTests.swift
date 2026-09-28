@@ -79,6 +79,20 @@ final class LocalServiceRegistryTests: XCTestCase {
         )
     }
 
+    func testBaseURLBracketsBareIPv6Loopback() {
+        let url = LocalService.hermesGateway.baseURL(host: "::1", port: 8317)
+        XCTAssertEqual(url.absoluteString, "http://[::1]:8317")
+        XCTAssertEqual(url.port, 8317)
+        XCTAssertEqual(
+            LocalService.hermesGateway.baseURL(host: "[::1]", port: 8317).absoluteString,
+            "http://[::1]:8317",
+        )
+        XCTAssertEqual(
+            LocalService.hermesGateway.baseURL(host: "localhost", port: 8317).absoluteString,
+            "http://localhost:8317",
+        )
+    }
+
     func testBaseURLFallsBackToDefaultPortOnMissingOrInvalidPort() {
         XCTAssertEqual(
             LocalService.piAgentGateway.baseURL(host: nil, port: nil).absoluteString,

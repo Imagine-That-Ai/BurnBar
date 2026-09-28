@@ -7,6 +7,7 @@
  * `scripts/test-promo-redemption.mjs`, which runs the shipped writer against a
  * real Firestore emulator — so these tests never stand in for that.
  */
+import { Timestamp } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { callableRequest, callableRunner, seedDoc } from "./bola/callableBolaHarness.js";
@@ -117,6 +118,60 @@ describe("redeemPromoCode", () => {
     expect(result.status).toBe("already_redeemed");
     expect(writeEntitlementMock).toHaveBeenCalledTimes(1);
     expect(store.get(`promo_campaigns/${CAMPAIGN_ID}`)?.redemptionCount).toBe(0);
+  });
+
+  it.each([
+    ["full", { maxRedemptions: 1, redemptionCount: 1 }],
+    ["paused", { active: false }],
+    ["ended", { endsAtMillis: Date.now() - 1000 }],
+  ])("retries a failed grant from the ledger even when the campaign is %s", async (_label, overrides) => {
+    seedCampaign();
+    writeEntitlementMock.mockRejectedValueOnce(new Error("entitlement write failed"));
+    await expect(redeemPromoCodeForUid("uid-retry", CODE)).rejects.toThrow("entitlement write failed");
+    expect(store.get(`promo_campaigns/${CAMPAIGN_ID}/redemptions/uid-retry`)).toBeDefined();
+
+    // The campaign closes before the retry; the recorded slot is still owed.
+    seedCampaign({ redemptionCount: 1, ...overrides });
+    const result = await redeemPromoCodeForUid("uid-retry", CODE);
+
+    expect(result.status).toBe("already_redeemed");
+    expect(result.expiresAt).toBe(new Date(FAR_FUTURE).toISOString());
+    expect(writeEntitlementMock).toHaveBeenCalledTimes(2);
+    expect(writeEntitlementMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ uid: "uid-retry", productID: ULTRA_SKU, expiresAtMillis: FAR_FUTURE, entitlementID: "burnbar_ultra" }),
+    );
+    expect(store.get(`promo_campaigns/${CAMPAIGN_ID}`)?.redemptionCount).toBe(1);
+  });
+
+  it("re-asserts the recorded grant, not the campaign's current terms", async () => {
+    const recordedExpiry = Date.parse("2098-06-01T00:00:00.000Z");
+    seedCampaign({ active: false, productID: "com.openburnbar.ultra.monthly.v3" });
+    seedDoc(store, `promo_campaigns/${CAMPAIGN_ID}/redemptions/uid-recorded`, {
+      uid: "uid-recorded",
+      campaignID: CAMPAIGN_ID,
+      entitlementID: "burnbar_ultra",
+      productID: ULTRA_SKU,
+      grantExpiresAt: Timestamp.fromMillis(recordedExpiry),
+    });
+
+    const result = await redeemPromoCodeForUid("uid-recorded", CODE);
+
+    expect(result).toMatchObject({ status: "already_redeemed", productID: ULTRA_SKU });
+    expect(writeEntitlementMock).toHaveBeenCalledWith(
+      expect.objectContaining({ productID: ULTRA_SKU, expiresAtMillis: recordedExpiry }),
+    );
+  });
+
+  it("still requires a matching code on the ledger retry path", async () => {
+    seedCampaign({ active: false });
+    seedDoc(store, `promo_campaigns/${CAMPAIGN_ID}/redemptions/uid-wrong`, {
+      entitlementID: "burnbar_ultra",
+      productID: ULTRA_SKU,
+      grantExpiresAt: Timestamp.fromMillis(FAR_FUTURE),
+    });
+
+    await expect(redeemPromoCodeForUid("uid-wrong", "NOPE-NOPE")).rejects.toMatchObject({ code: "not-found" });
+    expect(writeEntitlementMock).not.toHaveBeenCalled();
   });
 
   it("leaves a live paid subscription alone and does not consume a redemption", async () => {
