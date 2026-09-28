@@ -206,7 +206,7 @@ test("native consumer jobs keep their measured execution margin and emulator she
   );
   assert.match(
     androidAppBuild,
-    /testImplementation\("net\.java\.dev\.jna:jna:5\.19\.1"\)/u,
+    /testImplementation\("net\.java\.dev\.jna:jna:5\.19\.0"\)/u,
   );
   assert.match(
     androidAppBuild,

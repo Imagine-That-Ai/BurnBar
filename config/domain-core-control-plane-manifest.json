@@ -194,7 +194,7 @@
     "scripts/ci/verify-domain-core-release-gate.mjs": ["ebd3b8c2cdc089b5","859f17190500fa6d","b912fa8b94e42370","53630929090da9ed"],
     "scripts/ci/verify-domain-core-release-gate.test.mjs": ["3e734df76c169177","56ad3d9c2b6a4994","4a2646b4842ab35a","442b9af9b29a32c7"],
     "scripts/ci/verify-domain-core-rollback.mjs": ["8e9fb5d8cad66355","b20f83ebdc2fe8e2","af48085259ad0a72","da2fc8ddf988a499"],
-    "scripts/ci/verify-domain-core-workflows.test.mjs": ["cecb5e6e390a8696","bffbdc517eca1356","d1010dd44841f357","408c6999a28fa192"],
+    "scripts/ci/verify-domain-core-workflows.test.mjs": ["85b75f71490504ed","9ef5e65de7ae9f50","129a156411c49532","8c589bddf2fb1d63"],
     "scripts/ci/verify-existing-domain-core-deployment.mjs": ["0a66d2189fe4d32a","1245abf3af4eb9aa","8d3fdaff7b155a85","1b3d58909907a0ac"],
     "scripts/ci/verify-existing-domain-core-deployment.test.mjs": ["c5b57e42092e4172","c72f649bd4cde9d0","88945440d10eaddd","157b939f37986938"],
     "scripts/ci/verify-existing-tag-dry-run-recovery.mjs": ["83103b16976b2a21","e0b5eb7a3007acfc","bcc8e28b618bff54","254313546d491454"],
