@@ -130,6 +130,34 @@ final class ProviderAPIKeyStore {
     func hasKey(for provider: String) -> Bool {
         apiKey(for: provider, allowUserInteraction: false) != nil
     }
+
+    // MARK: xAI Management Key
+
+    /// Canonical account for the xAI Management Key (`BurnBarProviderAuthRegistry`
+    /// `xai-management-key`, written by the provider plan wizard).
+    static let xaiManagementKeyAccount = "provider.xai.managementKey"
+    /// Pre-registry alias the quota popover used to write; read as a fallback
+    /// and removed whenever the key is saved or cleared.
+    static let legacyXAIManagementKeyAccount = "xai_management_key"
+
+    /// The stored xAI Management Key: the canonical account first, then the legacy alias.
+    func xaiManagementKey() -> String? {
+        [Self.xaiManagementKeyAccount, Self.legacyXAIManagementKeyAccount].lazy
+            .compactMap { self.apiKey(for: $0)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
+    /// Saves `key` to the canonical account, or removes it when `key` is blank.
+    /// The legacy alias is always removed so it cannot shadow or resurrect the key.
+    func setXAIManagementKey(_ key: String) throws {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            try removeAPIKey(for: Self.xaiManagementKeyAccount)
+        } else {
+            try setAPIKey(trimmed, for: Self.xaiManagementKeyAccount)
+        }
+        try removeAPIKey(for: Self.legacyXAIManagementKeyAccount)
+    }
 }
 
 // MARK: - Usage API Service (Coordinator)

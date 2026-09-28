@@ -14,9 +14,11 @@
  * written. Those cannot be one atomic unit because the shared entitlement
  * writer runs its own transaction, so a crash between the two steps would
  * otherwise leave a consumed code with no grant. The repeat path closes that
- * hole: a uid whose ledger entry already exists re-asserts the entitlement and
- * returns `already_redeemed`, which makes a retry self-healing and keeps the
- * callable idempotent under double-submits.
+ * hole: a uid whose ledger entry already exists re-asserts the entitlement it
+ * recorded and returns `already_redeemed`, checked before current campaign
+ * eligibility so a full, ended, or paused campaign cannot strand the grant.
+ * That makes a retry self-healing and keeps the callable idempotent under
+ * double-submits.
  *
  * Trust posture
  * -------------
@@ -35,6 +37,7 @@ import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { db } from "@openburnbar/functions-shared/adminRuntime.js";
 import { enforceHighRiskComputerUseCallableWithNonce } from "@openburnbar/functions-shared/appCheckAttestation.js";
 import { getConfig } from "@openburnbar/functions-shared/config.js";
+import { stringField } from "@openburnbar/functions-shared/guards.js";
 import { logInfo, onCallProduction } from "@openburnbar/functions-shared/logging.js";
 import {
   canonicalizePromoCode,
@@ -46,6 +49,8 @@ import {
   PROMO_SCHEMA_VERSION,
   resolvePromoCampaign,
   resolvePromoCode,
+  resolveRecordedPromoGrant,
+  type PromoGrantPlan,
   type PromoRejectionReason,
 } from "./promoCampaigns.js";
 import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
@@ -139,36 +144,39 @@ export async function redeemPromoCodeForUid(uid: string, rawCode: unknown): Prom
 
   const { campaignID } = resolvedCode.value;
   const campaignRef = db.doc(promoCampaignDocPath(campaignID));
-  const nowMillis = Date.now();
-  const resolvedCampaign = resolvePromoCampaign((await campaignRef.get()).data(), { nowMillis });
-  if (!resolvedCampaign.ok) throw promoRejection(resolvedCampaign.reason);
+  const redemptionRef = db.doc(promoRedemptionDocPath(campaignID, uid));
+  const [campaignSnap, redemptionSnap] = await Promise.all([campaignRef.get(), redemptionRef.get()]);
+  const campaignRaw = campaignSnap.data();
 
-  const { entitlementID, productID, grantExpiresAtMillis, label } = resolvedCampaign.value;
-  const entitlementRef = db.doc(`users/${uid}/entitlements/${entitlementID}`);
-  const existingEntitlement = (await entitlementRef.get()).data();
-  if (heldByVerifiedPurchase(existingEntitlement, nowMillis)) {
-    // Never consume a redemption for someone who is already paying for this
-    // tier — they keep their subscription and their code stays usable.
-    logInfo({ event: "promo.redeem_skipped_paid", uid, campaignID, entitlementID });
-    return {
-      status: "already_entitled",
-      campaignID,
-      entitlementID,
-      productID: typeof existingEntitlement?.productID === "string" ? existingEntitlement.productID : productID,
-      expiresAt: new Date(entitlementExpiryMillis(existingEntitlement ?? {})).toISOString(),
-      label,
-    };
+  // A uid that already holds a ledger slot is owed the grant it reserved, so
+  // it is re-asserted from the recorded fields before current eligibility is
+  // consulted. Otherwise a retry after a failed entitlement write would be
+  // refused once the campaign fills, ends, or is paused, leaving a consumed
+  // redemption with no grant.
+  const recordedGrant = redemptionSnap.exists
+    ? resolveRecordedPromoGrant(redemptionSnap.data(), campaignID)
+    : undefined;
+  if (recordedGrant) {
+    return grantPromo(uid, { ...recordedGrant, label: stringField(campaignRaw ?? {}, "label") }, true);
   }
 
-  const redemptionRef = db.doc(promoRedemptionDocPath(campaignID, uid));
+  const nowMillis = Date.now();
+  const resolvedCampaign = resolvePromoCampaign(campaignRaw, { nowMillis });
+  if (!resolvedCampaign.ok) throw promoRejection(resolvedCampaign.reason);
+
+  const plan = resolvedCampaign.value;
+  const { entitlementID, productID, grantExpiresAtMillis } = plan;
+  const entitled = await verifiedPurchaseResponse(uid, plan, nowMillis);
+  if (entitled) return entitled;
+
   const alreadyRedeemed = await db.runTransaction(async (transaction) => {
     // Re-read the campaign inside the transaction so a campaign disabled or
     // exhausted between the pre-check and here cannot be raced through.
-    const [freshCampaignSnap, redemptionSnap] = await Promise.all([
+    const [freshCampaignSnap, freshRedemptionSnap] = await Promise.all([
       transaction.get(campaignRef),
       transaction.get(redemptionRef),
     ]);
-    if (redemptionSnap.exists) return true;
+    if (freshRedemptionSnap.exists) return true;
 
     const freshCampaign = resolvePromoCampaign(freshCampaignSnap.data(), { nowMillis: Date.now() });
     if (!freshCampaign.ok) throw promoRejection(freshCampaign.reason);
@@ -190,8 +198,49 @@ export async function redeemPromoCodeForUid(uid: string, rawCode: unknown): Prom
     return false;
   });
 
-  // Written on both paths: a repeat call re-asserts the grant, which repairs
-  // the window where the ledger was reserved but the entitlement write failed.
+  return grantPromo(uid, plan, alreadyRedeemed, { paidChecked: true });
+}
+
+/**
+ * The `already_entitled` response when a provider-verified purchase holds the
+ * plan's entitlement document, else `undefined`. Such a user keeps their
+ * subscription and no redemption is consumed or re-asserted over it.
+ */
+async function verifiedPurchaseResponse(
+  uid: string,
+  plan: PromoGrantPlan,
+  nowMillis: number,
+): Promise<RedeemPromoCodeResponse | undefined> {
+  const existingEntitlement = (await db.doc(`users/${uid}/entitlements/${plan.entitlementID}`).get()).data();
+  if (!heldByVerifiedPurchase(existingEntitlement, nowMillis)) return undefined;
+  logInfo({ event: "promo.redeem_skipped_paid", uid, campaignID: plan.campaignID, entitlementID: plan.entitlementID });
+  return {
+    status: "already_entitled",
+    campaignID: plan.campaignID,
+    entitlementID: plan.entitlementID,
+    productID: typeof existingEntitlement?.productID === "string" ? existingEntitlement.productID : plan.productID,
+    expiresAt: new Date(entitlementExpiryMillis(existingEntitlement ?? {})).toISOString(),
+    label: plan.label,
+  };
+}
+
+/**
+ * Writes the promotional entitlement for `plan`. Runs on both the first grant
+ * and a repeat call: re-asserting repairs the window where the ledger was
+ * reserved but the entitlement write failed.
+ */
+async function grantPromo(
+  uid: string,
+  plan: PromoGrantPlan,
+  alreadyRedeemed: boolean,
+  options: { paidChecked?: boolean } = {},
+): Promise<RedeemPromoCodeResponse> {
+  const { campaignID, entitlementID, productID, grantExpiresAtMillis, label } = plan;
+  if (!options.paidChecked) {
+    const entitled = await verifiedPurchaseResponse(uid, plan, Date.now());
+    if (entitled) return entitled;
+  }
+
   await writeBurnBarProEntitlement({
     uid,
     productID,

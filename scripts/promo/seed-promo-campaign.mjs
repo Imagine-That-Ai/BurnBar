@@ -23,12 +23,14 @@
  *
  * Re-running with the same arguments is idempotent: campaign policy is merged
  * and `redemptionCount` is never reset, so a re-seed cannot resurrect an
- * exhausted campaign or double-grant anyone.
+ * exhausted campaign or double-grant anyone. The stored `active` flag changes
+ * only on --pause / --resume (or the first seed), so a code rotation or policy
+ * re-seed never silently re-opens a paused campaign.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -83,6 +85,17 @@ function loadCampaignDefinition(campaignID) {
     throw new Error(`campaign "${campaignID}" grantExpiresAt is in the past; grants would be born expired`);
   }
   return { ...definition, grantExpiresAtMillis };
+}
+
+/**
+ * The `active` value to write, or `undefined` to leave the stored flag alone.
+ * Only an explicit --pause / --resume changes a seeded campaign's state; a
+ * campaign that does not exist yet is created active.
+ */
+export function resolveCampaignActive(args, campaignExists) {
+  if (args.pause) return false;
+  if (args.resume) return true;
+  return campaignExists ? undefined : true;
 }
 
 async function main() {
@@ -141,17 +154,18 @@ async function main() {
     return;
   }
 
-  const active = args.pause ? false : true;
+  const active = resolveCampaignActive(args, (await campaignRef.get()).exists);
+  const activeLabel = active === undefined ? "unchanged" : String(active);
   const campaignDoc = {
     campaignID: definition.campaignID,
     label: definition.label,
-    active,
     entitlementID: definition.entitlementID,
     productID: definition.productID,
     grantExpiresAtMillis: definition.grantExpiresAtMillis,
     schemaVersion: 1,
     updatedAt: FieldValue.serverTimestamp(),
   };
+  if (active !== undefined) campaignDoc.active = active;
   if (typeof definition.maxRedemptions === "number") campaignDoc.maxRedemptions = definition.maxRedemptions;
   if (definition.startsAt) campaignDoc.startsAtMillis = Date.parse(definition.startsAt);
   if (definition.endsAt) campaignDoc.endsAtMillis = Date.parse(definition.endsAt);
@@ -163,7 +177,7 @@ async function main() {
 
   if (args.dryRun) {
     console.log("[dry-run] would write:");
-    console.log(`  promo_campaigns/${definition.campaignID} active=${active}`);
+    console.log(`  promo_campaigns/${definition.campaignID} active=${activeLabel}`);
     if (digest) console.log(`  promo_codes/${digest} -> ${definition.campaignID} (code not printed)`);
     if (args.deactivateCode) {
       console.log(`  promo_codes/${codeDigest(canonicalizeCode(args.deactivateCode))} active=false`);
@@ -173,7 +187,7 @@ async function main() {
 
   // `merge` preserves redemptionCount so a re-seed never resets the cap ledger.
   await campaignRef.set(campaignDoc, { merge: true });
-  console.log(`campaign ${definition.campaignID}: active=${active} (policy written)`);
+  console.log(`campaign ${definition.campaignID}: active=${activeLabel} (policy written)`);
 
   if (digest) {
     await db.doc(`promo_codes/${digest}`).set(
@@ -196,7 +210,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`seed-promo-campaign: ${err.message}`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(`seed-promo-campaign: ${err.message}`);
+    process.exitCode = 1;
+  });
+}

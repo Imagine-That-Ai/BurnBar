@@ -61,12 +61,12 @@ test("push path filter watches the shared analytics contract compiled into the m
   const trigger = WORKFLOW.slice(0, WORKFLOW.indexOf("\njobs:"));
   assert.match(
     trigger,
-    /^\s+- "analytics\/\*\*"$/mu,
-    "analytics-only main commits must rebuild burnbar.ai",
+    /^\s+- "services\/analytics-collector\/contract\/\*\*"$/mu,
+    "analytics-contract-only main commits must rebuild burnbar.ai",
   );
   assert.doesNotMatch(
     trigger,
-    /workers\/analytics-collector/u,
+    /^\s+- "services\/analytics-collector\/(\*\*|src\/)/mu,
     "hosting deploys the marketing bundle, not the collector Worker",
   );
 });

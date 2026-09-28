@@ -26,6 +26,12 @@ extension ProviderQuotaService {
         for identifier in ["factory_cookie_header", "factory_cookie", "ollama_cookie_header", "ollama_cookie", "kimi_auth_token"] {
             resolvedKeys[identifier] = keyStore.apiKey(for: identifier)
         }
+        // The xAI adapter reads its Management Key from `xai_management_key`. The
+        // generic xAI identifiers above can resolve the inference key there, and the
+        // canonical account is not one of them, so the stored management key wins.
+        if let managementKey = keyStore.xaiManagementKey() {
+            resolvedKeys[ProviderAPIKeyStore.legacyXAIManagementKeyAccount] = managementKey
+        }
 
         return ProviderQuotaAdapterContext(
             appPaths: appPaths,

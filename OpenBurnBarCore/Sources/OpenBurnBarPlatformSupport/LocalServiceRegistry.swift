@@ -171,12 +171,19 @@ extension LocalService {
     /**
      * Resolve a configured endpoint to a base URL. An empty, `0.0.0.0`, or
      * `::` host and a missing/out-of-range port normalize to the loopback
-     * default — the service is loopback-only by construction.
+     * default — the service is loopback-only by construction. A bare IPv6
+     * literal (`::1`) is bracketed so it forms a valid authority.
      */
     public func baseURL(host: String?, port: Int?) -> URL {
-        let normalizedHost = resolvedHost(host)
+        let normalizedHost = Self.urlAuthorityHost(resolvedHost(host))
         let normalizedPort = port.map { resolvedPort($0) } ?? descriptor.defaultPort
         return URL(string: "http://\(normalizedHost):\(normalizedPort)") ?? defaultBaseURL
+    }
+
+    /// `host` as it must appear in a URL authority: a bare IPv6 literal gains
+    /// brackets (`::1` → `[::1]`); bracketed IPv6, IPv4, and hostnames pass through.
+    static func urlAuthorityHost(_ host: String) -> String {
+        host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
     }
 
     /**
