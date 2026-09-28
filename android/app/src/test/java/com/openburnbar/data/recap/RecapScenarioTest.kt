@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -44,6 +45,13 @@ class RecapScenarioTest {
 
     /** Runs file I/O inline so no view-model continuation outlives the test's Main. */
     private fun syncStore(accountID: String) = RecapStore(context, accountID, ioDispatcher = Dispatchers.Unconfined)
+
+    private fun environment(source: RecapSource, accountID: String) = RecapEnvironment(
+        sourceFactory = { source },
+        storeFactory = { syncStore(it.orEmpty()) },
+        initialAccountID = accountID,
+        accountIDs = flowOf(accountID),
+    )
 
     @Before
     fun setUp() {
@@ -296,7 +304,7 @@ class RecapScenarioTest {
                     }
                 }
             }
-        val environment = RecapEnvironment(context, source = source, accountID = "env-account", store = syncStore("env-account"))
+        val environment = environment(source, "env-account")
 
         environment.selectMonth(august)
         val ready = withTimeout(10_000) { environment.phase.filterIsInstance<RecapPhase.Ready>().first() }
@@ -322,7 +330,7 @@ class RecapScenarioTest {
             object : RecapSource {
                 override suspend fun loadUsages(window: RecapWindow): Pair<List<TokenUsage>, Boolean> = throw java.io.IOException("offline")
             }
-        val environment = RecapEnvironment(context, source = failing, accountID = "failing-account", store = syncStore("failing-account"))
+        val environment = environment(failing, "failing-account")
         environment.load(august, forceRegenerate = true)
         val failed = withTimeout(10_000) { environment.phase.filterIsInstance<RecapPhase.Failed>().first() }
         assertEquals("offline", failed.message)

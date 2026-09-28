@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import com.openburnbar.data.recap.MonthlyRecap
 import com.openburnbar.data.recap.RecapCard
 import com.openburnbar.data.recap.RecapEnvironment
@@ -54,7 +55,8 @@ import com.openburnbar.ui.theme.AuroraColors
 @Composable
 fun MonthlyRecapScreen(onDismiss: (() -> Unit)? = null, viewModel: RecapEnvironment? = null) {
     val context = LocalContext.current
-    val env = remember(context) { viewModel ?: RecapEnvironment(context) }
+    // A real ViewModel owner, so onCleared releases the auth-state listener.
+    val env = viewModel ?: composeViewModel { RecapEnvironment(context.applicationContext) }
     val phase by env.phase.collectAsState()
     val selectedMonth by env.selectedMonth.collectAsState()
     val availableMonths by env.availableMonths.collectAsState()

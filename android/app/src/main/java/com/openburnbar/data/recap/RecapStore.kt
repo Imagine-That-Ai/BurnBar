@@ -66,6 +66,18 @@ class RecapStore(
         RecapStoreCodec.deserializeFacts(window, obj)
     }
 
+    /**
+     * Facts safe to reuse instead of re-reading the month: stored in the full
+     * format (legacy scalar-only entries lack the shares the comparison rules
+     * read) and built after [window] ended, so a mid-month snapshot is never
+     * treated as the final month.
+     */
+    suspend fun loadReusableFacts(window: RecapWindow): RecapFacts? = withContext(ioDispatcher) {
+        val obj = readJson(historyFile).optJSONObject("facts")?.optJSONObject(window.key) ?: return@withContext null
+        if (!RecapFactsCodec.isCurrentFormat(obj)) return@withContext null
+        RecapStoreCodec.deserializeFacts(window, obj)?.takeIf { it.builtAtEpochMillis >= window.endEpochMillis() }
+    }
+
     suspend fun loadAllFacts(): List<RecapFacts> = withContext(ioDispatcher) {
         val root = readJson(historyFile)
         val factsObj = root.optJSONObject("facts") ?: return@withContext emptyList()
@@ -165,6 +177,7 @@ object RecapStoreCodec {
             compObj.put("unit", comp.unit.name)
             cObj.put("comparison", compObj)
         }
+        cand.visualData?.let { cObj.put("visualData", RecapVisualDataCodec.encode(it)) }
         return cObj
     }
 
@@ -230,6 +243,7 @@ object RecapStoreCodec {
                 metrics = metrics,
                 comparison = comparison,
                 visual = visual,
+                visualData = RecapVisualDataCodec.decode(cObj.optJSONObject("visualData")),
                 suggestedSize = size,
             )
             RecapCard(candidate = cand, size = size)
@@ -297,37 +311,7 @@ object RecapStoreCodec {
         RecapComparison.Basis.PREVIOUS_MONTH
     }
 
-    fun serializeFacts(facts: RecapFacts): JSONObject {
-        val obj = JSONObject()
-        obj.put("window", facts.window.key)
-        obj.put("builtAt", facts.builtAtEpochMillis)
-        obj.put("isPartial", facts.isPartial)
-        obj.put("totalCostUSD", facts.totalCostUSD)
-        obj.put("totalTokens", facts.totalTokens)
-        obj.put("sessionCount", facts.sessionCount)
-        obj.put("activeDayCount", facts.activeDayCount)
-        obj.put("longestActiveStreak", facts.longestActiveStreak)
-        obj.put("cacheHitRate", facts.cacheHitRate)
-        obj.put("modelConcentration", facts.modelConcentration)
-        return obj
-    }
+    fun serializeFacts(facts: RecapFacts): JSONObject = RecapFactsCodec.encode(facts)
 
-    fun deserializeFacts(window: RecapWindow, obj: JSONObject): RecapFacts? {
-        return try {
-            RecapFacts(
-                window = window,
-                builtAtEpochMillis = obj.optLong("builtAt", System.currentTimeMillis()),
-                isPartial = obj.optBoolean("isPartial", false),
-                totalCostUSD = obj.optDouble("totalCostUSD", 0.0),
-                totalTokens = obj.optLong("totalTokens", 0L),
-                sessionCount = obj.optInt("sessionCount", 0),
-                activeDayCount = obj.optInt("activeDayCount", 0),
-                longestActiveStreak = obj.optInt("longestActiveStreak", 0),
-                cacheHitRate = obj.optDouble("cacheHitRate", 0.0),
-                modelConcentration = obj.optDouble("modelConcentration", 0.0),
-            )
-        } catch (_: Exception) {
-            null
-        }
-    }
+    fun deserializeFacts(window: RecapWindow, obj: JSONObject): RecapFacts? = RecapFactsCodec.decode(window, obj)
 }
