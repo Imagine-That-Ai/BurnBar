@@ -102,6 +102,11 @@ public struct TogetherQuotaAdapter: ProviderQuotaAdapter {
         guard let first = pages.first else {
             throw TogetherBillingUsageError.malformed("Together billing usage returned no pages.")
         }
+        // A cursor still pending after the page cap means the month is only
+        // partly summed; never present that subtotal as the billed total.
+        if url != nil {
+            throw TogetherBillingUsageError.truncated(pages: pages.count)
+        }
         return first.merging(pages.dropFirst())
     }
 
@@ -338,6 +343,7 @@ enum TogetherBillingUsageError: Error {
     case unauthorized(Int)
     case rateLimited
     case malformed(String)
+    case truncated(pages: Int)
 
     var statusMessage: String {
         switch self {
@@ -349,6 +355,8 @@ enum TogetherBillingUsageError: Error {
             return "Together rate-limited the billing usage request. Retry shortly to refresh the Llama usage meter."
         case .malformed(let message):
             return message
+        case .truncated(let pages):
+            return "Together billing usage spans more than \(pages) pages, so this month's spend can't be totalled exactly. Open the Together dashboard for the full figure."
         }
     }
 }

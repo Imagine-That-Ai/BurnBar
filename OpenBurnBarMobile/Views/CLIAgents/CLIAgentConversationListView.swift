@@ -925,12 +925,14 @@ struct CLIAgentChatThreadView: View {
         HapticBus.send()
         draft = ""
         inputFocused = true
+        // Permission ladder (docs/PRODUCT_FOCUS_AND_ONBOARDING_PLAN.md): the
+        // first agent request is what makes a later reply notification worth
+        // asking for. Ask as the message goes out, not after the reply stream
+        // settles, so backgrounding mid-reply can still end in a notification.
+        // No-op once the user has decided either way.
+        Task { await AgentReplyNotificationService.shared.requestNotificationAuthorization() }
         Task {
             await chatService.send(message: current, presentationMode: presentationMode)
-            // Permission ladder (docs/PRODUCT_FOCUS_AND_ONBOARDING_PLAN.md): the
-            // first agent request is what makes a later reply notification worth
-            // asking for. No-op once the user has decided either way.
-            await AgentReplyNotificationService.shared.requestNotificationAuthorization()
         }
     }
 

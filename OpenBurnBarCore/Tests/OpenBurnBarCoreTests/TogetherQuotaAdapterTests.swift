@@ -272,7 +272,7 @@ final class TogetherQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(snapshot.statusMessage?.contains("Add a Together / Llama API key"), true)
     }
 
-    func test_paginationStopsAtMaxPagesWithoutInventingRemainder() async throws {
+    func test_paginationCapReportsTruncationInsteadOfAnExactSubtotal() async throws {
         var pages = 0
         TogetherMockURLProtocol.responder = { request in
             pages += 1
@@ -286,9 +286,10 @@ final class TogetherQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter().fetch(context: try makeContext(apiKey: "tog-cap"))
         XCTAssertEqual(pages, TogetherQuotaAdapter.maxUsagePages)
-        XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertEqual(snapshot.buckets.first?.usedValue ?? -1, Double(TogetherQuotaAdapter.maxUsagePages), accuracy: 0.001)
-        XCTAssertNil(snapshot.buckets.first?.remainingValue)
+        // A cursor was still pending, so the month is only partly summed.
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        XCTAssertEqual(snapshot.statusMessage?.contains("can't be totalled exactly"), true)
     }
 
     func test_resolveAPIKeyChecksTogetherBeforeMetaSlot() throws {
