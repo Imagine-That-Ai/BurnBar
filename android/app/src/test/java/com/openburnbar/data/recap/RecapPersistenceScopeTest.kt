@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.take
@@ -331,7 +332,7 @@ class RecapPersistenceScopeTest {
     )
 
     private suspend fun RecapEnvironment.awaitReady(window: RecapWindow): MonthlyRecap =
-        withTimeout(10_000) { phase.first { it is RecapPhase.Ready && it.recap.window == window } as RecapPhase.Ready }.recap
+        withTimeout(10_000) { phase.filterIsInstance<RecapPhase.Ready>().first { it.recap.window == window } }.recap
 
     private fun recap(window: RecapWindow, seal: RecapSealState, partial: Boolean = false) =
         MonthlyRecap(window = window, title = "cached ${window.key}", cards = emptyList(), closingSentence = "bye", isPartial = partial, sealState = seal)
