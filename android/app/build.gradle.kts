@@ -621,7 +621,7 @@ dependencies {
     "baselineProfile"(project(":macrobenchmark"))
 
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -648,7 +648,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.8.5")
+    implementation("androidx.navigation:navigation-compose:2.10.2")
 
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
@@ -697,16 +697,16 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:9.1.0")
 
     // OkHttp + WebSocket for Hermes
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
 
     // Amplitude — opt-in, consent-gated analytics. The only caller of this SDK
     // is com.openburnbar.analytics.AmplitudeTransport (constructed solely after
     // affirmative opt-in). Autocapture is fully disabled; key is BuildConfig-
     // injected and never committed (absent key ⇒ recorder stays dark).
-    implementation("com.amplitude:analytics-android:1.32.0")
+    implementation("com.amplitude:analytics-android:1.33.0")
 
     // Vico 2.x — Compose-first chart library for Insights
-    implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")
+    implementation("com.patrykandpatrick.vico:compose-m3:3.3.1")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
