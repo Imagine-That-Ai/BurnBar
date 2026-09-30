@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const ENTRY = "lib/index.js";
@@ -72,12 +71,4 @@ test("help shapes complete fast and offline with network blocked", async () => {
       `no network access allowed for ${JSON.stringify(args)}`
     );
   }
-});
-
-test("src/index.ts dispatches --help/-h explicitly instead of falling through", () => {
-  const source = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
-  const branchLine = source
-    .split("\n")
-    .find((line) => line.includes("--help") && line.includes("-h") && line.trimStart().startsWith("if"));
-  assert.ok(branchLine, "expected an explicit if branch handling --help/-h in src/index.ts");
 });

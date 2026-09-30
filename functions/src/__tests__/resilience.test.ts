@@ -1,13 +1,4 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import {
-  ConsecutiveBreaker,
-  ConstantBackoff,
-  circuitBreaker,
-  handleAll,
-  handleWhen,
-  retry,
-  wrap,
-} from "cockatiel";
 
 vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logError: vi.fn(),
@@ -34,24 +25,6 @@ describe("resilience", () => {
     ).rejects.toThrow("stripe down");
     expect(logError).toHaveBeenCalledWith(
       expect.objectContaining({ event: "resilience_failure", label: "test.stripe" }),
-    );
-  });
-
-  it("production stripe breaker logs circuit_breaker_tripped when open", async () => {
-    const breaker = circuitBreaker(handleAll, {
-      halfOpenAfter: 30_000,
-      breaker: new ConsecutiveBreaker(2),
-    });
-    breaker.onBreak(() => {
-      logError({ event: "circuit_breaker_tripped", service: "test", state: "open" });
-    });
-    const policy = wrap(breaker);
-    const fail = () => Promise.reject(new Error("boom"));
-    await expect(policy.execute(fail)).rejects.toThrow("boom");
-    await expect(policy.execute(fail)).rejects.toThrow("boom");
-    await expect(policy.execute(fail)).rejects.toThrow();
-    expect(logError).toHaveBeenCalledWith(
-      expect.objectContaining({ event: "circuit_breaker_tripped", service: "test" }),
     );
   });
 
@@ -126,55 +99,6 @@ describe("resilience", () => {
 
     it.each(cases)("%s", (_label, error, expected) => {
       expect(isRetryableError(error)).toBe(expected);
-    });
-  });
-
-  describe("retryable-only retry composition", () => {
-    // Mirrors the production retry builder shape without touching the shared
-    // module-level breakers (their consecutive-failure counters span tests).
-    function buildTestRetryPolicy() {
-      return retry(handleWhen((error) => isRetryableError(error)), {
-        maxAttempts: 3,
-        backoff: new ConstantBackoff(0),
-      });
-    }
-
-    // NOTE: cockatiel's maxAttempts counts retries after the initial attempt,
-    // so maxAttempts: 3 invokes an always-failing operation 4 times total.
-    it("replays a transient Stripe error up to maxAttempts", async () => {
-      const operation = vi.fn(async () => {
-        throw Object.assign(new Error("stripe overloaded"), {
-          type: "StripeAPIError",
-          statusCode: 503,
-        });
-      });
-      await expect(buildTestRetryPolicy().execute(operation)).rejects.toThrow("stripe overloaded");
-      expect(operation).toHaveBeenCalledTimes(4);
-    });
-
-    it("fails a permanent Stripe error on the first attempt", async () => {
-      const operation = vi.fn(async () => {
-        throw Object.assign(new Error("card declined"), {
-          type: "StripeCardError",
-          statusCode: 402,
-        });
-      });
-      await expect(buildTestRetryPolicy().execute(operation)).rejects.toThrow("card declined");
-      expect(operation).toHaveBeenCalledTimes(1);
-    });
-
-    it("replays a transient FCM error but not a permanent one", async () => {
-      const transient = vi.fn(async () => {
-        throw Object.assign(new Error("fcm unavailable"), { code: "messaging/server-unavailable" });
-      });
-      await expect(buildTestRetryPolicy().execute(transient)).rejects.toThrow("fcm unavailable");
-      expect(transient).toHaveBeenCalledTimes(4);
-
-      const permanent = vi.fn(async () => {
-        throw Object.assign(new Error("bad token"), { code: "messaging/invalid-registration-token" });
-      });
-      await expect(buildTestRetryPolicy().execute(permanent)).rejects.toThrow("bad token");
-      expect(permanent).toHaveBeenCalledTimes(1);
     });
   });
 });

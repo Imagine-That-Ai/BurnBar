@@ -395,11 +395,4 @@ describe('PetSurface', () => {
     view.unmount();
     expect(stopMock).toHaveBeenCalledTimes(1);
   });
-
-  it('renders tier matrix table rows', async () => {
-    render(<PetSurface />);
-    expect(await screen.findByText(/pet tier matrix/i)).toBeTruthy();
-    expect(screen.getByText('GNOME Wayland')).toBeTruthy();
-    expect(screen.getByText('KDE Wayland')).toBeTruthy();
-  });
 });

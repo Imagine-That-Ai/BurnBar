@@ -11,7 +11,7 @@ interface OpenBurnBarPanelModelOption {
   providerName: string;
 }
 
-export interface OpenBurnBarPanelRunCard {
+interface OpenBurnBarPanelRunCard {
   id: string;
   title: string;
   phase: string;
@@ -30,7 +30,7 @@ interface OpenBurnBarPanelCapabilityChip {
   kind: 'ready' | 'locked' | 'warning';
 }
 
-export interface OpenBurnBarPanelApprovalState {
+interface OpenBurnBarPanelApprovalState {
   runId: string;
   title: string;
   message: string;

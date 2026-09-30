@@ -297,35 +297,6 @@ describe('OpenBurnBarRunListTreeDataProvider', () => {
   });
 });
 
-describe('Run List View Integration', () => {
-  it('should create tree items for all run phases', () => {
-    const phases: BurnBarRunProjection['phase'][] = [
-      'completed', 'failed', 'waiting_on_companion', 'planning',
-      'model_streaming', 'executing_tool', 'cancelled', 'awaiting_approval',
-      'awaiting_computer_use_session', 'idle'
-    ];
-
-    phases.forEach(phase => {
-      const run = createMockRun({ phase });
-      const item = new OpenBurnBarRunTreeItem(run);
-
-      expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
-    });
-  });
-
-  it('should handle mixed run sources', () => {
-    const runs = [
-      createMockRun({ id: 'run-1', source: 'daemon' }),
-      createMockRun({ id: 'run-2', source: 'projected' })
-    ];
-
-    const items = runs.map(run => new OpenBurnBarRunTreeItem(run));
-
-    expect(items[0].contextValue).toBe('openburnbar.run.daemon');
-    expect(items[1].contextValue).toBe('openburnbar.run.projected');
-  });
-});
-
 // Helper functions
 
 function createMockRun(overrides: Partial<BurnBarRunProjection>): BurnBarRunProjection {

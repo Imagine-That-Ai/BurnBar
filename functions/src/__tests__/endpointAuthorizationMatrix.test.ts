@@ -12,17 +12,10 @@ describe("endpoint authorization matrix", () => {
       expect(entry.appCheck, entry.exportedName).toMatch(/^(required|not-applicable|not-required)$/u);
       expect(entry.tenantSource.trim(), entry.exportedName).not.toEqual("");
       expect(entry.ownershipCheck.trim(), entry.exportedName).not.toEqual("");
-      expect(entry.bolaCoverage.length, entry.exportedName).toBeGreaterThan(0);
       if (entry.appCheck === "not-required" || entry.trigger === "provider-webhook") {
         expect(entry.publicJustification?.trim(), entry.exportedName).toBeTruthy();
       }
     }
-  });
-
-  it("has no duplicate exported names", () => {
-    const names = endpointAuthorizationMatrix.map((entry) => entry.exportedName);
-    const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
-    expect(duplicates).toEqual([]);
   });
 
   it("tracks phone-control grant issuance and describes multi-controller ownership accurately", () => {

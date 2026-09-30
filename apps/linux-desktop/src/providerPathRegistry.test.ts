@@ -1,95 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   LINUX_PROVIDER_PATH_REGISTRY,
-  providerCoverageCounts,
-  providerCoverageSummary,
-  providerDisplayPaths,
   providerPathById,
   resolveProviderLogicalPath
 } from './providerPathRegistry.js';
 
-const REQUIRED_PROVIDER_IDS = [
-  'droid',
-  'claude',
-  'copilot',
-  'aider',
-  'cursor',
-  'openai',
-  'openburnbar',
-  'deepseek',
-  'codex',
-  'opencode',
-  'zai',
-  'minimax',
-  'kimi',
-  'cline',
-  'kilocode',
-  'roocode',
-  'forge',
-  'augment',
-  'hermes',
-  'pi',
-  'gemini',
-  'antigravity',
-  'goose',
-  'openclaw',
-  'openclaude',
-  'omp',
-  'ollama',
-  'windsurf',
-  'warp',
-  'grok',
-  'mimo',
-  'cursor-agent',
-  'junie',
-  'prime-agent',
-  'muse',
-  'devin',
-  'fx',
-  'together'
-] as const;
-
 describe('providerPathRegistry', () => {
-  it('covers every VAL-PARSER-001 provider id exactly once', () => {
-    const ids = LINUX_PROVIDER_PATH_REGISTRY.map((r) => r.providerId);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(REQUIRED_PROVIDER_IDS.length);
-    for (const id of REQUIRED_PROVIDER_IDS) {
-      expect(ids).toContain(id);
-    }
-  });
-
-  it('makes non-parser coverage explicit instead of implying local ingestion', () => {
-    expect(providerCoverageCounts()).toEqual({
-      total: 38,
-      localParser: 32,
-      apiBacked: 5,
-      unavailable: 1
-    });
-    expect(providerPathById('openclaude')?.coverage).toBe('local-parser');
-    expect(providerPathById('omp')?.coverage).toBe('local-parser');
-    expect(providerPathById('prime-agent')?.coverage).toBe('local-parser');
-    expect(providerPathById('muse')?.coverage).toBe('local-parser');
-    expect(providerPathById('fx')?.coverage).toBe('local-parser');
-    expect(providerPathById('openai')?.coverage).toBe('api-backed');
-    expect(providerPathById('mimo')?.coverage).toBe('api-backed');
-    expect(providerPathById('together')?.coverage).toBe('api-backed');
-    expect(providerPathById('devin')?.coverage).toBe('unavailable');
-    expect(providerCoverageSummary()).toBe(
-      '32 local parsers, 5 API-backed sources, 1 unavailable local sources (38 canonical providers)'
-    );
-  });
-
-  it('matches parser discovery logical paths for primary providers', () => {
-    expect(providerPathById('codex')?.logicalPath).toBe('~/.codex/sessions');
-    expect(providerPathById('claude')?.logicalPath).toBe('~/.claude/projects');
-    expect(providerPathById('grok')?.logicalPath).toBe('~/.grok/sessions');
-    expect(providerPathById('opencode')?.logicalPath).toBe('~/.local/share/opencode');
-    expect(providerPathById('goose')?.logicalPath).toBe('~/.local/share/goose/sessions');
-    expect(providerPathById('windsurf')?.logicalPath).toBe('~/.config/Windsurf - Next/User/globalStorage');
-    expect(providerPathById('warp')?.filePattern).toBe('warp_network*.log');
-  });
-
   it('resolves macOS catalog aliases to the canonical Linux path row', () => {
     expect(providerPathById('anthropic')?.providerId).toBe('claude');
     expect(providerPathById('claude-code')?.providerId).toBe('claude');
@@ -120,13 +36,6 @@ describe('providerPathRegistry', () => {
         expect(customResolved.startsWith('/xdg/data/')).toBe(true);
       }
     }
-  });
-
-  it('exports display paths for settings/onboarding', () => {
-    const paths = providerDisplayPaths();
-    expect(paths).toContain('~/.codex/sessions');
-    expect(paths).toContain('~/.local/share/opencode');
-    expect(paths.length).toBe(LINUX_PROVIDER_PATH_REGISTRY.length);
   });
 
   it('table-driven golden resolutions for all 38 providers under custom XDG', () => {

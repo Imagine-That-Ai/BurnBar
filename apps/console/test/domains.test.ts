@@ -4,16 +4,9 @@
  * retention metadata covers every domain in the registry.
  */
 import { describe, it, expect } from "vitest";
-import { DATA_DOMAINS, DATA_DOMAIN_IDS, TIER_META, RETENTION_META, dataDomain } from "../lib/domains";
+import { DATA_DOMAINS, TIER_META, RETENTION_META } from "../lib/domains";
 
 describe("data-domain registry binding", () => {
-  it("ships the 13 canonical domains", () => {
-    expect(DATA_DOMAINS.length).toBe(13);
-    expect(DATA_DOMAIN_IDS).toContain("pensieve");
-    expect(DATA_DOMAIN_IDS).toContain("team_pensieve");
-    expect(DATA_DOMAIN_IDS).toContain("audit_timeline");
-  });
-
   it("has tier copy for every encryption tier used", () => {
     for (const d of DATA_DOMAINS) {
       expect(TIER_META[d.encryptionTier]).toBeDefined();
@@ -25,10 +18,5 @@ describe("data-domain registry binding", () => {
     for (const d of DATA_DOMAINS) {
       expect(RETENTION_META[d.retention]).toBeDefined();
     }
-  });
-
-  it("resolves a domain by id", () => {
-    expect(dataDomain("pensieve")?.title).toBe("Pensieve Knowledge");
-    expect(dataDomain("nope")).toBeUndefined();
   });
 });

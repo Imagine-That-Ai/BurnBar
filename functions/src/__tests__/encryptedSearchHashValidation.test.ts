@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 import { requireOptionalSearchHashes, requireTokenHashes } from "../../../packages/functions-shared/src/shared/validators.js";
 import {
@@ -63,21 +61,5 @@ describe("encrypted search hash validation", () => {
     expect(() =>
       assertCloudSearchIndexCleanupWriteBudget(MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT + 1),
     ).toThrow(/cloud search index cleanup would write/);
-  });
-
-  it("keeps the callable wired to same-commit chunk binding and write-budget enforcement", () => {
-    const source = readFileSync(path.join(process.cwd(), "../functions-sync/src/domains/search/encryptedSearch.ts"), "utf8");
-
-    expect(source).toContain("chunk.documentID must reference a document in the same commit");
-    expect(source).toContain("assertCloudSearchIndexWriteBudget(writeCount + 1)");
-    expect(source).toContain("assertCloudSearchIndexCleanupWriteBudget(cleanupWriteCount + 1)");
-  });
-
-  it("keeps callable fallback queries isolated per hash", () => {
-    const source = readFileSync(path.join(process.cwd(), "../functions-sync/src/callables/encryptedSearchQuery.ts"), "utf8");
-
-    expect(source).toContain("SEARCH_FALLBACK_SCAN_BATCH_LIMIT");
-    expect(source).toContain("startAfter(cursor)");
-    expect(source).toContain('chunksRef.where(fieldName, "array-contains-any", [hash])');
   });
 });

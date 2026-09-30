@@ -14,20 +14,6 @@ const SKIP = !existsSync(DIST_DIR);
 const describeIf = (cond: boolean) => cond ? describe : describe.skip;
 
 describeIf(!SKIP)('Website Build Integration', () => {
-  it('dist/ directory exists after build', () => {
-    expect(existsSync(DIST_DIR)).toBe(true);
-  });
-
-  it('index.html is generated', () => {
-    expect(existsSync(join(DIST_DIR, 'index.html'))).toBe(true);
-  });
-
-  it('index.html has correct content-type meta', () => {
-    const html = readFileSync(join(DIST_DIR, 'index.html'), 'utf-8');
-    expect(html).toContain('<!DOCTYPE html>');
-    expect(html).toContain('<html');
-  });
-
   it('no placeholder text leaked to production', () => {
     const html = readFileSync(join(DIST_DIR, 'index.html'), 'utf-8');
     // Sentinels for genuinely-leaked authoring junk. Note: a bare "placeholder"

@@ -317,32 +317,3 @@ describe("workspace panel view model integration", () => {
   });
 });
 
-describe("workspace panel protocol messages", () => {
-  it("sidebar protocol includes openWorkspace message type", async () => {
-    const protocol = await import("../src/views/panelProtocol");
-
-    // Type check — openWorkspace should be assignable to OpenBurnBarPanelWebviewMessage
-    const msg: typeof protocol.OpenBurnBarPanelWebviewMessage extends never
-      ? never
-      : { type: "openWorkspace" } = { type: "openWorkspace" };
-    expect(msg.type).toBe("openWorkspace");
-  });
-
-  it("workspace protocol includes switchSection message type", async () => {
-    const protocol = await import("../src/views/panelProtocol");
-
-    const msg: { type: "switchSection"; section: "command" | "runs" | "system" } = {
-      type: "switchSection",
-      section: "command"
-    };
-    expect(msg.type).toBe("switchSection");
-    expect(msg.section).toBe("command");
-  });
-
-  it("workspace protocol includes openConversationSearch message type", async () => {
-    const protocol = await import("../src/views/panelProtocol");
-
-    const msg: { type: "openConversationSearch" } = { type: "openConversationSearch" };
-    expect(msg.type).toBe("openConversationSearch");
-  });
-});

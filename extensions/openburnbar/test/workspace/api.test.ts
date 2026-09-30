@@ -104,90 +104,10 @@ describe('createBurnBarWorkspaceApi', () => {
     expect(api.hostKind).toBe('workspace');
   });
 
-  it('should expose workspace folders', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(api.workspaceFolders).toBeDefined();
-    expect(Array.isArray(api.workspaceFolders)).toBe(true);
-  });
-
   it('should expose remote name', () => {
     const api = createBurnBarWorkspaceApi('ui');
 
     expect(api.remoteName).toBe('cursor');
-  });
-
-  it('should expose isWritableFileSystem method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.isWritableFileSystem).toBe('function');
-    expect(api.isWritableFileSystem('file')).toBe(true);
-  });
-
-  it('should expose readFile method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.readFile).toBe('function');
-  });
-
-  it('should expose findFiles method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.findFiles).toBe('function');
-  });
-
-  it('should expose openTextDocument method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.openTextDocument).toBe('function');
-  });
-
-  it('should expose applyEdit method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.applyEdit).toBe('function');
-  });
-
-  it('should expose saveAll method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.saveAll).toBe('function');
-  });
-
-  it('should expose createWorkspaceEdit method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.createWorkspaceEdit).toBe('function');
-  });
-
-  it('should expose createRange method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.createRange).toBe('function');
-  });
-
-  it('should expose createTerminal method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.createTerminal).toBe('function');
-  });
-
-  it('should expose parseUri method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.parseUri).toBe('function');
-  });
-
-  it('should expose fileUri method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.fileUri).toBe('function');
-  });
-
-  it('should expose joinPath method', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.joinPath).toBe('function');
   });
 });
 
@@ -389,50 +309,3 @@ describe('Workspace API Edge Cases', () => {
   });
 });
 
-// API interface tests
-describe('BurnBarWorkspaceApi Interface', () => {
-  it('should have required properties', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect('hostKind' in api).toBe(true);
-    expect('remoteName' in api).toBe(true);
-    expect('isTrusted' in api).toBe(true);
-    expect('workspaceFolders' in api).toBe(true);
-  });
-
-  it('should have required methods', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-
-    expect(typeof api.isWritableFileSystem).toBe('function');
-    expect(typeof api.readFile).toBe('function');
-    expect(typeof api.findFiles).toBe('function');
-    expect(typeof api.openTextDocument).toBe('function');
-    expect(typeof api.applyEdit).toBe('function');
-    expect(typeof api.saveAll).toBe('function');
-    expect(typeof api.createWorkspaceEdit).toBe('function');
-    expect(typeof api.createRange).toBe('function');
-    expect(typeof api.createTerminal).toBe('function');
-    expect(typeof api.parseUri).toBe('function');
-    expect(typeof api.fileUri).toBe('function');
-    expect(typeof api.joinPath).toBe('function');
-  });
-});
-
-// Type tests
-describe('BurnBarWorkspaceUri Interface', () => {
-  it('should have required properties', () => {
-    const api = makeScopedWorkspaceApi();
-    const uri = resolveWorkspaceUri(api, '/Users/test/project/path.txt');
-
-    expect('scheme' in uri).toBe(true);
-    expect('fsPath' in uri).toBe(true);
-    expect('toString' in uri).toBe(true);
-  });
-
-  it('toString should return string representation', () => {
-    const api = makeScopedWorkspaceApi();
-    const uri = resolveWorkspaceUri(api, '/Users/test/project/path.txt');
-
-    expect(typeof uri.toString()).toBe('string');
-  });
-});

@@ -1,6 +1,5 @@
 import type {
   BurnBarWorkspaceApi,
-  BurnBarWorkspaceFolder,
   BurnBarWorkspaceUri
 } from '../../src/workspace/api';
 
@@ -15,11 +14,7 @@ function createMockWorkspaceUri(
   };
 }
 
-export function createMockWorkspaceFolder(fsPath: string): BurnBarWorkspaceFolder {
-  return { uri: createMockWorkspaceUri(fsPath) };
-}
-
-export function createMockWorkspaceUriHelpers(): Pick<
+function createMockWorkspaceUriHelpers(): Pick<
   BurnBarWorkspaceApi,
   'parseUri' | 'fileUri' | 'joinPath'
 > {

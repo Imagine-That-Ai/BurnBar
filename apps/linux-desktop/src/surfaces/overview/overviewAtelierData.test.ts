@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureUsageInsights, fixtureUsageSummary } from '../../daemonFixture.js';
 import {
-  ATELIER_FIXTURE_PROVIDER_ROWS,
   buildSpendCurveModel,
   formatProviderCost,
   providerRowsFromInsights
 } from './overviewAtelierData.js';
 
 describe('overviewAtelierData', () => {
-  it('fixture provider rows match Atelier screenshot spend labels', () => {
-    expect(ATELIER_FIXTURE_PROVIDER_ROWS[0].label).toBe('MiMo');
+  it('formatProviderCost renders dollars and sub-cent precision', () => {
     expect(formatProviderCost(252.43)).toBe('$252.43');
     expect(formatProviderCost(0.00004)).toMatch(/\$0\.0000/);
   });

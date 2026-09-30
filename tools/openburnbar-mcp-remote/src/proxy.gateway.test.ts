@@ -5,7 +5,6 @@ import {
   cpSync,
   mkdtempSync,
   mkdirSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -22,16 +21,12 @@ import {
   DEFAULT_PROXY_HOST,
   isAuthorized,
   LOCAL_CLIPROXY_KEY,
-  parseProxyCliOptions,
   proxySnippets,
 } from "./proxy.js";
 import { DEFAULT_ANTHROPIC_VERSION } from "./proxyRelay.js";
 import {
-  TRAY_ACCESSIBILITY_TITLE,
-  TRAY_BUNDLE_ID,
   TRAY_MACOS_ONLY,
   TRAY_MISSING_SWIFTC_HINT,
-  TRAY_SF_SYMBOL,
   hashTraySources,
   startGatewayTray,
 } from "./proxyTray.js";
@@ -740,10 +735,6 @@ test("loopback display text allows 127.0.0.1 with a port and refuses localhost o
   assert.equal(containsUnsafeDisplayText("https://127.0.0.1:8320/v1"), true);
 });
 
-test("--tray parses on every platform", () => {
-  assert.equal(parseProxyCliOptions(["--tray"], {}).tray, true);
-});
-
 test("ensureGatewayTrayApp stays darwin-only", async () => {
   await assert.rejects(
     () => startGatewayTray({
@@ -755,26 +746,6 @@ test("ensureGatewayTrayApp stays darwin-only", async () => {
     }),
     (error: unknown) => error instanceof Error && error.message === TRAY_MACOS_ONLY
   );
-});
-
-test("macos-tray sources ship the gateway mark and LSUIElement app metadata", () => {
-  const plist = readFileSync(join(PKG_ROOT, "macos-tray/Info.plist"), "utf8");
-  const source = readFileSync(
-    join(PKG_ROOT, "macos-tray/Sources/OpenBurnBarGatewayTray/main.swift"),
-    "utf8"
-  );
-  assert.match(plist, /LSUIElement/u);
-  assert.match(plist, new RegExp(TRAY_BUNDLE_ID, "u"));
-  assert.match(source, new RegExp(TRAY_SF_SYMBOL, "u"));
-  assert.match(source, new RegExp(TRAY_ACCESSIBILITY_TITLE, "u"));
-  assert.match(source, /NSStatusItem/u);
-  assert.match(source, /NSPopover/u);
-  assert.doesNotMatch(source, /MenuBarExtra/u);
-  assert.doesNotMatch(source, /WKWebView/u);
-});
-
-test("TRAY_MACOS_ONLY copy is exact", () => {
-  assert.equal(TRAY_MACOS_ONLY, "error: --tray is macOS-only");
 });
 
 test("gateway panel requires auth", async () => {

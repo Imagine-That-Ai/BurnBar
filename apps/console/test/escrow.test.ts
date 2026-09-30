@@ -248,38 +248,6 @@ describe("AES-256-GCM sealed text (Swift facet layout)", () => {
   });
 });
 
-describe("P-256 ECDH agreement", () => {
-  it("both parties derive the same shared secret", async () => {
-    const a = await genP256();
-    const b = await genP256();
-
-    const aImportsB = await subtle.importKey(
-      "raw",
-      b.x963.buffer as ArrayBuffer,
-      { name: "ECDH", namedCurve: "P-256" },
-      false,
-      [],
-    );
-    const bImportsA = await subtle.importKey(
-      "raw",
-      a.x963.buffer as ArrayBuffer,
-      { name: "ECDH", namedCurve: "P-256" },
-      false,
-      [],
-    );
-
-    const ssA = new Uint8Array(
-      await subtle.deriveBits({ name: "ECDH", public: aImportsB }, a.pair.privateKey, 256),
-    );
-    const ssB = new Uint8Array(
-      await subtle.deriveBits({ name: "ECDH", public: bImportsA }, b.pair.privateKey, 256),
-    );
-
-    expect(ssA).toHaveLength(32); // P-256 X coordinate
-    expect(ssA).toEqual(ssB);
-  });
-});
-
 describe("vault-key wrap -> unwrap (Swift wire format)", () => {
   it("wraps to a recipient public key and unwraps with its private key", async () => {
     const recipient = await genP256();

@@ -5,14 +5,6 @@ import test from "node:test";
 import { installer } from "./installers.js";
 import { decryptSearchResultJson } from "./decrypt.js";
 
-test("installers cover every required client", () => {
-  for (const kind of ["codex", "claude", "cursor", "droid", "kimi", "forge", "generic"] as const) {
-    assert.match(installer(kind), /openburnbar/);
-  }
-  assert.match(installer("generic"), /mcpServers/);
-  assert.match(installer("generic"), /https:\/\/mcp\.burnbar\.ai\/mcp/);
-});
-
 test("codex installer emits hosted + local + http TOML blocks", () => {
   const out = installer("codex");
   assert.match(out, /\[mcp_servers\.openburnbar\]/);

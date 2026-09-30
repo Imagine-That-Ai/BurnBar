@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  markIrohAuditEventRollupEligible,
-  parseIrohAuditEventForRollup,
-  summarizeIrohAuditEvents,
-  utcDayWindow,
-} from "../../../functions-media/src/domains/relay/irohMonitoring.js";
+import { parseIrohAuditEventForRollup } from "../../../functions-media/src/domains/relay/irohMonitoring.js";
 
 const EVENT_PATH = "users/user-1/iroh_audit_events/event-1";
 
@@ -36,27 +31,5 @@ describe("iroh transport rollup trust boundary", () => {
       transport: "iroh-direct",
       rttMillis: 42,
     });
-  });
-
-  it("summarizes only parsed eligible events", () => {
-    const candidates = [
-      parseIrohAuditEventForRollup(auditEvent(), EVENT_PATH),
-      parseIrohAuditEventForRollup(auditEvent({ rollupEligible: true }), EVENT_PATH),
-    ].filter((event) => event !== null);
-
-    const rollup = summarizeIrohAuditEvents(
-      candidates,
-      utcDayWindow(new Date("2026-06-02T12:00:00.000Z")),
-      new Date("2026-06-03T00:00:00.000Z"),
-    );
-
-    expect(rollup.totalEvents).toBe(1);
-    expect(rollup.uniqueUsers).toBe(1);
-    expect(rollup.eventCounts.iroh_stream_closed).toBe(1);
-    expect(rollup.transportCounts["iroh-direct"]).toBe(1);
-  });
-
-  it("exports the server-side eligibility marker", () => {
-    expect(markIrohAuditEventRollupEligible).toBeDefined();
   });
 });

@@ -13,7 +13,7 @@ export interface BurnBarWorkspaceUri {
   toString(): string;
 }
 
-export interface BurnBarWorkspaceFolder {
+interface BurnBarWorkspaceFolder {
   uri: BurnBarWorkspaceUri;
 }
 

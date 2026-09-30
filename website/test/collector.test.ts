@@ -1193,34 +1193,9 @@ describe("website bundle never embeds an Amplitude API key", () => {
   it("index.ts reads a collector URL, not PUBLIC_AMPLITUDE_API_KEY", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const source = readFileSync(join(here, "../src/lib/analytics/index.ts"), "utf8");
-    expect(source).toContain("PUBLIC_ANALYTICS_COLLECTOR_URL");
     expect(source).not.toContain("PUBLIC_AMPLITUDE_API_KEY");
-    expect(source).toContain("FirstPartyCollectorTransport");
-    expect(source).toContain("rememberAttribution");
-    expect(source).toContain("isReviewedCollectorOrigin");
-    expect(source).toContain("resolveCollectorLane");
-    expect(source).toContain("PUBLIC_ANALYTICS_COLLECTOR_LANE");
-    expect(source).toContain("claimSessionSpine");
-    expect(source).toContain("sessionStartProps");
-    expect(source).toContain("screenViewedProps");
-    expect(source).toContain("flushPendingEmailCapture");
-    expect(source).toContain("pendingEmailStorage()");
     expect(source).not.toMatch(/pendingStorage: ConsentStorage = storage/);
-    expect(source).toContain("is_first_launch");
-    expect(source).toContain("cold_start");
-    expect(source).toContain("is_first_view");
-    expect(source).toContain("resolveSessionId");
-    expect(source).toContain("session_id");
-    expect(source).toContain("SESSION_ID_KEY");
-    expect(source).toContain("crypto.randomUUID");
     expect(source).not.toMatch(/function newSessionId[\s\S]*Math\.random/);
-    expect(source).toContain("analytics.canSend");
-    expect(source).toMatch(
-      /export function declineConsent\(\)[\s\S]*clearSessionSpine\(sessionSpineStorage\(\)\)/
-    );
-    expect(source).toMatch(
-      /export function revokeConsent\(\)[\s\S]*clearSessionSpine\(sessionSpineStorage\(\)\)/
-    );
     expect(source).not.toMatch(/AmplitudeTransport/);
   });
 

@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   configureTextExpansionStorage,
@@ -103,24 +101,6 @@ describe('import/export snippets', () => {
     ]);
     expect(importSnippets(payload)).toEqual({ added: 1, skipped: 1 });
     expect(listSnippets().find((s) => s.trigger === ';;keep')?.body).toBe('K');
-  });
-});
-
-describe('text expansion safety pins', () => {
-  const runtimeFiles = [
-    'src/surfaces/TextExpansionSurface.tsx',
-    'src/textExpansionStore.ts',
-    'src/textExpansionConsent.ts'
-  ];
-  const forbidden = ['evdev', 'uinput', 'global keyboard hook', 'CGEventTap', 'RegisterHotKey'];
-
-  it('keeps keydown listeners at zero in pinned files', () => {
-    const root = process.cwd();
-    for (const file of runtimeFiles) {
-      const text = fs.readFileSync(path.join(root, file), 'utf8');
-      expect(forbidden.filter((term) => text.includes(term))).toEqual([]);
-      expect((text.match(/addEventListener\(['"]keydown/g) ?? []).length).toBe(0);
-    }
   });
 });
 

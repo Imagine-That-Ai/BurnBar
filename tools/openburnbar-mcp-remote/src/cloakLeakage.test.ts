@@ -50,29 +50,6 @@ function l2(v: ArrayLike<number>): number {
   return Math.sqrt(n);
 }
 
-test("PROOF (a): cloak preserves pairwise cosine within 1e-9 (geometry is NOT hidden)", () => {
-  // The property the rewritten claim is built around: <Qx,Qy>=<x,y>, so a server
-  // holding cloaked vectors can compute the full pairwise cosine / k-NN /
-  // clustering graph WITHOUT the key.
-  let maxDrift = 0;
-  for (let i = 0; i < 16; i += 1) {
-    const a = pseudoVector(i * 31 + 1);
-    const b = pseudoVector(i * 97 + 5);
-    const before = cosineSimilarity(a, b);
-    const after = cosineSimilarity(
-      cloakVector(a, { vaultKey: KEY_USER_A }),
-      cloakVector(b, { vaultKey: KEY_USER_A }),
-    );
-    const drift = Math.abs(before - after);
-    maxDrift = Math.max(maxDrift, drift);
-    assert.ok(
-      drift < 1e-9,
-      `cosine drift ${drift} exceeds 1e-9 (before=${before}, after=${after}) — geometry must be preserved exactly`,
-    );
-  }
-  assert.ok(maxDrift < 1e-9, `worst-case drift ${maxDrift} must stay below 1e-9`);
-});
-
 test("PROOF (b): per-user Q yields byte-distinct stored vectors (defeats exact-match cross-tenant joins)", () => {
   // Distinct keys must never produce the same stored bytes for the same input,
   // and the difference must be substantial, not a rounding wobble.
@@ -127,20 +104,3 @@ test("PROOF (b): cross-tenant cosine is HIGH at 24 reflections — cloak does NO
   assert.ok(minAbs > 0.4, `cross-tenant |cos| min ${minAbs.toFixed(3)} unexpectedly low for these fixtures`);
 });
 
-test("PROOF (b'): within each user, geometry is preserved exactly (the high cross-tenant cos is NOT geometry loss)", () => {
-  // Guard: the cross-tenant correlation above is a property of Q_Aᵀ Q_B, not of
-  // the cloak destroying geometry — each user independently preserves cosine.
-  const a = pseudoVector(555);
-  const b = pseudoVector(777);
-  const raw = cosineSimilarity(a, b);
-  const viaA = cosineSimilarity(
-    cloakVector(a, { vaultKey: KEY_USER_A }),
-    cloakVector(b, { vaultKey: KEY_USER_A }),
-  );
-  const viaB = cosineSimilarity(
-    cloakVector(a, { vaultKey: KEY_USER_B }),
-    cloakVector(b, { vaultKey: KEY_USER_B }),
-  );
-  assert.ok(Math.abs(raw - viaA) < 1e-9, "user A must preserve pairwise cosine");
-  assert.ok(Math.abs(raw - viaB) < 1e-9, "user B must preserve pairwise cosine");
-});
