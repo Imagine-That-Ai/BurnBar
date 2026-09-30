@@ -46,6 +46,11 @@ on:
     # nightly so macos-26 runners are not triple-booked.
     - cron: "47 10 * * *"
   workflow_dispatch:
+    inputs:
+      export_signal_ffi:
+        description: "Export the reviewed 970a2f6b Signal cache only; never build on a miss"
+        type: boolean
+        default: false
 
 # Push runs are the exact-main headless proof: key them by commit and never
 # cancel them. A later main push must not evict an in-flight graph build;
@@ -58,6 +63,7 @@ concurrency:
 
 jobs:
   headless-app-build:
+    if: github.event_name != 'workflow_dispatch' || !inputs.export_signal_ffi
     name: Headless macOS app build (scheme OpenBurnBar)
     # Routing (cost + security): post-merge main is trusted, but this lane still
     # uses free GitHub-hosted macOS runners. No pool toggle: self-hosted and
@@ -115,3 +121,187 @@ jobs:
         run: >-
           SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin
           ./scripts/ci/headless-app-build.sh
+
+  export-signal-ffi:
+    name: Export reviewed Signal FFI cache (no build)
+    if: github.event_name == 'workflow_dispatch' && inputs.export_signal_ffi
+    runs-on: macos-26
+    # Repository checkout jobs have a 15-minute floor. A miss never builds.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      SOURCE_COMMIT: 970a2f6b3b551f6def1967046974ed74ae3d6fa2
+      SIGNAL_COMMIT: 2c39c2601ce5e8c73326db037007fd294121e239
+      SIGNAL_CACHE_KEY: macOS-signal-ffi-macos-2c39c2601ce5e8c73326db037007fd294121e239-e3a03d85a2e235f56702e6ce9e497dbe56dbf00a80d696d9db5ab8eb89f97208
+    steps:
+      - name: Check out immutable public source and pinned libsignal
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 970a2f6b3b551f6def1967046974ed74ae3d6fa2
+          submodules: true
+          persist-credentials: false
+
+      - name: Verify immutable cache inputs
+        env:
+          BUILDER_HASH: ${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          test "$(git -C Vendor/libsignal rev-parse HEAD)" = "$SIGNAL_COMMIT"
+          test "$BUILDER_HASH" = e3a03d85a2e235f56702e6ce9e497dbe56dbf00a80d696d9db5ab8eb89f97208
+          test "$RUNNER_ARCH" = ARM64
+
+      - name: Restore exact reviewed macOS cache only
+        id: signal-export-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ env.SIGNAL_CACHE_KEY }}
+          fail-on-cache-miss: true
+
+      - name: Validate and package only public Signal framework files
+        env:
+          CACHE_HIT: ${{ steps.signal-export-cache.outputs.cache-hit }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import io
+          import json
+          import os
+          import plistlib
+          import re
+          import stat
+          import subprocess
+          import tarfile
+          from pathlib import Path
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          require(os.environ['CACHE_HIT'] == 'true', 'Exact cache hit required; no fallback or build')
+          root = Path('Vendor/OpenBurnBarSignalFfiMac.xcframework')
+          slice_name = 'macos-arm64_x86_64'
+          binary_name = slice_name + '/libsignal_ffi.dylib'
+          header_name = slice_name + '/Headers/OpenBurnBarSignalFfi.h'
+          meta_name = '.openburnbar-signal-ffi-build.env'
+          warm_name = '.openburnbar-signal-ffi-warm-provenance.env'
+          allowed_files = {'Info.plist', binary_name, header_name, meta_name, warm_name}
+          allowed_dirs = {slice_name, slice_name + '/Headers'}
+          require(root.is_dir() and not root.is_symlink(), 'Framework must be a real directory')
+          found = set()
+          for directory, dirs, files in os.walk(root, followlinks=False):
+              for name in dirs + files:
+                  path = Path(directory) / name
+                  relative = path.relative_to(root).as_posix()
+                  mode = path.lstat().st_mode
+                  if stat.S_ISDIR(mode):
+                      require(relative in allowed_dirs, 'Unexpected framework directory')
+                  else:
+                      require(stat.S_ISREG(mode) and path.stat().st_nlink == 1,
+                              'Links and special files are forbidden')
+                      require(relative in allowed_files, 'Unexpected framework file')
+                      require(path.stat().st_size <= 256 * 1024 * 1024, 'Framework file too large')
+                      found.add(relative)
+          require(found == allowed_files, 'Incomplete framework')
+
+          def fields(name, keys):
+              data = (root / name).read_text()
+              pairs = [line.split('=', 1) for line in data.splitlines()]
+              require(all(len(pair) == 2 for pair in pairs), 'Malformed metadata')
+              result = dict(pairs)
+              require(len(pairs) == len(keys) and set(result) == keys, 'Unexpected metadata fields')
+              return result
+
+          meta = fields(meta_name, {'profile', 'targets'})
+          expected_targets = ('aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios '
+                              'aarch64-apple-ios-sim x86_64-apple-ios')
+          require(meta == {'profile': 'debug', 'targets': expected_targets}, 'Wrong profile or targets')
+          warm = fields(warm_name, {'image_version', 'rustc', 'xcode'})
+          require(warm['image_version'] == '20260907.0351.1', 'Unreviewed build image')
+          require(re.fullmatch(r'rustc [0-9.]+ \([a-f0-9]+ [0-9-]+\)', warm['rustc']),
+                  'Malformed Rust provenance')
+          require(re.fullmatch(r'Xcode [0-9.]+ Build version [A-Za-z0-9]+', warm['xcode']),
+                  'Malformed Xcode provenance')
+          info = plistlib.loads((root / 'Info.plist').read_bytes())
+          require(set(info) == {'AvailableLibraries', 'CFBundlePackageType', 'XCFrameworkFormatVersion'}
+                  and info['CFBundlePackageType'] == 'XFWK'
+                  and info['XCFrameworkFormatVersion'] == '1.0', 'Unexpected framework metadata')
+          libraries = info.get('AvailableLibraries', [])
+          require(len(libraries) == 1, 'Exactly one macOS universal slice required')
+          library = libraries[0]
+          require(set(library) == {'LibraryIdentifier', 'LibraryPath', 'HeadersPath',
+                                   'SupportedPlatform', 'SupportedArchitectures'},
+                  'Unexpected library metadata')
+          require(library.get('LibraryIdentifier') == slice_name
+                  and library.get('LibraryPath') == 'libsignal_ffi.dylib'
+                  and library.get('HeadersPath') == 'Headers'
+                  and library.get('SupportedPlatform') == 'macos'
+                  and set(library.get('SupportedArchitectures', [])) == {'arm64', 'x86_64'},
+                  'Unexpected XCFramework layout')
+          require((root / header_name).read_text() == 'void OpenBurnBarSignalFfiLinkAnchor(void);\n',
+                  'Unexpected link anchor header')
+          binary = str(root / binary_name)
+          archs = subprocess.check_output(['lipo', '-archs', binary], text=True).split()
+          require(set(archs) == {'arm64', 'x86_64'}, 'Binary architecture mismatch')
+          header = Path('Vendor/libsignal/swift/Sources/SignalFfi/signal_ffi.h').read_text()
+          header = re.sub(r'/\*.*?\*/|//[^\n]*', '', header, flags=re.S)
+          required = set(re.findall(r'\b(signal_[A-Za-z0-9_]+)\s*\(', header))
+          require(len(required) == 678, 'Pinned header function inventory changed')
+          symbols = subprocess.check_output(['nm', '-arch', 'arm64', '-gU', binary], text=True)
+          exported = set(re.findall(r'\b_(signal_[A-Za-z0-9_]+)\b', symbols))
+          missing = sorted(required - exported)
+          require(not missing, 'Missing required arm64 FFI exports: ' + ', '.join(missing))
+
+          # Only the explicit files below enter the archive. No recursive upload,
+          # entire cache, workspace, environment dump, signing material or app data.
+          payload = {root.name + '/' + name: (root / name).read_bytes() for name in sorted(allowed_files)}
+          payload['LICENSE-libsignal.txt'] = Path('Vendor/libsignal/LICENSE').read_bytes()
+          source = os.environ['SOURCE_COMMIT']
+          signal = os.environ['SIGNAL_COMMIT']
+          receipt = {
+              'source_commit': source, 'libsignal_commit': signal,
+              'cache_key': os.environ['SIGNAL_CACHE_KEY'],
+              'reviewed_reference_build_run': 'https://github.com/Imagine-That-Ai/BurnBar/actions/runs/36682126169',
+              'reviewed_reference_build_job': 109779677437, 'recorded_build_toolchain': warm,
+              'provenance_basis': 'Exact cache key and reviewed image stamp; reference run is not a binary attestation',
+              'verified_arm64_header_functions': len(required),
+              'export_run': os.environ['GITHUB_RUN_ID'],
+              'export_workflow_commit': os.environ['GITHUB_SHA'],
+              'sha256': {name: hashlib.sha256(data).hexdigest() for name, data in payload.items()},
+          }
+          payload['provenance.json'] = (json.dumps(receipt, indent=2, sort_keys=True) + '\n').encode()
+          payload['SOURCE.txt'] = (
+              'Public source and build recipe for this AGPL-3.0-only libsignal artifact:\n'
+              f'https://github.com/Ajnunezg/libsignal/tree/{signal}\n'
+              f'https://github.com/Ajnunezg/libsignal/archive/{signal}.tar.gz\n'
+              f'https://github.com/Imagine-That-Ai/BurnBar/blob/{source}/scripts/build-signal-ffi-xcframework.sh\n'
+              'Build setting: SIGNAL_FFI_BUILD_PROFILE=debug; invoke the linked build recipe with its default targets.\n'
+              'Diagnostic cache export only; no app tests or native visual snapshots were run.\n'
+          ).encode()
+          output = Path(os.environ['RUNNER_TEMP']) / 'signal-ffi-export'
+          output.mkdir(exist_ok=False)
+          archive = output / 'signal-ffi-2c39c260-macos-debug.tar.gz'
+          with tarfile.open(archive, 'w:gz', format=tarfile.PAX_FORMAT) as bundle:
+              for name, data in sorted(payload.items()):
+                  entry = tarfile.TarInfo(name)
+                  entry.size = len(data)
+                  entry.mode = 0o755 if name.endswith('.dylib') else 0o644
+                  bundle.addfile(entry, io.BytesIO(data))
+          require(archive.stat().st_size <= 64 * 1024 * 1024, 'Export exceeds 64 MiB cap')
+          checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+          (output / 'SHA256SUMS').write_text(checksum + '  ' + archive.name + '\n')
+          print(f'Verified {len(required)} arm64 FFI exports; packaged {archive.stat().st_size} bytes')
+          PY
+
+      - name: Upload bounded public framework export
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signal-ffi-2c39c260-macos-debug-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/signal-ffi-export/signal-ffi-2c39c260-macos-debug.tar.gz
+            ${{ runner.temp }}/signal-ffi-export/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

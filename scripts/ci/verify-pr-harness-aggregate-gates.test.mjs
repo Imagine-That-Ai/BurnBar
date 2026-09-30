@@ -945,7 +945,7 @@ check("macOS gates run pull-request or merge-group code only on free GitHub-host
     [APP_WORKFLOW, 3],
     [DAEMON_WORKFLOW, 2],
     [DOMAIN_CORE_WORKFLOW, 2],
-    [HEADLESS_WORKFLOW, 1],
+    [HEADLESS_WORKFLOW, 2], // normal build + opt-in, restore-only Signal export
     [NATIVE_WORKFLOW, 3],
   ]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
