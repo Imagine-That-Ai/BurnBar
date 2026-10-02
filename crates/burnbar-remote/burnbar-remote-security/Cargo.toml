@@ -11,7 +11,7 @@ workspace = true
 [dependencies]
 async-trait.workspace = true
 burnbar-remote-core.workspace = true
-ed25519-dalek = "2.2.0"
+ed25519-dalek = "3.0.0"
 fs2 = "0.4"
 postcard.workspace = true
 serde.workspace = true
