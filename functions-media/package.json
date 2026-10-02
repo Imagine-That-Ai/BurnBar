@@ -23,7 +23,7 @@
     "@openburnbar/functions-shared": "file:vendor/openburnbar/functions-shared"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "@types/node": "^26.6.2",
     "eslint": "10.11.0",
     "@typescript-eslint/eslint-plugin": "8.70.1",
