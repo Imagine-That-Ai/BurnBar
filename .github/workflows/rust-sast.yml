@@ -81,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # pinned action; toolchain below
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # pinned action; toolchain below
         with:
           toolchain: ${{ matrix.toolchain }}
 
@@ -170,7 +170,7 @@ jobs:
 
       # Keep the SAST toolchain explicit because this workflow uses a SHA-pinned
       # action ref rather than the @stable shorthand.
-      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # pinned action; toolchain below
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # pinned action; toolchain below
         with:
           toolchain: ${{ matrix.toolchain }}
           components: clippy

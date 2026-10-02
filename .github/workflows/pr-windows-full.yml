@@ -187,13 +187,13 @@ jobs:
         uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1.5.2
 
       - name: Install Rust 1.96 toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
           targets: x86_64-pc-windows-msvc
 
       - name: Install Rust 1.94 toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: "1.94.0" # pin: crates/burnbar-remote
           targets: x86_64-pc-windows-msvc
@@ -369,13 +369,13 @@ jobs:
         uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1.5.2
 
       - name: Install Rust 1.96 toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
           targets: aarch64-pc-windows-msvc
 
       - name: Install Rust 1.94 toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: "1.94.0" # pin: crates/burnbar-remote
           targets: aarch64-pc-windows-msvc
