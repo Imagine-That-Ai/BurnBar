@@ -621,7 +621,7 @@ dependencies {
     "baselineProfile"(project(":macrobenchmark"))
 
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -648,7 +648,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.8.5")
+    implementation("androidx.navigation:navigation-compose:2.10.2")
 
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
@@ -669,7 +669,7 @@ dependencies {
     // ANR detection, breadcrumbs, and release health metrics. Captures
     // errors via the sentry-issue-sync CI workflow → GitHub issues pipeline.
     // Gracefully no-ops when SENTRY_DSN meta-data value is empty.
-    implementation("io.sentry:sentry-android:8.58.0")
+    implementation("io.sentry:sentry-android:8.59.0")
     // Mercury Media — high-priority FCM data messages for incoming calls.
     implementation("com.google.firebase:firebase-messaging")
 
@@ -697,16 +697,16 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:9.1.0")
 
     // OkHttp + WebSocket for Hermes
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
 
     // Amplitude — opt-in, consent-gated analytics. The only caller of this SDK
     // is com.openburnbar.analytics.AmplitudeTransport (constructed solely after
     // affirmative opt-in). Autocapture is fully disabled; key is BuildConfig-
     // injected and never committed (absent key ⇒ recorder stays dark).
-    implementation("com.amplitude:analytics-android:1.32.0")
+    implementation("com.amplitude:analytics-android:1.33.0")
 
     // Vico 2.x — Compose-first chart library for Insights
-    implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")
+    implementation("com.patrykandpatrick.vico:compose-m3:3.3.1")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
@@ -716,7 +716,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     // Official Signal libsignal at-rest HPKE identity seal (v0.103.0 pin).
-    implementation("org.signal:libsignal-android:0.103.0")
+    implementation("org.signal:libsignal-android:0.104.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // Glance for Widget
@@ -745,7 +745,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("io.mockk:mockk:1.14.11")
-    testImplementation("org.signal:libsignal-client:0.103.0")
+    testImplementation("org.signal:libsignal-client:0.104.0")
     // Android's JNA AAR supplies only device JNI slices. Activated Rust-mode
     // JVM contracts need the desktop JAR's host libjnidispatch resource.
     testImplementation("net.java.dev.jna:jna:5.19.1")
