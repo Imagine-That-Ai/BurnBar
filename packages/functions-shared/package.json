@@ -16,24 +16,24 @@
     "@openburnbar/domain-core-wasm": "file:../../functions/vendor/openburnbar/domain-core-wasm",
     "@openburnbar/entitlements": "file:../entitlements",
     "@openburnbar/signal-envelope-contracts": "file:../signal-envelope-contracts",
-    "@sentry/core": "11.0.0",
-    "@sentry/node": "11.0.0",
-    "cockatiel": "3.2.1",
+    "@sentry/core": "11.4.0",
+    "@sentry/node": "11.4.0",
+    "cockatiel": "4.0.0",
     "express": "5.2.1",
     "firebase-admin": "14.5.0",
     "firebase-functions": "^7.4.0",
-    "googleapis": "182.0.0",
-    "stripe": "22.6.2"
+    "googleapis": "183.0.0",
+    "stripe": "23.0.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
     "@types/node": "^26.6.2",
     "eslint": "10.11.0",
-    "@typescript-eslint/eslint-plugin": "8.70.1",
-    "@typescript-eslint/parser": "8.70.1",
+    "@typescript-eslint/eslint-plugin": "8.71.0",
+    "@typescript-eslint/parser": "8.71.0",
     "eslint-config-prettier": "10.1.8",
     "prettier": "3.9.9",
-    "knip": "6.38.0"
+    "knip": "6.39.0"
   },
   "exports": {
     "./package.json": "./package.json",
