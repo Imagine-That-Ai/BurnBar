@@ -18,10 +18,10 @@
     "test": "npm run build && node --test lib/*.test.js"
   },
   "dependencies": {
-    "@signalapp/libsignal-client": "0.103.0"
+    "@signalapp/libsignal-client": "0.104.0"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
-    "typescript": "^5.9.3"
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2"
   }
 }
