@@ -25,14 +25,14 @@
     "@openburnbar/domain-core-wasm": "file:vendor/openburnbar/domain-core-wasm"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "@types/node": "^26.6.2",
-    "eslint": "10.11.0",
-    "@typescript-eslint/eslint-plugin": "8.70.1",
-    "@typescript-eslint/parser": "8.70.1",
+    "typescript": "^7.0.2",
+    "@types/node": "^26.6.4",
+    "eslint": "10.12.0",
+    "@typescript-eslint/eslint-plugin": "8.71.0",
+    "@typescript-eslint/parser": "8.71.0",
     "eslint-config-prettier": "10.1.8",
     "prettier": "3.9.9",
-    "knip": "6.38.0"
+    "knip": "6.39.0"
   },
   "overrides": {
     "@tootallnate/once": "^3.0.1",
