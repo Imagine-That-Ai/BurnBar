@@ -369,14 +369,46 @@ function buildStagingHostingConfig(firebaseJson) {
     value: "noindex, nofollow, noarchive",
   });
 
-  const config = { hosting: [marketing] };
+  const hosting = [marketing];
+
+  // BB-12: the console target exists in the reviewed config but staging only
+  // deployed the marketing site. When the candidate bundle carries a built
+  // console (apps/console/out), mirror it onto the dedicated staging site.
+  const productionConsole = generated.config.hosting.find(
+    (entry) => entry.target === "console",
+  );
+  let consoleSite = null;
+  if (productionConsole) {
+    const consoleEntry = structuredClone(productionConsole);
+    delete consoleEntry.target;
+    consoleEntry.site = "burnbar-staging-console";
+    const consoleHeaders = consoleEntry.headers?.find(
+      (entry) => entry.source === "**",
+    );
+    if (consoleHeaders && Array.isArray(consoleHeaders.headers)) {
+      consoleHeaders.headers = consoleHeaders.headers.filter(
+        (header) => header.key.toLowerCase() !== "x-robots-tag",
+      );
+      consoleHeaders.headers.push({
+        key: "X-Robots-Tag",
+        value: "noindex, nofollow, noarchive",
+      });
+    }
+    hosting.push(consoleEntry);
+    consoleSite = "burnbar-staging-console";
+  }
+
+  const config = { hosting };
   assertNoPredeploy(config, "firebase-hosting.staging.json");
+  const hostingPublicDirs = { marketing: "website/dist" };
+  if (consoleSite) hostingPublicDirs.console = "apps/console/out";
   return {
     config,
     manifest: {
-      hostingPublicDirs: { marketing: "website/dist" },
+      hostingPublicDirs,
       project: "burnbar-staging",
       noindex: true,
+      consoleSite,
     },
   };
 }

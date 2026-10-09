@@ -39,6 +39,10 @@ const { size = 28, withWordmark = true } = Astro.props;
     font-size: 1.08rem;
     font-weight: var(--wght-semibold);
     --opsz: var(--opsz-body);
+    /* BB-08: never let the wordmark compress or wrap into the header's
+       toggle/CTA row on narrow viewports. */
+    flex-shrink: 0;
+    white-space: nowrap;
   }
   .brand:hover {
     color: var(--text-bright);
@@ -46,6 +50,7 @@ const { size = 28, withWordmark = true } = Astro.props;
   .brand__logo {
     border-radius: 22%;
     display: block;
+    flex-shrink: 0;
     transition:
       filter var(--dur-base) var(--ease-out),
       transform var(--dur-base) var(--ease-out);

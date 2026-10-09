@@ -398,14 +398,18 @@ function isActive(href: string): boolean {
   }
   .site-header__menu {
     display: none;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: var(--r-3);
-    border: 1px solid var(--ink-line);
+    border: none;
+    background: transparent;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 5px;
+  }
+  .site-header__menu:hover {
+    background: var(--ink-surface);
   }
   .site-header__menu span {
     display: block;
@@ -438,6 +442,20 @@ function isActive(href: string): boolean {
     }
     .site-header__menu {
       display: inline-flex;
+    }
+  }
+  /* BB-08: at phone widths the header row was squeezing the wordmark into
+     the theme toggle and rendering the hamburger as a sliver. Keep the
+     brand at natural width, let the CTA shrink, and keep the menu 44×44. */
+  @media (max-width: 480px) {
+    .site-header__inner {
+      gap: var(--s-3);
+    }
+    .site-header__cta .btn--ember {
+      padding-inline: 0.7rem;
+    }
+    .site-header__cta .btn--ember .btn-arrow {
+      display: none;
     }
   }
   @media (min-width: 1025px) {

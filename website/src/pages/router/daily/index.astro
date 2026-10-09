@@ -5,6 +5,10 @@ import { sourceMeta, freshnessTone, formatAge } from "@data/router-rundown";
 
 const newestDate = ALL_RUNDOWNS[0]?.date ?? "—";
 const oldestDate = ALL_RUNDOWNS.at(-1)?.date ?? "—";
+// BB-11: the board promises a daily refresh — say so when the newest rundown
+// is actually stale instead of letting the copy contradict the data.
+const staleDays = newestDate !== "—" ? Math.floor((Date.now() - Date.parse(newestDate)) / 86400000) : 0;
+const boardIsStale = staleDays > 2;
 
 function pct(x: number | undefined) {
   if (x == null || !Number.isFinite(x)) return "—";
@@ -36,11 +40,11 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
       <span class="eyebrow eyebrow--ember">Model board · the archive</span>
       <h1 class="pagehead__h">Every board verdict, frozen, cited, and inspectable.</h1>
       <p class="lead">
-        BurnBar refreshes its model-landscape snapshot once every twenty-four hours, then a board of
-        language models runs research and analysis tasks over it. Each refresh produces a dated
-        rundown — what BurnBar would have recommended that day, the sources it cited, the freshness
-        of every signal, and the limitations of every claim. Nothing is overwritten. Future humans
-        can verify what was said.
+        BurnBar refreshes its model-landscape snapshot on a daily cadence as sources move, then a
+        board of language models runs research and analysis tasks over it. Each refresh produces a
+        dated rundown — what BurnBar would have recommended that day, the sources it cited, the
+        freshness of every signal, and the limitations of every claim. Nothing is overwritten.
+        Future humans can verify what was said.
       </p>
 
       <ul class="pagehead__chips mono" aria-label="Archive scope">
@@ -51,6 +55,12 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
         <li>
           <span class="dot dot--mercury"></span> newest · {newestDate}
         </li>
+        {boardIsStale && (
+          <li class="pagehead__stalewarn">
+            <span class="dot dot--burn" aria-hidden="true"></span>
+            <span role="status">board refresh paused</span><span class="visually-hidden">:&nbsp;</span> · newest rundown is {staleDays} day{staleDays === 1 ? "" : "s"} old
+          </li>
+        )}
         <li>
           <span class="dot dot--mercury"></span> oldest · {oldestDate}
         </li>
@@ -218,6 +228,58 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
 <style>
   .pagehead--archive {
     padding-block: var(--s-8) var(--s-5);
+  }
+  /* BB-11: the scope chips and dot indicators had no page-local style —
+     define them so the row (and the stale warning) lays out correctly. */
+  .pagehead__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-4);
+    align-items: center;
+    list-style: none;
+    margin: var(--s-4) 0 0;
+    padding: 0;
+    font-size: 0.78rem;
+    color: var(--text-mute);
+  }
+  .pagehead__chips li {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot--ember {
+    background: var(--ember-core);
+    box-shadow: 0 0 8px var(--ember-glow);
+  }
+  .dot--mercury {
+    background: var(--mercury-bright);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 55%, transparent);
+  }
+  /* BB-11: stale-board warning chip — only rendered when the newest rundown
+     is more than ~2 days old. */
+  .pagehead__stalewarn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in oklab, var(--status-burn) 45%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-burn) 12%, transparent);
+    color: var(--text-base);
+  }
+  .dot--burn {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    background: var(--status-burn);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--status-burn) 55%, transparent);
   }
   .archive-bread {
     display: flex;

@@ -6,11 +6,23 @@ export const STAGING_FIREBASE_WEB_APP_ID = "1:1079930549647:web:85beff426331ab42
 
 const ENV_CONFIG_KEY = "STAGING_FIREBASE_PUBLIC_CONFIG_JSON";
 
+// Every byte sequence that only the production "burnbar" project can emit. A
+// staging or preview artifact must never contain one: it would authenticate
+// against production Auth, App Check and project resources (BB-01). The bare
+// string "burnbar" is NOT listed — "burnbar-staging" contains it — so the
+// projectId needles carry their serialized quoting instead.
 export const PRODUCTION_FIREBASE_FRAGMENTS = Object.freeze([
   "burnbar.firebaseapp.com",
   "burnbar.appspot.com",
+  "burnbar.firebasestorage.app",
   "246956661961",
-  "1:246956661961:web:2e267f5d3a84a525480118"
+  "1:246956661961:web:2e267f5d3a84a525480118",
+  "AIzaSyBiAIHwf1MKZ6LN5HrsaPYsAR3UTe8hyw4",
+  "6Ld3bAktAAAAAABiZujpMLmUcvSMUPiJk6qENbOg",
+  'projectId:"burnbar"',
+  'projectId: "burnbar"',
+  '"projectId":"burnbar"',
+  '"projectId": "burnbar"'
 ]);
 
 function normalizedConfig(candidate, source) {

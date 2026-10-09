@@ -44,7 +44,7 @@ const LOGOS: Record<string, string> = {
 
 <div class={`provider-table ${variant === "compact" ? "provider-table--compact" : ""}`}>
   {caption && <p class="provider-table__caption mono">{caption}</p>}
-  <div class="provider-table__scroll">
+  <div class="provider-table__scroll" tabindex="0" role="region" aria-label="Provider comparison table">
     <table>
       <thead>
         <tr>

@@ -172,6 +172,11 @@ const fallbackEndpoint = hasFallback ? fallback : null;
     contain: layout style;
     isolation: isolate;
   }
+  :global(:root[data-theme="light"]) .vignette {
+    /* BB-17: --ink-base is near-charcoal — on the cream page the dark
+       gradient looked like a smudge. Light surface, same shape. */
+    background: linear-gradient(180deg, var(--ink-surface) 0%, #ffffff 100%);
+  }
   .vignette--idx-1 {
     --phase-shift: 0s;
   }

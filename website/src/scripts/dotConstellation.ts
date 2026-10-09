@@ -124,7 +124,11 @@
             var dr = data[i] - bgR,
               dg = data[i + 1] - bgG,
               db = data[i + 2] - bgB;
-            if (dr * dr + dg * dg + db * db < 3000) continue;
+            // BB-16: raise the bg-distance gate past JPEG noise and drop
+            // near-white speckle — both painted a boxy backing halo around
+            // crests on the cream page.
+            if (dr * dr + dg * dg + db * db < 8000) continue;
+            if (data[i] > 232 && data[i + 1] > 232 && data[i + 2] > 232) continue;
           }
           var nx = x / S - 0.5,
             ny = y / S - 0.5;
@@ -257,6 +261,35 @@
     }
   }
 
+  var cachedRects = null,
+    cachedRectsAt = 0;
+  function crestAvoidRects() {
+    var nowMs = Date.now();
+    if (cachedRects && nowMs - cachedRectsAt < 2000) return cachedRects;
+    cachedRectsAt = nowMs;
+    var rects = [];
+    try {
+      var els = document.querySelectorAll(
+        "main h1, main h2, main h3, main p, main .lead, main .btn, main a, main li, main blockquote, .site-header, .site-footer"
+      );
+      for (var i = 0; i < els.length && rects.length < 80; i++) {
+        var r = els[i].getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight) {
+          rects.push({ l: r.left, t: r.top, r: r.right, b: r.bottom });
+        }
+      }
+    } catch (e) {}
+    cachedRects = rects;
+    return rects;
+  }
+  function crestHitsRect(x1, y1, x2, y2, rects) {
+    for (var i = 0; i < rects.length; i++) {
+      var r = rects[i];
+      if (x1 < r.r && x2 > r.l && y1 < r.b && y2 > r.t) return true;
+    }
+    return false;
+  }
+
   var start = 0,
     lastPaint = 0,
     cleared = false,
@@ -297,10 +330,25 @@
     // bursts below paint on every light frame regardless of that dissolve gap.
     if (dots && dots.length && coh > 0.01) {
       var size = Math.min(W, H) * LOGOS[idx].scale;
+      /* BB-16: crests used to land inside headlines and CTA buttons. Sample
+         the main content's text/action rects once per cycle and pick a slot
+         whose crest box clears them all; if nothing clears, dim the crest
+         over content instead of dropping it. */
+      var textRects = crestAvoidRects();
       var hx = reduced ? 0.5 : hash(cycleNum * 1.7 + 0.3);
       var hy = reduced ? 0.46 : hash(cycleNum * 2.3 + 7.1);
-      var cx = (0.2 + 0.6 * hx) * W + (reduced ? 0 : Math.sin(baseT * 0.5 + cycleNum) * W * 0.02);
-      var cy = (0.22 + 0.54 * hy) * H + (reduced ? 0 : Math.cos(baseT * 0.6 + cycleNum) * H * 0.02);
+      var cx = 0, cy = 0, overContent = true;
+      for (var attempt = 0; attempt < 8; attempt++) {
+        var hxT = reduced ? 0.5 : hash(cycleNum * 1.7 + 0.3 + attempt * 0.37);
+        var hyT = reduced ? 0.46 : hash(cycleNum * 2.3 + 7.1 + attempt * 0.53);
+        cx = (0.2 + 0.6 * hxT) * W + (reduced ? 0 : Math.sin(baseT * 0.5 + cycleNum) * W * 0.02);
+        cy = (0.22 + 0.54 * hyT) * H + (reduced ? 0 : Math.cos(baseT * 0.6 + cycleNum) * H * 0.02);
+        if (!crestHitsRect(cx - size * 0.55, cy - size * 0.55, cx + size * 0.55, cy + size * 0.55, textRects)) {
+          overContent = false;
+          break;
+        }
+      }
+      var contentDim = overContent ? 0.35 : 1;
       var scatter = (1 - coh) * size * 0.6;
       var rDot = Math.max(1.2, (size / S) * GAP * 0.5);
       var T = now * 0.0011;
@@ -318,7 +366,7 @@
         var r = d.r + (255 - d.r) * hi * 0.32;
         var g = d.g + (255 - d.g) * hi * 0.32;
         var b = d.b + (255 - d.b) * hi * 0.32;
-        var alpha = coh * tw * d.a * (0.82 + hi * 0.12);
+        var alpha = coh * tw * d.a * (0.82 + hi * 0.12) * contentDim;
         if (alpha <= 0.01) continue;
         var px = cx + d.x * size + d.sx * scatter + jx;
         var py = cy + d.y * size + d.sy * scatter + jy;

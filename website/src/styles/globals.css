@@ -641,11 +641,13 @@ section {
 }
 
 .btn--ember {
+  /* BB-29: two stops (red → fire → red). The old amber middle stop blended
+     with the red into a muddy olive band mid-button and washed out the white
+     label on its brightest frames. */
   background: linear-gradient(
     135deg,
     var(--core-red) 0%,
-    var(--core-fire) 35%,
-    var(--core-amber) 70%,
+    var(--core-fire) 50%,
     var(--core-red) 100%
   );
   background-size: 200% auto;

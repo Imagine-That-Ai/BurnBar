@@ -1,7 +1,7 @@
 {
   "name": "@openburnbar/website",
   "version": "1.0.0",
-  "description": "OpenBurnBar launch website — burnbar.ai",
+  "description": "OpenBurnBar launch website \u2014 burnbar.ai",
   "private": true,
   "type": "module",
   "scripts": {
@@ -68,7 +68,8 @@
     "pretest": "node scripts/require-node.mjs",
     "test": "vitest run",
     "pretest:integration": "node scripts/require-node.mjs",
-    "test:integration": "vitest run test/integration"
+    "test:integration": "vitest run test/integration",
+    "test:smoke": "playwright test --config=playwright.config.ts"
   },
   "dependencies": {
     "@amplitude/analytics-browser": "2.47.0",
@@ -92,7 +93,9 @@
     "lightningcss": "^1.33.0",
     "prettier": "3.9.9",
     "prettier-plugin-astro": "^1.1.0",
-    "vitest": "5.0.2"
+    "vitest": "5.0.2",
+    "@playwright/test": "^1.49.0",
+    "@axe-core/playwright": "^4.10.0"
   },
   "overrides": {
     "yaml": "^2.8.3",

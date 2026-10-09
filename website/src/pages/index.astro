@@ -56,7 +56,7 @@ const detectedCount = totalCount - primaryCount;
     <div class="container container--wide hero__grid">
       <div class="hero__copy">
         <div class="hero__eyebrow eyebrow">
-          <span>v{SITE.macReleaseLatest} macOS</span>
+          <span>v{SITE.macReleaseDisplay} macOS</span>
           <span aria-hidden="true">·</span>
           <a class="hero__agpl" href="/download#linux">
             Linux {SITE.linuxReleaseLatest} ARM64
@@ -128,7 +128,7 @@ const detectedCount = totalCount - primaryCount;
 
         <div class="hero__ctas">
           <a class="btn btn--ember" href="/download">
-            Download for Mac — {SITE.macReleaseLatest}
+            Download for Mac — {SITE.macReleaseDisplay}
             <span class="btn-arrow" aria-hidden="true">
               →
             </span>
@@ -160,9 +160,7 @@ const detectedCount = totalCount - primaryCount;
 
       <div class="hero__visual">
         <BarMockup />
-        <div class="hero__visualcap mono">
-          <span>menu-bar popover · synthetic demo data</span>
-        </div>
+
       </div>
     </div>
   </section>
@@ -195,12 +193,13 @@ const detectedCount = totalCount - primaryCount;
       </div>
       <div class="band__sep" aria-hidden="true"></div>
       <div class="band__stat">
-        <div class="band__num mono">
-          7<span class="band__num-unit">·2</span>
-        </div>
-        <div class="band__lbl">
-          Upstream providers routed across two same-format pools (OpenAI · Anthropic)
-        </div>
+        <div class="band__num mono">7</div>
+        <div class="band__lbl">Upstream providers routed today</div>
+      </div>
+      <div class="band__sep" aria-hidden="true"></div>
+      <div class="band__stat">
+        <div class="band__num mono">2</div>
+        <div class="band__lbl">Same-format pools (OpenAI · Anthropic)</div>
       </div>
     </div>
   </section>
@@ -209,7 +208,7 @@ const detectedCount = totalCount - primaryCount;
        THE PILLARS
        ──────────────────────────────────────────────── -->
   <section class="pillars" aria-labelledby="pillars-h">
-    <div class="container">
+    <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Three commitments</span>
         <h2 id="pillars-h">A developer tool, not a SaaS dashboard.</h2>
@@ -303,7 +302,7 @@ const detectedCount = totalCount - primaryCount;
        PROVIDER PREVIEW
        ──────────────────────────────────────────────── -->
   <section class="provshow" aria-labelledby="provshow-h">
-    <div class="container">
+    <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Providers</span>
         <h2 id="provshow-h">The list of vendors it actually understands.</h2>
@@ -588,7 +587,7 @@ const detectedCount = totalCount - primaryCount;
        COMPANION — Floo + Agent Control
        ──────────────────────────────────────────────── -->
   <section class="companion" aria-labelledby="companion-h">
-    <div class="container">
+    <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--mercury">Beyond the dashboard</span>
         <h2 id="companion-h">Reaches from the menu bar to your phone and agents.</h2>
@@ -1056,6 +1055,56 @@ const detectedCount = totalCount - primaryCount;
     }
   }
 
+  /* ────────── companion (BB-05: styles had gone missing, cards rendered as
+     bare text) ────────── */
+  .companion {
+    padding-block: var(--s-10);
+  }
+  .companion__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-5);
+  }
+  .companion__card {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-6);
+    align-content: start;
+    color: var(--text-base);
+    text-decoration: none;
+    transition: all var(--dur-base) var(--ease);
+  }
+  .companion__card:hover {
+    transform: translateY(-5px);
+  }
+  .companion__card--floo:hover {
+    border-color: var(--ink-line-bright);
+  }
+  .companion__card--control:hover {
+    border-color: rgba(250, 107, 6, 0.3);
+  }
+  .companion__card h3 {
+    text-wrap: balance;
+  }
+  .companion__card p {
+    font-size: 0.95rem;
+    color: var(--text-mute);
+  }
+  .companion__tag {
+    justify-self: start;
+  }
+  .companion__more {
+    color: var(--ember-bright);
+    font-size: 0.88rem;
+    margin-top: auto;
+    padding-top: var(--s-3);
+  }
+  @media (max-width: 880px) {
+    .companion__grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
   /* ────────── dashshow ────────── */
   .dashshow {
     padding-block: var(--s-10);
@@ -1090,7 +1139,9 @@ const detectedCount = totalCount - primaryCount;
   }
   .surfaces__grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    /* BB-26: nine surfaces — 3×3 at desktop avoids the 9th-card orphan a
+       4-col grid leaves. */
+    grid-template-columns: repeat(3, 1fr);
     gap: var(--s-4);
   }
   @media (max-width: 1080px) {

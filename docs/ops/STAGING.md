@@ -515,3 +515,71 @@ cleanup path; inspect and clean any reported provider artifact before retrying.
 To pause staging deploys without deleting anything: set `STAGING_ENABLED=false`
 (or delete the variable). To decommission: `gcloud projects delete
 burnbar-staging` and remove the `staging` environment/secrets.
+
+## Environments & smoke tests
+
+| Environment | Firebase project | Hostnames | Deploys when |
+|-------------|------------------|-----------|--------------|
+| Production  | `burnbar` | `burnbar.ai`, `burnbar.web.app` | `deploy-production.yml` only — never from this pipeline |
+| Staging     | `burnbar-staging` | `burnbar-staging.web.app` (site), `burnbar-staging-console.web.app` (console) | push to `main` → `deploy-staging.yml` → `deploy-staging-trusted.yml@main` |
+| Preview     | `burnbar-staging` | `burnbar-staging--pr-<n>.web.app` | `deploy-preview.yml` on every website-touching PR |
+
+### Per-env config
+
+One source of truth per surface:
+
+- Marketing site staging/preview config: repo variable `STAGING_FIREBASE_PUBLIC_CONFIG_JSON`
+  (consumed by `website/scripts/build-staging.mjs` → `PUBLIC_FIREBASE_*` → `PUBLIC_BURNBAR_ENV`).
+- Console staging config: repo variable `STAGING_CONSOLE_PUBLIC_CONFIG_JSON`
+  (consumed by the candidate console build → `NEXT_PUBLIC_FIREBASE_*` → `NEXT_PUBLIC_BURNBAR_ENV`).
+- Production config stays in its own path; `website/scripts/verify-no-prod-config.mjs`
+  fails any staging/preview package containing a production identifier (BB-01 gate).
+- Staging and preview always serve `X-Robots-Tag: noindex, nofollow, noarchive`
+  and ship a deny-all `robots.txt` (BB-22).
+
+### Deploy flow
+
+1. `deploy-staging.yml` builds an untrusted candidate (rules tests, site with
+   staging config, optional console build) and packages a SHA-256-pinned
+   artifact. On `push` to `main` it deploys hosting + console; on
+   `workflow_dispatch` the existing inputs still gate each leg.
+2. `deploy-staging-trusted.yml@main` (reusable, `environment: staging`, WIF
+   OIDC) downloads the artifact, asserts its manifest, regenerates a minimal
+   firebase config for `burnbar-staging` (+ `burnbar-staging-console` when the
+   console bundle is present), deploys `--only hosting`, then runs
+   `verify-staging-deployment.mjs` and the Playwright smoke suite against the
+   live site.
+3. `deploy-preview.yml` builds the same staging-configured site for PRs and
+   publishes a `pr-<n>` preview channel (7-day expiry) on `burnbar-staging`
+   with a sticky comment. Fork PRs skip the deploy leg — no secrets are
+   exposed to them.
+
+### Firebase Auth authorized domains
+
+Add to the `burnbar-staging` project (Console → Auth → Settings → Authorized
+domains): `burnbar-staging.web.app`, `burnbar-staging.firebaseapp.com`,
+`burnbar-staging-console.web.app`, `burnbar-staging--pr-*.web.app` is **not**
+supported by Firebase Auth (no wildcards) — sign-in on preview channels is
+best-effort; run logged-in checks against stable staging only.
+
+### Secrets
+
+- `FIREBASE_SERVICE_ACCOUNT_BURNBAR_STAGING` — SA JSON for preview-channel deploys.
+- `BURNBAR_STAGING_TEST_EMAIL` / `BURNBAR_STAGING_TEST_PASSWORD` — staging-only
+  test account for logged-in smoke legs. Never commit; never a prod account.
+
+### Local smoke
+
+```bash
+npm ci --prefix website
+npm run build --prefix website
+npm run preview --prefix website &         # serves dist on :4322
+npx playwright install --with-deps chromium
+BASE_URL=http://localhost:4322 npm run test:smoke --prefix website
+```
+
+Every public route runs at 1440×900 and 390×844 in light and dark schemes.
+Failures: console errors, failed same-origin requests, broken internal links,
+missing title/description/OG, horizontal overflow, serious/critical axe
+violations. Screenshots + HTML report land in `website/test-results/smoke/`
+and `website/playwright-report/`.

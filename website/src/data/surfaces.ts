@@ -118,7 +118,7 @@ export const SURFACES: Surface[] = [
     status: "shipping",
     statusLabel: "Shipping",
     description:
-      "openburnbar-cli — eight commands for scripting, agents, and operators. Same daemon, no extra account. (Distinct from the npm package `openburnbar`, which is the Node MCP / resume / memory CLI.)",
+      "openburnbar-cli — eight commands for scripting, agents, and operators. Same daemon, no extra account. (Distinct from the npm package openburnbar, which is the Node MCP / resume / memory CLI.)",
     bullets: [
       "health · controller · questions · followups · missions",
       "mission-approve · simulator-runs · simulator-replay",
@@ -150,7 +150,7 @@ export const SURFACES: Surface[] = [
     bullets: [
       "Google Nest Hub via Cast V2 + Home Assistant blueprints",
       "ULANZI TC001 via AWTRIX HTTP or stock-firmware simulator",
-      "Per-device QA matrix gates support claims — see docs/SMART_DISPLAY_DEVICE_QA.md"
+      "Per-device QA matrix gates every support claim before it ships"
     ],
     cta: { href: "/platforms#smart-displays", label: "See the live mockups" }
   },
@@ -159,9 +159,9 @@ export const SURFACES: Surface[] = [
     name: "Android companion",
     platform: "Android 8+",
     status: "beta",
-    statusLabel: "Remediation in progress · Play Store pending",
+    statusLabel: "In development",
     description:
-      "Android companion is in active mobile-parity remediation. Source coverage is broad; physical-device, store, and VoiceOver evidence is still blocked. See docs/mobile-parity/mobile-parity-ledger.md.",
+      "Android companion is in active mobile-parity remediation. Source coverage is broad; physical-device, store, and VoiceOver evidence is still in progress.",
     bullets: [
       "Parity is not claimed — productParityClaim stays false",
       "Pulse, Burn, Hermes, and Floo ship in source; store/physical rows stay blocked",

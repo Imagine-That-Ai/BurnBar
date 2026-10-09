@@ -354,3 +354,4 @@ website/.tmp/
 # and in review-final/ stay tracked. See docs/runbooks/repo-hygiene.md.
 .appstore-screenshots/insights-editorial/
 .appstore-screenshots/downloaded/
+website/test-results/

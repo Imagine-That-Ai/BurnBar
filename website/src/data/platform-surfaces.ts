@@ -57,7 +57,7 @@ export const PLATFORM_DEVICES: PlatformDevice[] = [
     setupHref:
       "https://github.com/Imagine-That-Ai/BurnBar/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md",
     setupLabel: "Smart display QA matrix",
-    caption: "Faithful re-render · mirrors NestHubMiniPreview.swift"
+    caption: "Faithful re-render of the on-device layout"
   },
   {
     id: "ulanzi-tc001",
@@ -76,7 +76,7 @@ export const PLATFORM_DEVICES: PlatformDevice[] = [
     setupHref:
       "https://github.com/Imagine-That-Ai/BurnBar/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md#ulanzi-tc001",
     setupLabel: "ULANZI setup guide",
-    caption: "Faithful re-render · mirrors PixelClockPreviewView.swift"
+    caption: "Faithful re-render of the on-device layout"
   }
 ];
 

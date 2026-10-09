@@ -159,7 +159,7 @@ const defaultLede = `Your menu bar is one surface. Your Nest Hub on the kitchen 
   }
   .platform__pill {
     align-self: start;
-    color: var(--ember-bright);
+    color: var(--ember-text, var(--ember-bright)); /* AA on light: 4.06→5.5:1 */
     background: color-mix(in oklab, var(--ember-core) 14%, var(--ink-base));
     border: 1px solid color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
     border-radius: var(--r-pill);

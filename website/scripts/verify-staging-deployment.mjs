@@ -15,6 +15,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const STAGING_FIREBASE_PUBLIC_CONFIG = loadStagingFirebasePublicConfig();
 const args = process.argv.slice(2);
 let baseUrl = "https://burnbar-staging.web.app";
+let prodBaseUrl = "https://burnbar.ai";
 let distPath = join(ROOT, "dist");
 let attempts = 8;
 let retryDelayMs = 3_000;
@@ -22,6 +23,7 @@ let retryDelayMs = 3_000;
 for (let index = 0; index < args.length; index += 1) {
   const arg = args[index];
   if (arg === "--base-url") baseUrl = args[++index] ?? "";
+  else if (arg === "--prod-base-url") prodBaseUrl = args[++index] ?? "";
   else if (arg === "--dist") distPath = resolve(args[++index] ?? "");
   else if (arg === "--attempts") attempts = Number.parseInt(args[++index] ?? "", 10);
   else if (arg === "--retry-delay-ms") {
@@ -30,6 +32,7 @@ for (let index = 0; index < args.length; index += 1) {
 }
 
 assert.match(baseUrl, /^https:\/\/[a-z0-9.-]+$/u, "--base-url must be an HTTPS origin");
+assert.match(prodBaseUrl, /^https:\/\/[a-z0-9.-]+$/u, "--prod-base-url must be an HTTPS origin");
 assert.ok(Number.isSafeInteger(attempts) && attempts >= 1 && attempts <= 20);
 assert.ok(Number.isSafeInteger(retryDelayMs) && retryDelayMs >= 0 && retryDelayMs <= 30_000);
 assert.ok(statSync(distPath).isDirectory(), `dist directory not found: ${distPath}`);
@@ -128,6 +131,112 @@ for (const expected of configNeedles) {
   );
 }
 
+// Staging must stay unindexable end to end (BB-22): X-Robots-Tag on /subscribe
+// is asserted above; robots.txt must also deny all crawlers on the live site.
+await retry("staging robots.txt", async () => {
+  const robots = await fetch(`${baseUrl}/robots.txt`, {
+    redirect: "error",
+    cache: "no-store"
+  });
+  assert.equal(robots.status, 200, `staging robots.txt returned ${robots.status}`);
+  const body = (await robots.text()).toLowerCase();
+  assert.match(body, /disallow:\s*\//u, "staging robots.txt must disallow all crawlers");
+});
+
+// Every public route the marketing site must serve (BB-02, BB-03): routes that
+// returned 404 on the stale 2026-08-08 staging artifact, plus /beta, whose
+// entire purpose is the beta-claim funnel. The 404 template probe confirms the
+// custom page still renders for genuinely missing routes.
+const routeProbes = [
+  "/",
+  "/beta",
+  "/control",
+  "/floo",
+  "/mcp",
+  "/link",
+  "/hermes/connect",
+  "/subscribe",
+  "/bench",
+  "/bench/arena",
+  "/bench/arena/vote",
+  "/bench/data",
+  "/bench/methodology",
+  "/bench/report",
+  "/memory",
+  "/platforms",
+  "/pricing",
+  "/privacy",
+  "/product",
+  "/providers",
+  "/security",
+  "/support",
+  "/trust",
+  "/download",
+  "/faq",
+  "/benefits",
+  "/router",
+  "/router/daily",
+  "/legal/privacy-policy",
+  "/legal/terms",
+  "/legal/source"
+];
+for (const route of routeProbes) {
+  await retry(`staging route ${route}`, async () => {
+    const response = await fetch(`${baseUrl}${route}`, {
+      redirect: "error",
+      cache: "no-store"
+    });
+    assert.equal(response.status, 200, `staging ${route} returned ${response.status}`);
+    assert.match(
+      response.headers.get("x-robots-tag") ?? "",
+      /noindex/u,
+      `staging ${route} must send X-Robots-Tag: noindex`
+    );
+  });
+}
+await retry("staging 404 template", async () => {
+  const response = await fetch(`${baseUrl}/this-page-does-not-exist-qa`, {
+    redirect: "error",
+    cache: "no-store"
+  });
+  assert.equal(response.status, 404, "the 404 template must still render for missing routes");
+});
+
+// Freshness gate (BB-03): staging exists to validate what ships next, so it
+// may never sit behind production. Firebase Hosting stamps each deploy through
+// Last-Modified; a staging artifact older than prod is the stale-deployment
+// regression. When prod (Cloudflare) omits the header we warn rather than
+// guess — the deploy just succeeded, so absence of evidence is not staleness.
+await retry("staging freshness vs production", async () => {
+  const stagingHead = await fetch(`${baseUrl}/`, {
+    method: "HEAD",
+    redirect: "error",
+    cache: "no-store"
+  });
+  const prodHead = await fetch(`${prodBaseUrl}/`, {
+    method: "HEAD",
+    redirect: "error",
+    cache: "no-store"
+  });
+  const stagingModified = Date.parse(stagingHead.headers.get("last-modified") ?? "");
+  const prodModified = Date.parse(prodHead.headers.get("last-modified") ?? "");
+  assert.ok(
+    Number.isFinite(stagingModified),
+    "staging / must send a parseable Last-Modified header"
+  );
+  if (!Number.isFinite(prodModified)) {
+    console.warn(
+      `::warning::${prodBaseUrl} sent no Last-Modified header; skipping the staging-vs-prod freshness comparison.`
+    );
+    return;
+  }
+  assert.ok(
+    stagingModified >= prodModified,
+    `staging Last-Modified (${new Date(stagingModified).toISOString()}) is older than ` +
+      `production (${new Date(prodModified).toISOString()}) — staging is stale (BB-03)`
+  );
+});
+
 const rewriteProbes = [
   {
     label: "router rundown rewrite",
@@ -158,6 +267,16 @@ const rewriteProbes = [
     label: "Hermes Gateway rewrite",
     path: "/v1/hermes-gateway/__staging-verification__",
     expectedStatus: 404
+  },
+  {
+    label: "Bench Assistant rewrite",
+    path: "/api/bench/assistant",
+    expectedStatus: 400,
+    init: {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}"
+    }
   }
 ];
 

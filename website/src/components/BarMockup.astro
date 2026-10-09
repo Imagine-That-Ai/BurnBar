@@ -197,7 +197,22 @@
 </figure>
 
 <style>
+  /* The mockup is a fixed dark UI render in every theme (BB-04): its
+     backgrounds are hard-coded dark, so its text/border tokens must pin to
+     the dark values too — otherwise light mode paints near-black text on the
+     near-black card and the hero is unreadable. Mirrors the :root values. */
   .bar-mockup {
+    --ink-line: rgba(255, 255, 255, 0.08);
+    --ink-line-bright: rgba(255, 255, 255, 0.15);
+    --ink-line-soft: rgba(255, 255, 255, 0.04);
+    --ink-surface: rgba(255, 255, 255, 0.035);
+    --ink-surface-2: rgba(255, 255, 255, 0.06);
+    --text-bright: #ffffff;
+    --text-base: rgba(255, 255, 255, 0.85);
+    --text-mute: rgba(255, 255, 255, 0.55);
+    --text-dim: rgba(255, 255, 255, 0.52);
+    --chip-ground: #0e0e11;
+    --chip-ground-ember: #221108;
     display: grid;
     gap: 12px;
     width: 100%;
