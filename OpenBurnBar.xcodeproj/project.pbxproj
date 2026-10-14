@@ -405,6 +405,7 @@
 		1F3F3750419B54702ACB99B9 /* ComputerUseSetupWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B21CC5FFF6A9146D3C80EA78 /* ComputerUseSetupWizard.swift */; };
 		1F40CF09D1855C7B55A35C9D /* SerialAsyncWorkQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EF9BBD8DF1B4C4B84CEFB41 /* SerialAsyncWorkQueueTests.swift */; };
 		1F49311B8F2BD8FAD2E679FF /* MissionConsoleWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34C63E2098B9CE406E291CF8 /* MissionConsoleWindowController.swift */; };
+		8F64007000E840CCBDF786A6 /* MissionConsoleWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E542E92F2EB841DDB5245931 /* MissionConsoleWindowControllerTests.swift */; };
 		1F4B7ED7171D0FDB9E29CD49 /* ReceiptAccomplishmentSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B69624656EFCB3EC1E599D86 /* ReceiptAccomplishmentSynthesizer.swift */; };
 		1F731D88C4CFD4F37FD976AF /* HermesSquareRoot+Actions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7261FECC445EFAC69C964C57 /* HermesSquareRoot+Actions.swift */; };
 		1FD80BA4FBB096230561097C /* HermesBodyPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D705F490367EFB413080CA4E /* HermesBodyPublisher.swift */; };
@@ -3813,6 +3814,7 @@
 		34953F6196B4A4DBF307F1F7 /* AudioReceivePipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioReceivePipeline.swift; sourceTree = "<group>"; };
 		34B1BA37422041F36C2920BD /* ChatInputRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputRow.swift; sourceTree = "<group>"; };
 		34C63E2098B9CE406E291CF8 /* MissionConsoleWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionConsoleWindowController.swift; sourceTree = "<group>"; };
+		E542E92F2EB841DDB5245931 /* MissionConsoleWindowControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionConsoleWindowControllerTests.swift; sourceTree = "<group>"; };
 		34D3C4F43CCD78CEF098AA0C /* PiAgentCloudRelayHostService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAgentCloudRelayHostService.swift; sourceTree = "<group>"; };
 		34E787CBD9800D3654D45CCB /* KnowledgeSyncServiceSignalEnvelopeEncodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeSyncServiceSignalEnvelopeEncodingTests.swift; sourceTree = "<group>"; };
 		351ED70C9419DBCC6B166739 /* AnthropicCredentialProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicCredentialProbeTests.swift; sourceTree = "<group>"; };
@@ -7239,6 +7241,7 @@
 				712EA25EC23EDFC34BD75BAD /* MercuryEnvelopeCardTests.swift */,
 				EAF697F1FB281B03EDB8C230 /* MercuryShimmerModifierTests.swift */,
 				E1EDB57075454977C720922F /* MiniSparklineTests.swift */,
+				E542E92F2EB841DDB5245931 /* MissionConsoleWindowControllerTests.swift */,
 				CFD2A54DACEB23CCC20256C8 /* NarrativeCardViewTests.swift */,
 				F0D93B3B52B08361673CBBFD /* NestHubSettingsCardTests.swift */,
 				1862F519FB0C428CCBB3D58A /* OnboardingCompleteViewTests.swift */,
@@ -13970,6 +13973,7 @@
 				006EBA6C4A91ACF1D26FDA23 /* MimoQuotaAdapterTests.swift in Sources */,
 				3A2F1516F9871AFC12A850F3 /* MiniMaxQuotaAdapterTests.swift in Sources */,
 				B0D922A4394EF45C0EAAC480 /* MiniSparklineTests.swift in Sources */,
+				8F64007000E840CCBDF786A6 /* MissionConsoleWindowControllerTests.swift in Sources */,
 				0EC6E3B27114207D8D6D4897 /* MissionRemoteAuthorizationShadowTests.swift in Sources */,
 				C1C7CD8BCA133AAB002E1B9D /* MockBurnBarDaemonSocketClient.swift in Sources */,
 				8A13D18E23DCCB722CD36F08 /* ModelPricingTests.swift in Sources */,

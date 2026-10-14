@@ -27,8 +27,7 @@ final class MissionConsoleWindowController: NSObject, NSWindowDelegate {
     func makeOrShow() {
         Analytics.shared.track(.missionConsoleOpened)
         if let existing = window {
-            existing.makeKeyAndOrderFront(nil)
-            host.rebuildSnapshot()
+            presentAndRefresh(existing)
             return
         }
 
@@ -60,14 +59,34 @@ final class MissionConsoleWindowController: NSObject, NSWindowDelegate {
         let hosting = NSHostingController(rootView: console)
         hosting.sizingOptions = [.preferredContentSize]
         window.contentViewController = hosting
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
         self.window = window
+        presentAndRefresh(window)
+    }
+
+    private func presentAndRefresh(_ window: NSWindow) {
+        presentOnActiveSpace(window)
         host.rebuildSnapshot()
 
         Task { [weak self] in
             await self?.host.refresh()
         }
+    }
+
+    /// Brings a retained window forward after Spaces or display changes.
+    private func presentOnActiveSpace(_ window: NSWindow) {
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        if !window.isOnActiveSpace {
+            window.orderOut(nil)
+        }
+        if !NSScreen.screens.contains(where: { $0.frame.intersects(window.frame) }) {
+            window.setFrame(idealFrame(), display: true)
+        }
+        if !OpenBurnBarRuntime.isRunningTests {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        window.makeKeyAndOrderFront(nil)
     }
 
     func close() {
@@ -91,6 +110,7 @@ final class MissionConsoleWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         if let closing = notification.object as? NSWindow, closing === window {
             window = nil
+            WindowManager.shared.missionConsoleDidClose()
         }
     }
 }
@@ -101,7 +121,12 @@ extension MissionConsoleWindowController {
     /// Bind a single shared controller to the given operating layer the first
     /// time it's requested, then return it on subsequent calls.
     static func bind(to operatingLayer: OpenBurnBarOperatingLayer) -> MissionConsoleWindowController {
-        if let existing = shared { return existing }
+        if let existing = shared {
+            if existing.operatingLayer === operatingLayer { return existing }
+            // A rebuilt runtime context produces a new layer; retire stale state.
+            existing.close()
+            shared = nil
+        }
         let controller = MissionConsoleWindowController(operatingLayer: operatingLayer)
         shared = controller
         return controller

@@ -67,7 +67,8 @@ final class WindowManager: ObservableObject {
             switcherOnboardingWindow,
             startupRecoveryWindow,
             receiptsWindow,
-            WindowManager.chatPopOutWindow
+            WindowManager.chatPopOutWindow,
+            MissionConsoleWindowController.shared?.window
         ]
         let hasVisibleDocument = documentWindows.contains { window in
             guard let window else { return false }
@@ -77,6 +78,12 @@ final class WindowManager: ObservableObject {
         if NSApp.activationPolicy() != .accessory {
             NSApp.setActivationPolicy(.accessory)
         }
+    }
+
+    /// Called by `MissionConsoleWindowController` when the console window
+    /// closes, so accessory demotion sees it as a document window while open.
+    func missionConsoleDidClose() {
+        demoteToAccessoryIfIdle()
     }
 
     func openDashboard(
