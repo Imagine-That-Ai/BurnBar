@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "product": "Afar",
+  "role": "owner-selected official logo master",
+  "originalFilename": "Logo SVG.txt",
+  "originalFormat": "SVG XML supplied in a .txt file",
+  "source": "Owner supplied in iCloud Drive / imagine-that.ai / Products / Afar",
+  "sourceSHA256": "27a6b3b9788375bb5b630647c3e84a1471ccd875768002f3c03d58cd2ac069dc",
+  "bytes": 5555260,
+  "viewBox": "0 0 1254 1254",
+  "alterations": "none; original SVG bytes preserved",
+  "usageAuthorization": "Owner explicitly instructed use for Afar app and branding on2026-10-15; no standalone third-party artwork license asserted",
+  "portableEdition": "Excluded by existing brand/afar blank-export policy",
+  "performance": "644 paths and9 blur filters; use generated platform icon/raster assets for routine app display, preserve vector master for design/export",
+  "derivatives": [
+    {
+      "path": "afar-logo-1024.png",
+      "renderer": "macOS Quick Look qlmanage -t -s1024",
+      "sourceSHA256": "27a6b3b9788375bb5b630647c3e84a1471ccd875768002f3c03d58cd2ac069dc",
+      "sha256": "83806cb557a76d15d02bdc52bf37ccde212b4a9ac8fd70045bf4cf11283e4214",
+      "purpose": "reviewed 1024px raster source for frontend/icon preparation; final platform asset validation remains with Opus/packaging"
+    }
+  ]
+}

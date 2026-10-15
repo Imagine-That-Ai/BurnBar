@@ -1,9 +1,11 @@
-# Mission Control page screenshots
+# Afar page screenshots
 
-Review evidence for the Mission Control page refinement. Captured with Playwright
-(Chromium) against a local `astro preview` of `npm run build:offline` on 2026-10-15.
+Review evidence for the Afar product page (formerly Mission Control). Captured with
+Playwright (Chromium) against a local static server that sends the production
+marketing CSP, from `npm run build:offline` on 2026-10-15.
 These are images of the built page, not of a deployed site, and not of the
-native app: the control room on the page is an interactive concept.
+native app: the control room on the page is an interactive concept. The Afar logo
+in them is the owner's official artwork (see `website/brand/afar/import-receipt.json`).
 
 | File | Viewport | Theme |
 | --- | --- | --- |

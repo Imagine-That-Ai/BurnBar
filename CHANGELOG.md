@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/SERVICES_DECOMPOSITION_PROGRAM.md` for the remaining waves.
 
 ### Added
+- **Afar branding on the product page** — the owner renamed Mission Control to
+  Afar and supplied the official logo. The page at `/mission-control` (address
+  unchanged) now uses Afar in its copy and product navigation, and shows the
+  official artwork as pre-rendered AVIF/WebP/PNG tiles (145 KB in total) built
+  by `website/scripts/build-afar-icons.py` from the owner-reviewed render. The
+  5.5 MB master, its reviewed 1024 px render and provenance are imported
+  byte-identical under `website/brand/afar/` with an import receipt pinned to
+  the source commit, and `website/test/afar-icons.test.ts` verifies the hash
+  chain through to every served file. The public download stays gated.
 - **Mission Control product page at `/mission-control`** — a companion page for
   the native Mac app and separate iOS client, built on the shared Po'dex token
   foundation with the pink/orange/canary palette. Its control room is a labeled

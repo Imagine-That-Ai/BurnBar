@@ -1,6 +1,6 @@
 ---
 /**
- * Interactive concept of the Mission Control control room.
+ * Interactive concept of the Afar control room.
  *
  * It is an illustration, labeled as one. Nothing here connects to, reads from
  * or controls a device, so every environment stays "Not set up", every step of
@@ -18,7 +18,7 @@
  *   portrait    swipeable environment track, places bar within thumb reach
  *   landscape   icon rail · active environment · compact readiness rail
  */
-import MissionMark from "./MissionMark.astro";
+import AfarLogo from "./AfarLogo.astro";
 import { MISSION_CONTROL_VOICE as voice } from "@data/mission-control";
 
 const environments = [
@@ -73,8 +73,8 @@ const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
         <i></i>
       </span>
       <span class="room-title">
-        <MissionMark size={16} />
-        Mission Control
+        <AfarLogo size={16} eager />
+        Afar
       </span>
       <span class="room-bar__end">Portable edition</span>
     </div>
@@ -187,42 +187,48 @@ const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
 </figure>
 
 <script>
-  // Swipe for the portrait composition: the stage becomes a scroll-snap
-  // track and stays in sync with the radio group in both directions.
+  // Swipe for the portrait composition: the stage becomes a scroll-snap track
+  // kept in agreement with the radio group (see roomTrackSync for the rules
+  // that stop the track overwriting a choice mid-scroll).
+  import { createTrackSync } from "../../scripts/roomTrackSync";
+
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   for (const room of document.querySelectorAll<HTMLElement>("[data-room]")) {
     const track = room.querySelector<HTMLElement>("[data-room-track]");
     const radios = [...room.querySelectorAll<HTMLInputElement>('input[name="mc-room"]')];
-    if (!track || radios.length === 0) continue;
+    const panels = radios.map((radio) =>
+      track?.querySelector<HTMLElement>(`[data-env="${radio.value}"]`)
+    );
+    if (!track || radios.length === 0 || panels.some((panel) => !panel)) continue;
     room.dataset.enhanced = "";
 
+    // Only the portrait composition scrolls; elsewhere the radios alone drive the panels.
     const isTrack = () => getComputedStyle(track).overflowX !== "visible";
-    const panelFor = (radio: HTMLInputElement) =>
-      track.querySelector<HTMLElement>(`[data-env="${radio.value}"]`);
-
-    for (const radio of radios) {
-      radio.addEventListener("change", () => {
-        const panel = panelFor(radio);
-        if (!panel || !isTrack()) return;
-        track.scrollTo({ left: panel.offsetLeft, behavior: reduce.matches ? "auto" : "smooth" });
-      });
-    }
-
-    let frame = 0;
-    track.addEventListener(
-      "scroll",
-      () => {
-        cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(() => {
-          if (!isTrack()) return;
-          const index = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1));
-          const radio = radios[Math.min(Math.max(index, 0), radios.length - 1)];
-          if (radio && !radio.checked) radio.checked = true;
-        });
+    const sync = createTrackSync({
+      count: radios.length,
+      position: () => track.scrollLeft / Math.max(track.clientWidth, 1),
+      scrollToIndex: (index) =>
+        track.scrollTo({
+          left: panels[index]?.offsetLeft ?? 0,
+          behavior: reduce.matches ? "auto" : "smooth"
+        }),
+      select: (index) => {
+        const radio = radios[index];
+        if (radio && !radio.checked) radio.checked = true;
       },
-      { passive: true }
+      now: () => performance.now(),
+      setTimer: (callback, ms) => window.setTimeout(callback, ms),
+      clearTimer: (timer) => window.clearTimeout(timer)
+    });
+
+    radios.forEach((radio, index) =>
+      radio.addEventListener("change", () => {
+        if (isTrack()) sync.choose(index);
+      })
     );
+    track.addEventListener("scroll", () => isTrack() && sync.onScroll(), { passive: true });
+    track.addEventListener("scrollend", () => isTrack() && sync.onScrollEnd());
   }
 </script>
 
@@ -840,14 +846,22 @@ const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
       display: none;
     }
     .place-add {
+      position: relative;
       flex-direction: column;
       gap: var(--mc-row);
       padding: var(--mc-cluster) var(--mc-row);
       font-size: var(--mc-caption);
       text-align: center;
     }
+    /* The icon rail shows only the "+" tile; keep the label as the link's
+       accessible name by hiding it visually rather than with display:none. */
     .place-add > span:last-child {
-      display: none;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
     .room-panel {
       gap: var(--mc-inset);

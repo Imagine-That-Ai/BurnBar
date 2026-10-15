@@ -1,7 +1,7 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import ControlRoomPreview from "@components/mission-control/ControlRoomPreview.astro";
-import MissionMark from "@components/mission-control/MissionMark.astro";
+import AfarLogo from "@components/mission-control/AfarLogo.astro";
 import {
   describeArchitectures,
   MISSION_CONTROL_DOWNLOAD_READY as downloadReady,
@@ -10,9 +10,13 @@ import {
   MISSION_CONTROL_RELEASE as release,
   MISSION_CONTROL_STYLE
 } from "@data/mission-control";
+import afarIcons from "@data/afar-icons.json";
 import setupBrief from "../../public/mission-control/agent-setup.md?raw";
 
-const architectures = describeArchitectures(release.architectures);
+const architectures = describeArchitectures(release.architectures) || "Not yet published";
+const macRequirement = release.minimumMacOS
+  ? `macOS ${release.minimumMacOS} or later`
+  : "Not yet published";
 const evidenceDone = evidence.filter((check) => check.done).length;
 
 // The first sentences of the real setup brief's prompt, verbatim, so the
@@ -54,7 +58,7 @@ const steps = [
   },
   {
     title: "Connect, then see results",
-    body: "Run a real check and one approved action. Mission Control shows what actually happened."
+    body: "Run a real check and one approved action. Afar shows what actually happened."
   }
 ];
 
@@ -69,16 +73,16 @@ const verifiedDate = release.verifiedAt
 ---
 
 <BaseLayout
-  title="Mission Control — your environments, one control room"
+  title="Afar — your environments, one control room"
   description="A native control room for your Mac and the remote machines you choose. Agent-assisted setup you review, explicit actions, and real connection state and results."
   ambientEffects={false}
 >
   <link slot="head" rel="stylesheet" href="/mission-control/fonts/fonts.css" />
   <div class="mission-control" style={MISSION_CONTROL_STYLE}>
-    <nav class="product-nav" aria-label="Mission Control">
+    <nav class="product-nav" aria-label="Afar">
       <div class="product-nav__inner">
         <a class="wordmark" href="#mission-control">
-          <MissionMark size={26} />
+          <AfarLogo size={28} eager />
           <span class="wordmark__text">
             {meta.wordmark}
             <small>{meta.provenance}</small>
@@ -98,8 +102,14 @@ const verifiedDate = release.verifiedAt
     <section class="hero" id="mission-control" aria-labelledby="mc-title">
       <div class="hero__glow" aria-hidden="true"></div>
       <div class="mc-container hero__copy">
-        <MissionMark variant="icon" size={72} class="hero__icon" />
-        <p class="mc-eyebrow">Mission Control for Mac, by BurnBar</p>
+        <AfarLogo
+          size={120}
+          sizes="(max-width: 640px) 88px, 120px"
+          alt={afarIcons.alt}
+          eager
+          class="hero__icon"
+        />
+        <p class="mc-eyebrow">Afar for Mac, by BurnBar</p>
         <h1 id="mc-title">
           Your environments.
           <span class="hero__accent">One control room.</span>
@@ -124,8 +134,8 @@ const verifiedDate = release.verifiedAt
         </div>
         <p class="availability">
           {downloadReady
-            ? `Version ${release.version} · macOS ${release.minimumMacOS} or later · ${architectures}`
-            : `Public Mac release in preparation · macOS ${release.minimumMacOS}+ build target`}
+            ? `Version ${release.version} · ${macRequirement} · ${architectures}`
+            : `Public Mac release in preparation${release.minimumMacOS ? ` · macOS ${release.minimumMacOS}+ build target` : ""}`}
         </p>
       </div>
       <div class="mc-container hero__room">
@@ -142,9 +152,9 @@ const verifiedDate = release.verifiedAt
             <span class="muted-line">Stay in charge of what runs.</span>
           </h2>
           <p class="section-lead">
-            Mission Control is orchestration for computers you already own and accounts you already
-            have. It does not include an AI subscription, extra cloud capacity or access to anyone
-            else’s accounts.
+            Afar is orchestration for computers you already own and accounts you already have. It
+            does not include an AI subscription, extra cloud capacity or access to anyone else’s
+            accounts.
           </p>
         </header>
         <ol class="principles">
@@ -313,8 +323,8 @@ const verifiedDate = release.verifiedAt
       <div class="mc-container">
         <div class="release-card">
           <div class="release-card__intro">
-            <MissionMark variant="icon" size={88} class="release-icon" />
-            <p class="mc-eyebrow">Mission Control for Mac</p>
+            <AfarLogo size={88} class="release-icon" />
+            <p class="mc-eyebrow">Afar for Mac</p>
             <h2 id="release-title">
               {downloadReady
                 ? `Version ${release.version} is ready.`
@@ -322,13 +332,13 @@ const verifiedDate = release.verifiedAt
             </h2>
             <p class="section-lead">
               {downloadReady
-                ? "Open the DMG and drag Mission Control into Applications. The app and its bundled service install together; no separate Python or Node runtime is needed."
+                ? "Open the DMG and drag Afar into Applications. The app and its bundled service install together; no separate Python or Node runtime is needed."
                 : "The app and its bundled service are being prepared for public distribution. A download appears here only after every check below is verified."}
             </p>
             <dl class="facts">
               <div>
                 <dt>Requires</dt>
-                <dd>macOS {release.minimumMacOS} or later</dd>
+                <dd>{macRequirement}</dd>
               </div>
               <div>
                 <dt>{downloadReady ? "Runs on" : "Build targets"}</dt>
@@ -345,11 +355,11 @@ const verifiedDate = release.verifiedAt
             {downloadReady ? (
               <>
                 <a class="button button--primary button--block" href={release.artifact?.url}>
-                  Download Mission Control {release.version} <span aria-hidden="true">↓</span>
+                  Download Afar {release.version} <span aria-hidden="true">↓</span>
                 </a>
                 <ol class="install">
                   <li>Open the downloaded DMG.</li>
-                  <li>Drag Mission Control into Applications.</li>
+                  <li>Drag Afar into Applications.</li>
                   <li>Open it and follow the first-launch setup with your agent.</li>
                 </ol>
                 <a class="text-link" href={release.releaseNotesUrl ?? undefined}>
@@ -408,18 +418,26 @@ const verifiedDate = release.verifiedAt
         </header>
         <div class="question-list">
           <details>
+            <summary>Is Afar the same app as Mission Control?</summary>
+            <p>
+              Yes. Afar is the new name for the app previously called Mission Control. A few files,
+              including the current setup brief, still use the earlier name until they are updated,
+              and this page keeps its existing address.
+            </p>
+          </details>
+          <details>
             <summary>What comes in the Mac app?</summary>
             <p>
-              The intended DMG contains Mission Control and its bundled service, so you do not need
-              a separate Python or Node installation. Your own machines, logins and approved
-              connections complete the setup.
+              The intended DMG contains Afar and its bundled service, so you do not need a separate
+              Python or Node installation. Your own machines, logins and approved connections
+              complete the setup.
             </p>
           </details>
           <details>
             <summary>Does it include an AI subscription?</summary>
             <p>
-              No. Mission Control provides orchestration. Use agents and AI accounts you already
-              have; it does not purchase cloud capacity or add entitlements.
+              No. Afar provides orchestration. Use agents and AI accounts you already have; it does
+              not purchase cloud capacity or add entitlements.
             </p>
           </details>
           <details>
@@ -442,7 +460,7 @@ const verifiedDate = release.verifiedAt
             <summary>Is a configured machine ready to use?</summary>
             <p>
               Not necessarily. Configured, reachable, authenticated and task-ready are separate
-              states, and Mission Control reports each one on its own.
+              states, and Afar reports each one on its own.
             </p>
           </details>
           <details>
@@ -455,7 +473,7 @@ const verifiedDate = release.verifiedAt
           </details>
         </div>
         <p class="design-note">
-          <MissionMark size={18} />
+          <AfarLogo size={20} />
           <span>
             A member of the BurnBar family, built on the {meta.sourceProduct} design foundation with
             a warmer palette. <a href="/mission-control/token-provenance.json">Token provenance</a>
@@ -520,7 +538,7 @@ const verifiedDate = release.verifiedAt
     --mc-primary: var(--mc-ink);
   }
   /* The site's global element colors (headings, p, strong, link hover) read
-     these shell variables; point them at Mission Control's own roles. */
+     these shell variables; point them at Afar's own roles. */
   .mission-control :global(:is(h1, h2, h3, h4)) {
     text-shadow: none;
   }
@@ -742,7 +760,7 @@ const verifiedDate = release.verifiedAt
   }
   .hero__copy :global(.hero__icon) {
     margin-bottom: var(--mc-section);
-    filter: drop-shadow(0 18px 30px color-mix(in srgb, var(--mc-pink) 35%, transparent));
+    filter: drop-shadow(0 18px 32px color-mix(in srgb, var(--mc-orange) 30%, transparent));
   }
   .hero h1 {
     margin: 0;
@@ -1410,9 +1428,8 @@ const verifiedDate = release.verifiedAt
     .product-nav__links a:not(.product-nav__cta) {
       display: none;
     }
-    .hero__copy :global(.hero__icon) {
-      width: 60px;
-      height: 60px;
+    .hero__copy :global(.hero__icon img) {
+      width: 88px;
     }
     .actions {
       flex-direction: column;
