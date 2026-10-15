@@ -58,7 +58,7 @@ export function releaseEvidence(release: MissionControlRelease): ReleaseCheck[] 
     },
     {
       id: "artifact",
-      label: "HTTPS download with SHA-256",
+      label: "HTTPS download and checksum",
       done:
         isHttpsUrl(release.artifact?.url) &&
         Boolean(release.artifact && /^[a-f0-9]{64}$/i.test(release.artifact.sha256))

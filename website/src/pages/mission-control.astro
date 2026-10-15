@@ -29,7 +29,7 @@ const principles = [
     body: "Your Mac and the remote machines you choose sit side by side, each with its own connection, actions and results."
   },
   {
-    title: "Setup your agent proposes, you review",
+    title: "Setup that you review",
     body: "An agent you already trust drafts the profile. You read the machines and permissions before anything is imported."
   },
   {
@@ -389,11 +389,10 @@ const verifiedDate = release.verifiedAt
               </ul>
               <p class="evidence__foot">
                 {verifiedDate ? `Verified ${verifiedDate}. ` : ""}
-                Read straight from the{" "}
+                Each line is read from the{" "}
                 <a class="text-link" href="/mission-control/release.json">
                   release manifest
                 </a>
-                .
               </p>
             </div>
           </div>
@@ -1470,6 +1469,22 @@ const verifiedDate = release.verifiedAt
     }
     .question-list details p {
       margin-right: 0;
+    }
+  }
+
+  /* Landscape phone: the room matters more than the hero padding. */
+  @media (orientation: landscape) and (max-height: 520px) {
+    .hero {
+      padding-top: var(--mc-section);
+    }
+    .hero__copy :global(.hero__icon) {
+      display: none;
+    }
+    .hero h1 {
+      font-size: clamp(40px, 6.4vw, 60px);
+    }
+    .hero__room {
+      margin-top: var(--mc-empty);
     }
   }
 

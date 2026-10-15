@@ -181,7 +181,8 @@ const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
 
   <p class="room-hint">
     <span class="hint-keys">Use arrow keys to move between environments.</span>
-    <span class="hint-swipe">Swipe or tap below to move between environments.</span>
+    <span class="hint-tap">Tap an environment to move between them.</span>
+    <span class="hint-swipe">Swipe, or tap a place below, to move between environments.</span>
   </p>
 </figure>
 
@@ -638,8 +639,17 @@ const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
     font-size: var(--mc-caption);
     color: var(--mc-muted);
   }
+  .hint-tap,
   .hint-swipe {
     display: none;
+  }
+  @media (pointer: coarse) {
+    .hint-keys {
+      display: none;
+    }
+    .hint-tap {
+      display: inline;
+    }
   }
 
   /* ── Medium: readiness moves under the active environment ───────────── */
@@ -724,6 +734,7 @@ const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
     }
     .room-context {
       flex-direction: column;
+      flex-wrap: nowrap;
       align-items: stretch;
       padding: var(--mc-inset) var(--mc-page);
     }
@@ -786,7 +797,8 @@ const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
     .place-add > span:last-child {
       white-space: nowrap;
     }
-    .hint-keys {
+    .hint-keys,
+    .hint-tap {
       display: none;
     }
     .hint-swipe {
@@ -846,6 +858,7 @@ const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
     }
     .room-context {
       flex-direction: column;
+      flex-wrap: nowrap;
       align-items: stretch;
       gap: 0;
       padding: var(--mc-inset);
