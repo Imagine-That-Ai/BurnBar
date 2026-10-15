@@ -1,0 +1,64 @@
+---
+/**
+ * The owner's official Afar logo, served as pre-rendered rasters.
+ *
+ * The 5.5 MB master SVG (644 paths, 9 blur filters) stays in website/brand/afar
+ * and is never sent to visitors. scripts/build-afar-icons.py derives AVIF/WebP
+ * srcsets plus a PNG fallback from the owner-reviewed 1024 px render and lists
+ * them in afar-icons.json, so the browser picks the smallest file for the
+ * rendered size and pixel density. The artwork is a full-bleed square on its
+ * own studio field, presented as an app-icon tile.
+ *
+ * Pass `alt` only where the logo carries meaning on its own; next to a visible
+ * "Afar" name it is decorative, so it defaults to alt="".
+ */
+import icons from "@data/afar-icons.json";
+
+interface Props {
+  /** Rendered CSS size in px, or a `sizes` attribute when it changes by breakpoint. */
+  size: number;
+  sizes?: string;
+  alt?: string;
+  eager?: boolean;
+  class?: string;
+}
+
+const { size, sizes = `${size}px`, alt = "", eager = false, class: className } = Astro.props;
+const srcset = (format: keyof typeof icons.formats) =>
+  icons.formats[format].map((file) => `${file.path} ${file.width}w`).join(", ");
+---
+
+<picture class:list={["afar-logo", className]}>
+  <source type="image/avif" srcset={srcset("avif")} sizes={sizes} />
+  <source type="image/webp" srcset={srcset("webp")} sizes={sizes} />
+  <img
+    src={icons.fallback.path}
+    width={size}
+    height={size}
+    alt={alt}
+    loading={eager ? "eager" : "lazy"}
+    decoding="async"
+    fetchpriority={eager ? "high" : "auto"}
+  />
+</picture>
+
+<style>
+  .afar-logo {
+    display: block;
+    flex: none;
+    line-height: 0;
+  }
+  /* The width/height attributes set the size; callers may override the width
+     per breakpoint (the aspect ratio keeps it square). */
+  .afar-logo img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    /* Continuous-corner app-icon tile: ~22.4% matches the macOS/iOS mask. */
+    border-radius: 22.4%;
+    box-shadow:
+      0 0 0 0.5px color-mix(in srgb, var(--mc-ink, #1a1a1a) 14%, transparent),
+      var(--mc-shadow-1, none);
+  }
+</style>

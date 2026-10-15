@@ -1,6 +1,6 @@
 ---
 /**
- * Interactive concept of the Mission Control control room.
+ * Interactive concept of the Afar control room.
  *
  * It is an illustration, labeled as one. Nothing here connects to, reads from
  * or controls a device, so every environment stays "Not set up", every step of
@@ -18,7 +18,7 @@
  *   portrait    swipeable environment track, places bar within thumb reach
  *   landscape   icon rail · active environment · compact readiness rail
  */
-import MissionMark from "./MissionMark.astro";
+import AfarLogo from "./AfarLogo.astro";
 import { MISSION_CONTROL_VOICE as voice } from "@data/mission-control";
 
 const environments = [
@@ -73,8 +73,8 @@ const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
         <i></i>
       </span>
       <span class="room-title">
-        <MissionMark size={16} />
-        Mission Control
+        <AfarLogo size={16} eager />
+        Afar
       </span>
       <span class="room-bar__end">Portable edition</span>
     </div>

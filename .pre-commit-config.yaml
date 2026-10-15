@@ -31,6 +31,10 @@ repos:
         args: [--branch, main]
       - id: check-added-large-files
         args: [--maxkb=2048]
+        # reason: the owner's official Afar logo master must stay byte-identical
+        # (5.5 MB, SHA-256 pinned in website/brand/afar/import-receipt.json).
+        # It is never served; the page uses rasters from build-afar-icons.py.
+        exclude: ^website/brand/afar/afar-logo-master\.svg$
 
   # ── Swift (SwiftLint) ─────────────────────────────────────────────────────
   - repo: local
