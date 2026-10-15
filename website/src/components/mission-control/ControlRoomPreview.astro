@@ -1,451 +1,757 @@
 ---
+/**
+ * Interactive concept of the Mission Control control room.
+ *
+ * It is an illustration, labeled as one. Nothing here connects to, reads from
+ * or controls a device, so every environment stays "Not set up", every step of
+ * the readiness ladder stays "Not checked", and the one action per room is a
+ * dashed, labeled example taken from the profile shape in the setup brief.
+ *
+ * Selection is a native radio group, so arrow keys, Tab and screen readers all
+ * work without script. A small script adds swipe on the portrait composition
+ * (a scroll-snap track kept in sync with the radios); without it, every layout
+ * still shows the selected environment.
+ *
+ * Compositions (not one layout shrunk):
+ *   wide        sidebar · active environment · readiness context rail
+ *   medium      sidebar · active environment, readiness across the bottom
+ *   portrait    swipeable environment track, places bar within thumb reach
+ *   landscape   icon rail · active environment · compact readiness rail
+ */
+import MissionMark from "./MissionMark.astro";
+import { MISSION_CONTROL_VOICE as voice } from "@data/mission-control";
+
 const environments = [
-  { id: "mac", name: "My Mac", kind: "Your everyday workspace", icon: "⌘", accent: "pink" },
-  { id: "linux", name: "Linux", kind: "Your remote workspace", icon: ">_", accent: "orange" },
-  { id: "windows", name: "Windows", kind: "Your Windows workspace", icon: "⊞", accent: "canary" }
+  {
+    id: "mac",
+    name: "My Mac",
+    kind: "This computer",
+    transport: "Local",
+    accent: "pink",
+    icon: "M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5V15H4zM2 17h20l-1 2H3z",
+    action: { name: "Check hostname", executable: "/bin/hostname", args: "", timeout: 10 }
+  },
+  {
+    id: "linux",
+    name: "Remote Linux",
+    kind: "Over your SSH config",
+    transport: "SSH",
+    accent: "orange",
+    icon: "M3 5h18v14H3zM6.5 9.5 9 12l-2.5 2.5M11 15h5",
+    action: { name: "Check OS version", executable: "/usr/bin/uname", args: '"-sr"', timeout: 10 }
+  },
+  {
+    id: "windows",
+    name: "Windows PC",
+    kind: "Over your SSH config",
+    transport: "SSH",
+    accent: "canary",
+    icon: "M4 5.5 11 4.5V11.5H4zM13 4.2l7-1v8.3h-7zM4 12.5h7v7l-7-1zM13 12.5h7v8.3l-7-1z",
+    action: {
+      name: "Check hostname",
+      executable: "C:\\Windows\\System32\\hostname.exe",
+      args: "",
+      timeout: 10
+    }
+  }
 ];
+
+const ladder = ["Configured", "Reachable", "Authenticated", "Task-ready"];
 ---
 
-<figure class="mc-preview">
-  <figcaption class="preview-caption">
-    <span>Explore the control room</span>
-    <span class="preview-label">Interactive design preview</span>
+<figure class="room" data-room aria-labelledby="room-caption">
+  <figcaption id="room-caption" class="room-caption">
+    <span class="room-caption__tag">Interactive concept</span>
+    <span>Illustrative environments. This preview does not connect to or control a device.</span>
   </figcaption>
-  <div class="control-window">
-    <div class="window-bar" aria-hidden="true">
-      <span class="window-lights">
+
+  <div class="room-window">
+    <div class="room-bar" aria-hidden="true">
+      <span class="room-lights">
         <i></i>
         <i></i>
         <i></i>
       </span>
-      <span>Mission Control</span>
-      <span class="window-orbit">✳</span>
+      <span class="room-title">
+        <MissionMark size={16} />
+        Mission Control
+      </span>
+      <span class="room-bar__end">Portable edition</span>
     </div>
-    <div class="window-body">
-      <fieldset class="environment-picker">
+
+    <div class="room-body">
+      <fieldset class="room-places">
         <legend>Your environments</legend>
-        {environments.map((environment, index) => (
-          <div class="environment-option">
+        {environments.map((env, index) => (
+          <div class="place">
             <input
               type="radio"
-              name="preview-environment"
-              id={`preview-${environment.id}`}
-              value={environment.id}
+              name="mc-room"
+              id={`room-${env.id}`}
+              value={env.id}
               checked={index === 0}
-              aria-controls={`panel-${environment.id}`}
+              aria-controls={`room-panel-${env.id}`}
             />
-            <label for={`preview-${environment.id}`}>
-              <span class={`environment-icon ${environment.accent}`} aria-hidden="true">
-                {environment.icon}
+            <label for={`room-${env.id}`} class={`accent-${env.accent}`}>
+              <span class="place-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18">
+                  <path d={env.icon} />
+                </svg>
               </span>
-              <span>
-                <strong>{environment.name}</strong>
-                <small>Not connected</small>
-              </span>
-              <span class="environment-arrow" aria-hidden="true">
-                ›
+              <span class="place-text">
+                <strong>{env.name}</strong>
+                <small>Not set up</small>
               </span>
             </label>
           </div>
         ))}
-        <a class="add-environment" href="#setup">
-          <span aria-hidden="true">＋</span> Add your own
+        <a class="place-add" href="#setup">
+          <span aria-hidden="true">+</span>
+          <span>Add your own</span>
         </a>
       </fieldset>
-      <div class="environment-panels">
-        {environments.map((environment) => (
+
+      <div class="room-stage" data-room-track>
+        {environments.map((env) => (
           <section
-            id={`panel-${environment.id}`}
-            class={`environment-panel panel-${environment.id}`}
-            aria-label={`${environment.name} preview`}
+            id={`room-panel-${env.id}`}
+            class={`room-panel accent-${env.accent}`}
+            data-env={env.id}
+            aria-label={`${env.name}, concept`}
           >
-            <div class="environment-heading">
+            <header class="panel-head">
               <div>
-                <span class="room-eyebrow">{environment.kind}</span>
-                <h3>{environment.name}</h3>
+                <p class="panel-kind">
+                  {env.kind} · {env.transport}
+                </p>
+                <h3>{env.name}</h3>
               </div>
-              <span class="connection-state">
-                <span aria-hidden="true"></span> Setup needed
+              <span class="state-pill">
+                <span aria-hidden="true" /> Not set up
               </span>
+            </header>
+
+            <div class="panel-empty">
+              <span class="panel-glyph" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="28" height="28">
+                  <path d={env.icon} />
+                </svg>
+              </span>
+              <h4>{voice.empty}</h4>
+              <p>Its connection, permitted actions and results will live here.</p>
             </div>
-            <div class="empty-workspace">
-              <div class={`workspace-orbit ${environment.accent}`} aria-hidden="true">
-                <span class="orbit-ring"></span>
-                <span class="orbit-ring inner"></span>
-                <span class="orbit-glyph">{environment.icon}</span>
-                <i></i>
-                <i></i>
-                <i></i>
-              </div>
-              <h4>
-                A little space.
-                <br />A lot of possibility.
-              </h4>
-              <p>
-                Bring this environment into view.
-                <br />
-                Its connection, actions and results belong here.
+
+            <div class="panel-actions">
+              <p class="panel-label">
+                Actions <span>Example · not configured</span>
               </p>
-              <a href="#setup" class="preview-setup">
-                Start with your agent <span aria-hidden="true">↗</span>
-              </a>
+              <div class="example-action">
+                <span class="example-action__name">{env.action.name}</span>
+                <code>
+                  {env.action.executable}
+                  {env.action.args && <span> [{env.action.args}]</span>}
+                </code>
+                <span class="example-action__meta">Diagnostic · {env.action.timeout} s limit</span>
+              </div>
             </div>
-            <div class="workspace-bottom">
-              <span>
-                <span class="bottom-symbol" aria-hidden="true">
-                  ◎
-                </span>{" "}
-                You choose what can run.
-              </span>
-              <span>Profile → connection → results</span>
+
+            <div class="panel-results">
+              <p class="panel-label">Results</p>
+              <p class="panel-results__empty">Nothing has run here yet.</p>
             </div>
           </section>
         ))}
       </div>
+
+      <aside class="room-context" aria-label="Readiness, concept">
+        <p class="panel-label">Before anything runs</p>
+        <ol class="ladder">
+          {ladder.map((step) => (
+            <li>
+              <span class="ladder-dot" aria-hidden="true" />
+              <span class="ladder-step">{step}</span>
+              <span class="ladder-state">Not checked</span>
+            </li>
+          ))}
+        </ol>
+        <p class="room-humility">{voice.humility}</p>
+      </aside>
     </div>
   </div>
-  <p class="preview-note">
-    Illustrative environments. This preview does not connect to or control a device.
+
+  <p class="room-hint">
+    <span class="hint-keys">Use arrow keys to move between environments.</span>
+    <span class="hint-tap">Tap an environment to move between them.</span>
+    <span class="hint-swipe">Swipe, or tap a place below, to move between environments.</span>
   </p>
 </figure>
 
+<script>
+  // Swipe for the portrait composition: the stage becomes a scroll-snap
+  // track and stays in sync with the radio group in both directions.
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  for (const room of document.querySelectorAll<HTMLElement>("[data-room]")) {
+    const track = room.querySelector<HTMLElement>("[data-room-track]");
+    const radios = [...room.querySelectorAll<HTMLInputElement>('input[name="mc-room"]')];
+    if (!track || radios.length === 0) continue;
+    room.dataset.enhanced = "";
+
+    const isTrack = () => getComputedStyle(track).overflowX !== "visible";
+    const panelFor = (radio: HTMLInputElement) =>
+      track.querySelector<HTMLElement>(`[data-env="${radio.value}"]`);
+
+    for (const radio of radios) {
+      radio.addEventListener("change", () => {
+        const panel = panelFor(radio);
+        if (!panel || !isTrack()) return;
+        track.scrollTo({ left: panel.offsetLeft, behavior: reduce.matches ? "auto" : "smooth" });
+      });
+    }
+
+    let frame = 0;
+    track.addEventListener(
+      "scroll",
+      () => {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+          if (!isTrack()) return;
+          const index = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1));
+          const radio = radios[Math.min(Math.max(index, 0), radios.length - 1)];
+          if (radio && !radio.checked) radio.checked = true;
+        });
+      },
+      { passive: true }
+    );
+  }
+</script>
+
 <style>
-  .mc-preview {
+  .room {
     margin: 0;
     text-align: left;
   }
-  .preview-caption {
+  .room-caption {
     display: flex;
     flex-wrap: wrap;
-    justify-content: space-between;
     align-items: center;
-    gap: var(--mc-cluster);
-    padding: 0 var(--mc-cluster) var(--mc-inset);
-    font-size: var(--mc-label);
+    justify-content: center;
+    gap: var(--mc-cluster) var(--mc-control);
+    margin-bottom: var(--mc-inset);
+    font-size: var(--mc-caption);
+    letter-spacing: var(--mc-caption-track);
     color: var(--mc-muted);
   }
-  .preview-label {
-    border: 1px solid var(--mc-border);
+  .room-caption__tag {
+    padding: var(--mc-row) var(--mc-cluster);
+    border: 1px solid var(--mc-border-strong);
     border-radius: var(--mc-r-full);
-    padding: 4px 10px;
+    color: var(--mc-text);
+    font-weight: var(--wght-medium);
   }
-  .control-window {
+
+  /* ── Window ─────────────────────────────────────────────────────────── */
+  .room-window {
+    position: relative;
     overflow: hidden;
-    border: 1px solid var(--mc-border-bright);
+    border: 1px solid var(--mc-border-strong);
     border-radius: var(--mc-r-xl);
     background: var(--mc-glass);
     box-shadow:
-      0 40px 100px -60px #ff7eb699,
-      0 12px 40px #00000024;
-    backdrop-filter: blur(32px);
+      inset 0 1px 0 var(--mc-glass-edge),
+      var(--mc-shadow-2),
+      0 48px 120px -48px color-mix(in srgb, var(--mc-pink) 45%, transparent);
+    backdrop-filter: blur(28px) saturate(1.4);
+    -webkit-backdrop-filter: blur(28px) saturate(1.4);
   }
-  .window-bar {
+  .room-bar {
     display: grid;
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    padding: 16px 20px;
-    color: var(--mc-muted);
+    padding: var(--mc-control) var(--mc-inset);
     border-bottom: 1px solid var(--mc-border);
     font-size: var(--mc-label);
+    letter-spacing: var(--mc-label-track);
+    color: var(--mc-muted);
   }
-  .window-lights {
+  .room-lights {
     display: flex;
-    gap: 6px;
+    gap: 7px;
   }
-  .window-lights i {
-    width: 8px;
-    height: 8px;
+  .room-lights i {
+    width: 11px;
+    height: 11px;
     border-radius: 50%;
-    background: var(--mc-border-bright);
+    background: var(--mc-border-strong);
   }
-  .window-lights i:first-child {
-    background: var(--mc-pink);
-  }
-  .window-lights i:nth-child(2) {
-    background: var(--mc-orange);
-  }
-  .window-lights i:last-child {
-    background: var(--mc-canary);
-  }
-  .window-orbit {
-    justify-self: end;
+  .room-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--mc-cluster);
     color: var(--mc-text);
-    font-size: 18px;
+    font-weight: var(--wght-medium);
   }
-  .window-body {
+  .room-bar__end {
+    justify-self: end;
+    font-size: var(--mc-caption);
+  }
+
+  .room-body {
     display: grid;
-    grid-template-columns: 224px minmax(0, 1fr);
-    min-height: 440px;
+    grid-template-columns: var(--mc-sidebar) minmax(0, 1fr) var(--mc-context);
+    grid-template-areas: "places stage context";
+    min-height: 460px;
   }
-  .environment-picker {
+
+  /* ── Places (sidebar / rail / bottom bar) ───────────────────────────── */
+  .room-places {
+    grid-area: places;
     display: flex;
     flex-direction: column;
+    gap: var(--mc-row);
     min-width: 0;
-    gap: var(--mc-cluster);
+    margin: 0;
+    padding: var(--mc-inset) var(--mc-control);
     border: 0;
     border-right: 1px solid var(--mc-border);
-    margin: 0;
-    padding: var(--mc-section) 12px;
-    background: var(--mc-sidebar);
+    background: var(--mc-sidebar-fill);
   }
-  .environment-picker legend {
+  .room-places legend {
     float: left;
     width: 100%;
-    padding: 0 12px 16px;
-    font-size: 11px;
-    letter-spacing: 0.08em;
+    padding: 0 var(--mc-cluster) var(--mc-control);
+    font-size: var(--mc-caption);
+    letter-spacing: var(--mc-caption-track);
     color: var(--mc-muted);
-    text-transform: uppercase;
   }
-  .environment-option {
+  .place {
     position: relative;
   }
-  .environment-option input {
+  .place input {
     position: absolute;
-    width: 1px;
-    height: 1px;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
     opacity: 0;
+    cursor: pointer;
   }
-  .environment-option label {
+  .place label {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px;
-    border: 1px solid transparent;
+    gap: var(--mc-control);
+    padding: var(--mc-cluster);
     border-radius: var(--mc-r-md);
+    border: 1px solid transparent;
     cursor: pointer;
     transition:
-      background var(--mc-standard),
-      border-color var(--mc-standard);
+      background-color var(--mc-snappy) var(--mc-ease),
+      border-color var(--mc-snappy) var(--mc-ease),
+      box-shadow var(--mc-snappy) var(--mc-ease);
   }
-  .environment-option label:hover {
-    background: var(--mc-surface);
+  .place input:hover + label {
+    background: var(--mc-hover);
   }
-  .environment-option input:checked + label {
-    background: var(--mc-surface);
-    border-color: var(--mc-border-bright);
-    box-shadow: 0 2px 8px #0000000f;
+  .place input:checked + label {
+    background: var(--mc-selected);
+    border-color: var(--mc-border-strong);
+    box-shadow: var(--mc-shadow-1);
   }
-  .environment-option input:focus-visible + label {
+  .place input:focus-visible + label {
     outline: 2px solid var(--mc-focus);
     outline-offset: 2px;
   }
-  .environment-option strong {
-    display: block;
+  .place-icon,
+  .panel-glyph {
+    display: grid;
+    place-items: center;
+    flex: none;
+    border-radius: var(--mc-r-sm);
+    background: var(--accent);
+    color: var(--mc-ink);
+  }
+  .place-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .place-icon svg,
+  .panel-glyph svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .place-text {
+    display: grid;
+    min-width: 0;
+  }
+  .place-text strong {
+    font-size: var(--mc-label);
+    font-weight: var(--wght-medium);
     color: var(--mc-text);
-    font-size: 14px;
-    font-weight: var(--wght-semibold);
+    white-space: nowrap;
   }
-  .environment-option small {
-    display: block;
+  .place-text small {
+    font-size: var(--mc-caption);
     color: var(--mc-muted);
-    margin-top: 3px;
-    font-size: 11px;
   }
-  .environment-icon {
+  .accent-pink {
+    --accent: var(--mc-pink);
+  }
+  .accent-orange {
+    --accent: var(--mc-orange);
+  }
+  .accent-canary {
+    --accent: var(--mc-canary);
+  }
+  .place-add {
+    display: flex;
+    align-items: center;
+    gap: var(--mc-control);
+    margin-top: auto;
+    padding: var(--mc-cluster);
+    border-radius: var(--mc-r-md);
+    color: var(--mc-muted);
+    font-size: var(--mc-label);
+    text-decoration: none;
+  }
+  .place-add > span:first-child {
     display: grid;
     place-items: center;
     width: 32px;
     height: 32px;
-    flex: 0 0 32px;
-    border-radius: 10px;
-    font-size: 18px;
-    color: var(--mc-ink);
+    border: 1px dashed var(--mc-border-strong);
+    border-radius: var(--mc-r-sm);
+    font-size: var(--mc-headline);
   }
-  .pink {
-    --environment-accent: var(--mc-pink);
+  .place-add:hover {
+    color: var(--mc-text);
   }
-  .orange {
-    --environment-accent: var(--mc-orange);
+  .place-add:hover > span:first-child {
+    border-color: var(--mc-text);
   }
-  .canary {
-    --environment-accent: var(--mc-canary);
+  .place-add:focus-visible {
+    outline: 2px solid var(--mc-focus);
+    outline-offset: 2px;
   }
-  .environment-icon {
-    background: var(--environment-accent);
-  }
-  .environment-arrow {
-    margin-left: auto;
-    color: var(--mc-muted);
-  }
-  .add-environment {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 12px;
-    margin-top: auto;
-    color: var(--mc-muted);
-    font-size: var(--mc-label);
-    text-decoration: none;
-  }
-  .add-environment span {
-    font-size: 20px;
-  }
-  .environment-panels {
+
+  /* ── Stage and panels ───────────────────────────────────────────────── */
+  .room-stage {
+    grid-area: stage;
     min-width: 0;
+    display: flex;
   }
-  .environment-panel {
+  .room-panel {
     display: none;
-    height: 100%;
-    padding: var(--mc-section) 32px var(--mc-inset);
-  }
-  .window-body:has(#preview-mac:checked) .panel-mac,
-  .window-body:has(#preview-linux:checked) .panel-linux,
-  .window-body:has(#preview-windows:checked) .panel-windows {
-    display: flex;
+    flex: 0 0 100%;
     flex-direction: column;
+    gap: var(--mc-section);
+    padding: var(--mc-section);
   }
-  .environment-heading {
+  .room-body:has(#room-mac:checked) [data-env="mac"],
+  .room-body:has(#room-linux:checked) [data-env="linux"],
+  .room-body:has(#room-windows:checked) [data-env="windows"] {
     display: flex;
-    align-items: center;
+    animation: mc-panel-in var(--mc-standard) var(--mc-ease);
+  }
+  @keyframes mc-panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  .panel-head {
+    display: flex;
+    align-items: flex-start;
     justify-content: space-between;
     gap: var(--mc-inset);
   }
-  .room-eyebrow {
+  .panel-kind {
+    margin: 0;
+    font-size: var(--mc-caption);
+    letter-spacing: var(--mc-caption-track);
     color: var(--mc-muted);
-    font-size: 11px;
   }
-  .environment-heading h3 {
-    margin: 3px 0 0;
+  .panel-head h3 {
+    margin: var(--mc-row) 0 0;
     font-size: var(--mc-title);
+    letter-spacing: var(--mc-title-track);
     font-weight: var(--wght-semibold);
-    letter-spacing: -0.035em;
+    line-height: 1.15;
     color: var(--mc-text);
   }
-  .connection-state {
+  .state-pill {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    white-space: nowrap;
+    flex: none;
+    padding: var(--mc-row) var(--mc-cluster);
+    border: 1px solid var(--mc-border-strong);
+    border-radius: var(--mc-r-full);
+    font-size: var(--mc-caption);
     color: var(--mc-muted);
-    font-size: 11px;
   }
-  .connection-state > span {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-  .empty-workspace {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: var(--mc-section) 0;
-  }
-  .workspace-orbit {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: 110px;
-    height: 110px;
-    margin-bottom: 14px;
-  }
-  .orbit-ring {
-    position: absolute;
-    inset: 0;
-    border: 1px solid var(--mc-border);
-    border-radius: 50%;
-  }
-  .orbit-ring.inner {
-    inset: 15px;
-  }
-  .orbit-glyph {
-    display: grid;
-    place-items: center;
-    width: 50px;
-    height: 50px;
-    border-radius: var(--mc-r-lg);
-    background: var(--environment-accent);
-    color: var(--mc-ink);
-    font-size: 29px;
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--environment-accent) 25%, transparent);
-  }
-  .workspace-orbit i {
-    position: absolute;
+  .state-pill > span {
     width: 6px;
     height: 6px;
-    background: var(--environment-accent);
     border-radius: 50%;
-    top: 15px;
-    left: 15px;
+    border: 1.5px solid currentColor;
   }
-  .workspace-orbit i:nth-last-child(2) {
-    top: 55px;
-    left: auto;
-    right: -2px;
-    background: var(--mc-orange);
+  .panel-empty {
+    display: grid;
+    justify-items: center;
+    gap: var(--mc-cluster);
+    padding: var(--mc-control) 0;
+    text-align: center;
   }
-  .workspace-orbit i:last-child {
-    top: auto;
-    bottom: 8px;
-    left: 25px;
-    background: var(--mc-canary);
+  .panel-glyph {
+    width: 56px;
+    height: 56px;
+    margin-bottom: var(--mc-cluster);
+    border-radius: var(--mc-r-lg);
+    box-shadow:
+      0 0 0 10px color-mix(in srgb, var(--accent) 14%, transparent),
+      0 0 0 22px color-mix(in srgb, var(--accent) 6%, transparent);
   }
-  .empty-workspace h4 {
+  .panel-empty h4 {
+    margin: var(--mc-cluster) 0 0;
+    font-size: var(--mc-headline);
+    letter-spacing: var(--mc-headline-track);
+    font-weight: var(--wght-medium);
     color: var(--mc-text);
-    font-size: 27px;
-    line-height: 1.15;
-    letter-spacing: -0.04em;
-    font-weight: var(--wght-semibold);
-    margin: 0 0 12px;
   }
-  .empty-workspace p {
+  .panel-empty p {
+    margin: 0;
+    max-width: 30ch;
     font-size: var(--mc-label);
-    line-height: 1.65;
-    margin: 0 0 18px;
+    line-height: 1.5;
     color: var(--mc-muted);
   }
-  .preview-setup {
-    display: inline-flex;
-    align-items: center;
-    gap: 16px;
-    padding: 10px 16px;
-    border-radius: var(--mc-r-full);
-    background: var(--mc-text);
-    color: var(--mc-inverse);
-    font-size: var(--mc-label);
-    font-weight: var(--wght-semibold);
-    text-decoration: none;
-  }
-  .workspace-bottom {
+  .panel-label {
     display: flex;
-    flex-wrap: wrap;
     justify-content: space-between;
     gap: var(--mc-cluster);
-    padding-top: 14px;
+    margin: 0 0 var(--mc-cluster);
+    font-size: var(--mc-caption);
+    letter-spacing: var(--mc-caption-track);
+    color: var(--mc-muted);
+  }
+  .panel-label span {
+    color: var(--mc-accent-text);
+  }
+  .example-action {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--mc-row) var(--mc-control);
+    padding: var(--mc-control) var(--mc-inset);
+    border: 1px dashed var(--mc-border-strong);
+    border-radius: var(--mc-r-md);
+  }
+  .example-action__name {
+    font-size: var(--mc-label);
+    font-weight: var(--wght-medium);
+    color: var(--mc-text);
+  }
+  .example-action__meta {
+    grid-row: 1;
+    grid-column: 2;
+    font-size: var(--mc-caption);
+    color: var(--mc-muted);
+    text-align: right;
+  }
+  .example-action code {
+    grid-column: 1 / -1;
+    font-family: var(--font-mono);
+    font-size: var(--mc-caption);
+    color: var(--mc-muted);
+    overflow-wrap: anywhere;
+  }
+  .panel-results {
+    margin-top: auto;
+  }
+  .panel-results__empty {
+    margin: 0;
+    padding-top: var(--mc-cluster);
     border-top: 1px solid var(--mc-border);
-    font-size: 10px;
+    font-size: var(--mc-label);
     color: var(--mc-muted);
   }
-  .bottom-symbol {
-    margin-right: 4px;
+
+  /* ── Readiness context ──────────────────────────────────────────────── */
+  .room-context {
+    grid-area: context;
+    display: flex;
+    flex-direction: column;
+    padding: var(--mc-section) var(--mc-inset);
+    border-left: 1px solid var(--mc-border);
+    background: var(--mc-sidebar-fill);
   }
-  .preview-note {
+  .ladder {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .ladder li {
+    position: relative;
+    display: grid;
+    grid-template-columns: 12px 1fr;
+    column-gap: var(--mc-control);
+    padding: var(--mc-cluster) 0 var(--mc-control);
+  }
+  .ladder li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 26px;
+    bottom: -6px;
+    border-left: 1px dashed var(--mc-border-strong);
+  }
+  .ladder-dot {
+    grid-row: span 2;
+    width: 11px;
+    height: 11px;
+    margin-top: 4px;
+    border-radius: 50%;
+    border: 1.5px solid var(--mc-border-strong);
+  }
+  .ladder-step {
+    font-size: var(--mc-label);
+    font-weight: var(--wght-medium);
+    color: var(--mc-text);
+  }
+  .ladder-state {
+    font-size: var(--mc-caption);
     color: var(--mc-muted);
-    font-size: 11px;
+  }
+  .room-humility {
+    margin: auto 0 0;
+    padding-top: var(--mc-inset);
+    font-size: var(--mc-caption);
+    line-height: 1.5;
+    color: var(--mc-muted);
+  }
+  .room-hint {
+    margin: var(--mc-inset) 0 0;
     text-align: center;
-    margin: 16px 0 0;
+    font-size: var(--mc-caption);
+    color: var(--mc-muted);
   }
-  @media (max-width: 680px) {
-    .window-body {
-      grid-template-columns: 1fr;
+  .hint-tap,
+  .hint-swipe {
+    display: none;
+  }
+  @media (pointer: coarse) {
+    .hint-keys {
+      display: none;
     }
-    .window-bar {
-      padding: 14px 16px;
+    .hint-tap {
+      display: inline;
     }
-    .environment-picker {
+  }
+
+  /* ── Medium: readiness moves under the active environment ───────────── */
+  @media (max-width: 1080px) {
+    .room-body {
+      grid-template-columns: var(--mc-sidebar) minmax(0, 1fr);
+      grid-template-areas:
+        "places stage"
+        "places context";
+    }
+    .room-context {
       flex-direction: row;
-      overflow-x: auto;
-      border-right: 0;
-      border-bottom: 1px solid var(--mc-border);
-      padding: 12px;
-      gap: 6px;
-      scroll-snap-type: x mandatory;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--mc-cluster) var(--mc-section);
+      padding: var(--mc-inset) var(--mc-section);
+      border-left: 0;
+      border-top: 1px solid var(--mc-border);
     }
-    .environment-picker legend {
+    .room-context .panel-label {
+      margin: 0;
+    }
+    .ladder {
+      grid-auto-flow: column;
+      gap: var(--mc-inset);
+    }
+    .ladder li {
+      padding: 0;
+    }
+    .ladder li::after {
+      display: none;
+    }
+    .room-humility {
+      flex-basis: 100%;
+      margin: 0;
+      padding: 0;
+    }
+  }
+
+  /* ── Portrait phone: one focused environment, places within thumb reach ─ */
+  @media (max-width: 640px) and (orientation: portrait), (max-width: 480px) {
+    .room-bar {
+      grid-template-columns: auto 1fr;
+    }
+    .room-lights {
+      display: none;
+    }
+    .room-bar__end {
+      font-size: var(--mc-caption);
+    }
+    .room-body {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        "stage"
+        "context"
+        "places";
+      min-height: 0;
+    }
+    [data-enhanced] .room-stage {
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: none;
+      overscroll-behavior-x: contain;
+    }
+    [data-enhanced] .room-stage::-webkit-scrollbar {
+      display: none;
+    }
+    [data-enhanced] .room-panel {
+      display: flex;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+    }
+    /* The track itself is the motion; no extra entrance on swipe. */
+    [data-enhanced] .room-body:has(#room-mac:checked) [data-env="mac"],
+    [data-enhanced] .room-body:has(#room-linux:checked) [data-env="linux"],
+    [data-enhanced] .room-body:has(#room-windows:checked) [data-env="windows"] {
+      animation: none;
+    }
+    .room-panel {
+      padding: var(--mc-page);
+      gap: var(--mc-page);
+    }
+    .room-context {
+      flex-direction: column;
+      flex-wrap: nowrap;
+      align-items: stretch;
+      padding: var(--mc-inset) var(--mc-page);
+    }
+    .ladder {
+      grid-auto-flow: row;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--mc-cluster) var(--mc-inset);
+    }
+    .room-places {
+      flex-direction: row;
+      align-items: stretch;
+      gap: var(--mc-row);
+      padding: var(--mc-cluster);
+      border-right: 0;
+      border-top: 1px solid var(--mc-border);
+    }
+    .room-places legend {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -453,77 +759,141 @@ const environments = [
       overflow: hidden;
       clip-path: inset(50%);
     }
-    .environment-option {
-      flex-shrink: 0;
-      scroll-snap-align: start;
+    .place {
+      flex: 1 1 0;
+      min-width: 0;
     }
-    .environment-option label {
-      padding: 10px;
+    .place label {
+      flex-direction: column;
+      gap: var(--mc-row);
+      min-height: var(--mc-places-bar);
+      padding: var(--mc-cluster) var(--mc-row);
+      text-align: center;
     }
-    .environment-option small,
-    .environment-arrow {
+    .place-text strong {
+      font-size: var(--mc-caption);
+      white-space: normal;
+    }
+    .place-text small {
       display: none;
     }
-    .environment-icon {
-      width: 26px;
-      height: 26px;
-      flex-basis: 26px;
-      border-radius: 8px;
-      font-size: 15px;
+    .place-icon {
+      width: 28px;
+      height: 28px;
     }
-    .environment-option strong {
-      font-size: 12px;
-    }
-    .add-environment {
-      padding: 8px;
-      white-space: nowrap;
+    .place-add {
+      flex: 0 0 auto;
+      flex-direction: column;
+      justify-content: center;
+      gap: var(--mc-row);
       margin: 0;
-      font-size: 11px;
+      padding: var(--mc-cluster) var(--mc-row);
+      font-size: var(--mc-caption);
     }
-    .environment-panel {
-      min-height: 430px;
-      padding: 20px;
+    .place-add > span:first-child {
+      width: 28px;
+      height: 28px;
     }
-    .room-eyebrow {
-      font-size: 10px;
+    .place-add > span:last-child {
+      white-space: nowrap;
     }
-    .environment-heading h3 {
-      font-size: 22px;
+    .hint-keys,
+    .hint-tap {
+      display: none;
     }
-    .connection-state {
-      font-size: 10px;
-    }
-    .workspace-bottom {
-      font-size: 9px;
+    .hint-swipe {
+      display: inline;
     }
   }
-  @media (max-width: 900px) and (orientation: landscape) {
-    .window-body {
-      grid-template-columns: 185px minmax(0, 1fr);
+
+  /* ── Landscape phone: icon rail, active environment, compact context ─── */
+  @media (orientation: landscape) and (max-height: 520px) {
+    .room-body {
+      grid-template-columns: var(--mc-icon-rail) minmax(0, 1fr) 200px;
+      grid-template-areas: "places stage context";
+      min-height: 300px;
     }
-    .environment-picker {
+    .room-places {
+      align-items: stretch;
+      padding: var(--mc-cluster) var(--mc-row);
+    }
+    .room-places legend {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+    .place label {
       flex-direction: column;
-      overflow: visible;
-      border-right: 1px solid var(--mc-border);
-      border-bottom: 0;
+      gap: var(--mc-row);
+      padding: var(--mc-cluster) var(--mc-row);
+      text-align: center;
     }
-    .environment-picker legend {
-      position: static;
-      width: 100%;
-      height: auto;
-      clip-path: none;
-      padding: 8px;
+    .place-text strong {
+      font-size: var(--mc-caption);
+      white-space: normal;
+      line-height: 1.2;
     }
-    .add-environment {
+    .place-text small {
+      display: none;
+    }
+    .place-add {
+      flex-direction: column;
+      gap: var(--mc-row);
+      padding: var(--mc-cluster) var(--mc-row);
+      font-size: var(--mc-caption);
+      text-align: center;
+    }
+    .place-add > span:last-child {
+      display: none;
+    }
+    .room-panel {
+      gap: var(--mc-inset);
+      padding: var(--mc-inset) var(--mc-page);
+    }
+    .panel-empty {
+      display: none;
+    }
+    .room-context {
+      flex-direction: column;
+      flex-wrap: nowrap;
+      align-items: stretch;
+      gap: 0;
+      padding: var(--mc-inset);
+      border-top: 0;
+      border-left: 1px solid var(--mc-border);
+    }
+    .room-context .panel-label {
+      margin-bottom: var(--mc-cluster);
+    }
+    .ladder {
+      grid-auto-flow: row;
+      gap: 0;
+    }
+    .ladder li {
+      padding: var(--mc-row) 0;
+    }
+    .room-humility {
       margin-top: auto;
     }
-    .environment-panel {
-      min-height: 380px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* Token motion.reduceMotion is "crossfade-only": keep the fade, drop travel. */
+    .room-body:has(#room-mac:checked) [data-env="mac"],
+    .room-body:has(#room-linux:checked) [data-env="linux"],
+    .room-body:has(#room-windows:checked) [data-env="windows"] {
+      animation-name: mc-panel-fade;
+    }
+    .place label {
+      transition: none;
     }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .environment-option label {
-      transition: none;
+  @keyframes mc-panel-fade {
+    from {
+      opacity: 0;
     }
   }
 </style>
