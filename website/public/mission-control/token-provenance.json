@@ -1,0 +1,25 @@
+{
+  "sourceRepository": "https://github.com/Imagine-That-Ai/Podex-Official",
+  "sourceCommit": "6b92336b4db66bd10b1618befc7501e990053372",
+  "sourcePath": "CONTRACTS/design-tokens.json",
+  "sourceSHA256": "625be07ded30cd9064f17292708aa73140000f528cade6927605a9e43134e9f8",
+  "unchangedGroups": [
+    "typeScale",
+    "typeRoles",
+    "space",
+    "spaceRoles",
+    "measure",
+    "radii",
+    "elevation",
+    "motion"
+  ],
+  "brandOverrides": [
+    "meta",
+    "colors",
+    "gradients",
+    "mark",
+    "empty",
+    "launch",
+    "voice"
+  ]
+}

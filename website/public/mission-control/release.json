@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "state": "preparing",
+  "product": "Mission Control",
+  "version": null,
+  "minimumMacOS": "14.0",
+  "architectures": ["arm64", "x86_64"],
+  "artifact": null,
+  "developerIDVerified": false,
+  "notarization": "pending",
+  "stapled": false,
+  "publicDownloadVerified": false,
+  "cleanInstallVerified": false,
+  "releaseNotesUrl": null,
+  "verifiedAt": null
+}
