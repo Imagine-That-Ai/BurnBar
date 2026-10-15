@@ -8,7 +8,10 @@ owner-reviewed render, as the raster source for frontend preparation. This
 script:
 
   1. verifies every imported original against brand/afar/import-receipt.json
-     and the hash chain in afar-logo-master.provenance.json (master -> 1024 PNG),
+     (exactly the three required files, bare names inside brand/afar, no
+     symlinks, well-formed hashes) and the hash chain in
+     afar-logo-master.provenance.json (master -> 1024 PNG), then checks the PNG
+     header is 1024 x 1024 before decoding any pixels,
   2. downsamples the reviewed 1024 PNG (Lanczos, opaque sRGB, no metadata) to
      each responsive width as AVIF and WebP, plus one PNG fallback,
   3. writes public/afar/* and src/data/afar-icons.json, which lists every file
@@ -25,6 +28,7 @@ Usage (from website/):
 import hashlib
 import io
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -47,22 +51,77 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+REQUIRED_SOURCES = frozenset(
+    {"afar-logo-master.svg", "afar-logo-1024.png", "afar-logo-master.provenance.json"}
+)
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+RASTER_SIZE = (1024, 1024)
+
+
+def brand_file(name: object) -> Path:
+    """Resolve a receipt path to a regular file directly inside BRAND, or exit.
+
+    Rejects anything but a bare required filename: separators, '..', absolute
+    paths and symlinks never reach a read.
+    """
+    if not isinstance(name, str) or name not in REQUIRED_SOURCES or Path(name).name != name:
+        sys.exit(f"import-receipt.json names an unexpected file: {name!r}")
+    path = BRAND / name
+    if path.is_symlink() or not path.is_file():
+        sys.exit(f"{name} must be a regular file in website/brand/afar (not a symlink)")
+    if path.resolve().parent != BRAND.resolve():
+        sys.exit(f"{name} resolves outside website/brand/afar")
+    return path
+
+
 def verify_sources() -> bytes:
     receipt = json.loads((BRAND / "import-receipt.json").read_text())
-    for entry in receipt["files"]:
-        data = (BRAND / entry["path"]).read_bytes()
-        if sha256(data) != entry["sha256"] or len(data) != entry["bytes"]:
-            sys.exit(f"{entry['path']} does not match import-receipt.json")
+    entries = receipt.get("files") if isinstance(receipt, dict) else None
+    if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
+        sys.exit("import-receipt.json must list its files")
+    names = [entry.get("path") for entry in entries]
+    if len(names) != len(set(map(str, names))) or set(names) != REQUIRED_SOURCES:
+        sys.exit(f"import-receipt.json must list exactly {sorted(REQUIRED_SOURCES)}, once each")
 
-    provenance = json.loads((BRAND / "afar-logo-master.provenance.json").read_text())
-    master_sha = sha256((BRAND / "afar-logo-master.svg").read_bytes())
-    png = (BRAND / "afar-logo-1024.png").read_bytes()
-    derivative = next(d for d in provenance["derivatives"] if d["path"] == "afar-logo-1024.png")
-    if provenance["sourceSHA256"] != master_sha or derivative["sourceSHA256"] != master_sha:
+    verified: dict[str, bytes] = {}
+    for entry in entries:
+        path = brand_file(entry["path"])
+        expected_sha, expected_bytes = entry.get("sha256"), entry.get("bytes")
+        if not isinstance(expected_sha, str) or not SHA256_HEX.fullmatch(expected_sha):
+            sys.exit(f"{entry['path']}: receipt sha256 must be 64 lowercase hex characters")
+        if type(expected_bytes) is not int or expected_bytes <= 0:
+            sys.exit(f"{entry['path']}: receipt bytes must be a positive integer")
+        data = path.read_bytes()
+        if len(data) != expected_bytes or sha256(data) != expected_sha:
+            sys.exit(f"{entry['path']} does not match import-receipt.json")
+        verified[entry["path"]] = data
+
+    provenance = json.loads(verified["afar-logo-master.provenance.json"])
+    master_sha = sha256(verified["afar-logo-master.svg"])
+    png = verified["afar-logo-1024.png"]
+    derivatives = provenance.get("derivatives") if isinstance(provenance, dict) else None
+    derivative = next(
+        (d for d in derivatives or [] if isinstance(d, dict) and d.get("path") == "afar-logo-1024.png"),
+        None,
+    )
+    if derivative is None:
+        sys.exit("provenance does not record afar-logo-1024.png as a derivative")
+    if provenance.get("sourceSHA256") != master_sha or derivative.get("sourceSHA256") != master_sha:
         sys.exit("provenance master SHA-256 does not match afar-logo-master.svg")
-    if derivative["sha256"] != sha256(png):
+    if derivative.get("sha256") != sha256(png):
         sys.exit("provenance derivative SHA-256 does not match afar-logo-1024.png")
     return png
+
+
+def open_raster(png: bytes) -> Image.Image:
+    """Open the verified PNG and check its header before decoding any pixels."""
+    # Image.open reads only the header; refuse anything but the expected
+    # 1024 px PNG before load() allocates and decodes the bitmap.
+    image = Image.open(io.BytesIO(png), formats=["PNG"])
+    if image.size != RASTER_SIZE:
+        sys.exit(f"expected a {RASTER_SIZE[0]} px source, got {image.size}")
+    image.load()
+    return image
 
 
 def encode(image: Image.Image, fmt: str) -> bytes:
@@ -80,12 +139,9 @@ def build() -> dict[str, bytes]:
     for codec in ("avif", "webp"):
         if not features.check(codec):
             sys.exit(f"Pillow was built without {codec} support")
-    source = Image.open(io.BytesIO(verify_sources()))
-    source.load()
+    source = open_raster(verify_sources())
     # Fully opaque by construction (studio field); drop alpha and all metadata.
     base = source.convert("RGB")
-    if source.size != (1024, 1024):
-        sys.exit(f"expected a 1024 px source, got {source.size}")
 
     files: dict[str, bytes] = {}
     manifest = {

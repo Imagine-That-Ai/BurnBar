@@ -13,7 +13,10 @@ import {
 import afarIcons from "@data/afar-icons.json";
 import setupBrief from "../../public/mission-control/agent-setup.md?raw";
 
-const architectures = describeArchitectures(release.architectures);
+const architectures = describeArchitectures(release.architectures) || "Not yet published";
+const macRequirement = release.minimumMacOS
+  ? `macOS ${release.minimumMacOS} or later`
+  : "Not yet published";
 const evidenceDone = evidence.filter((check) => check.done).length;
 
 // The first sentences of the real setup brief's prompt, verbatim, so the
@@ -131,8 +134,8 @@ const verifiedDate = release.verifiedAt
         </div>
         <p class="availability">
           {downloadReady
-            ? `Version ${release.version} · macOS ${release.minimumMacOS} or later · ${architectures}`
-            : `Public Mac release in preparation · macOS ${release.minimumMacOS}+ build target`}
+            ? `Version ${release.version} · ${macRequirement} · ${architectures}`
+            : `Public Mac release in preparation${release.minimumMacOS ? ` · macOS ${release.minimumMacOS}+ build target` : ""}`}
         </p>
       </div>
       <div class="mc-container hero__room">
@@ -335,7 +338,7 @@ const verifiedDate = release.verifiedAt
             <dl class="facts">
               <div>
                 <dt>Requires</dt>
-                <dd>macOS {release.minimumMacOS} or later</dd>
+                <dd>{macRequirement}</dd>
               </div>
               <div>
                 <dt>{downloadReady ? "Runs on" : "Build targets"}</dt>

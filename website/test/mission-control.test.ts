@@ -7,6 +7,7 @@ import {
   MISSION_CONTROL_DEEP,
   MISSION_CONTROL_RELEASE,
   MISSION_CONTROL_STYLE,
+  parseRelease,
   releaseEvidence
 } from "../src/data/mission-control";
 import tokens from "../src/data/mission-control-tokens.json";
@@ -108,5 +109,66 @@ describe("Mission Control tokens", () => {
     expect(MISSION_CONTROL_STYLE).toContain(`--mc-canary:${tokens.colors.brandTertiary}`);
     expect(MISSION_CONTROL_STYLE).toContain(`--mc-r-xl:${tokens.radii.xl}px`);
     expect(MISSION_CONTROL_STYLE).not.toMatch(/undefined|NaN/);
+  });
+});
+
+describe("Mission Control release gate with malformed manifests", () => {
+  const verifiedJson: Record<string, unknown> = { ...verifiedRelease };
+
+  it("accepts the verified fixture as raw JSON", () => {
+    expect(isPublicRelease(verifiedJson)).toBe(true);
+  });
+
+  it.each([
+    ["developerIDVerified as the string 'false'", { developerIDVerified: "false" }],
+    ["developerIDVerified as the string 'true'", { developerIDVerified: "true" }],
+    ["stapled as 1", { stapled: 1 }],
+    ["publicDownloadVerified as 'yes'", { publicDownloadVerified: "yes" }],
+    ["cleanInstallVerified as null", { cleanInstallVerified: null }],
+    ["schemaVersion as the string '1'", { schemaVersion: "1" }],
+    ["state with different case", { state: "Published" }],
+    ["version as whitespace", { version: "   " }],
+    ["version as a number", { version: 1 }],
+    ["minimumMacOS as null", { minimumMacOS: null }],
+    ["minimumMacOS missing", { minimumMacOS: undefined }],
+    ["architectures as a string", { architectures: "arm64" }],
+    ["architectures with an empty entry", { architectures: ["arm64", ""] }],
+    ["architectures with a non-string entry", { architectures: ["arm64", 64] }],
+    ["artifact as a string", { artifact: "https://downloads.example.com/a.dmg" }],
+    ["artifact without sha256", { artifact: { url: "https://downloads.example.com/a.dmg" } }],
+    ["artifact sha256 as a number", { artifact: { ...artifact, sha256: 1234 } }],
+    ["artifact url as an array", { artifact: { ...artifact, url: ["https://x.example"] } }],
+    ["notarization as true", { notarization: true }],
+    ["releaseNotesUrl as an object", { releaseNotesUrl: { href: "https://example.com" } }],
+    ["verifiedAt as a number", { verifiedAt: 1760486400000 }],
+    ["verifiedAt as whitespace", { verifiedAt: " " }]
+  ])("fails closed without throwing when %s", (_label, change) => {
+    const manifest = { ...verifiedJson, ...change };
+    expect(() => releaseEvidence(manifest)).not.toThrow();
+    expect(isPublicRelease(manifest)).toBe(false);
+  });
+
+  it.each([null, undefined, "published", 42, [], [verifiedRelease], true])(
+    "fails closed without throwing for a non-object manifest: %j",
+    (manifest) => {
+      expect(() => releaseEvidence(manifest)).not.toThrow();
+      expect(releaseEvidence(manifest).some((check) => check.done)).toBe(false);
+      expect(isPublicRelease(manifest)).toBe(false);
+    }
+  );
+
+  it("normalises display values instead of trusting raw types", () => {
+    const parsed = parseRelease({ version: "  1.2.0 ", minimumMacOS: 14, stapled: "true" });
+    expect(parsed.version).toBe("1.2.0");
+    expect(parsed.minimumMacOS).toBeNull();
+    expect(parsed.stapled).toBe(false);
+    expect(parsed.architectures).toEqual([]);
+    expect(parsed.artifact).toBeNull();
+  });
+
+  it("parses the committed manifest into the preparing state with nothing verified", () => {
+    expect(MISSION_CONTROL_RELEASE.state).toBe("preparing");
+    expect(MISSION_CONTROL_RELEASE.artifact).toBeNull();
+    expect(releaseEvidence(MISSION_CONTROL_RELEASE).filter((check) => check.done)).toEqual([]);
   });
 });

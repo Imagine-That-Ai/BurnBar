@@ -2,15 +2,15 @@ import manifest from "../../public/mission-control/release.json";
 import tokens from "./mission-control-tokens.json";
 
 export interface MissionControlRelease {
-  schemaVersion: number;
-  state: string;
-  product: string;
+  schemaVersion: number | null;
+  state: string | null;
+  product: string | null;
   version: string | null;
-  minimumMacOS: string;
+  minimumMacOS: string | null;
   architectures: string[];
   artifact: { url: string; sha256: string } | null;
   developerIDVerified: boolean;
-  notarization: string;
+  notarization: string | null;
   stapled: boolean;
   publicDownloadVerified: boolean;
   cleanInstallVerified: boolean;
@@ -25,7 +25,59 @@ export interface ReleaseCheck {
   done: boolean;
 }
 
-function isHttpsUrl(value: string | null | undefined): boolean {
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : {};
+}
+
+/** A trimmed, non-empty string, or null for anything else. */
+function text(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Only the JSON literal `true` counts; "true", 1 and "false" do not. */
+function flag(value: unknown): boolean {
+  return value === true;
+}
+
+/**
+ * Normalise the release manifest from untrusted JSON into a strictly typed
+ * shape without ever throwing. Anything malformed becomes null, false or empty,
+ * so a partial or mistyped manifest can only ever close the download gate.
+ */
+export function parseRelease(raw: unknown): MissionControlRelease {
+  const record = asRecord(raw);
+  const artifact = asRecord(record.artifact);
+  const artifactUrl = text(artifact.url);
+  const artifactSha = text(artifact.sha256);
+  const architectures = Array.isArray(record.architectures) ? record.architectures.map(text) : [];
+  return {
+    schemaVersion: typeof record.schemaVersion === "number" ? record.schemaVersion : null,
+    state: text(record.state),
+    product: text(record.product),
+    version: text(record.version),
+    minimumMacOS: text(record.minimumMacOS),
+    // One malformed entry invalidates the list rather than being silently dropped.
+    architectures: architectures.every((arch): arch is string => arch !== null)
+      ? architectures
+      : [],
+    artifact: artifactUrl && artifactSha ? { url: artifactUrl, sha256: artifactSha } : null,
+    developerIDVerified: flag(record.developerIDVerified),
+    notarization: text(record.notarization),
+    stapled: flag(record.stapled),
+    publicDownloadVerified: flag(record.publicDownloadVerified),
+    cleanInstallVerified: flag(record.cleanInstallVerified),
+    releaseNotesUrl: text(record.releaseNotesUrl),
+    verifiedAt: text(record.verifiedAt)
+  };
+}
+
+function isHttpsUrl(value: string | null): boolean {
   if (!value) return false;
   try {
     const url = new URL(value);
@@ -39,9 +91,11 @@ function isHttpsUrl(value: string | null | undefined): boolean {
  * Every condition the public download depends on, in the order a release
  * actually earns them. The page renders this list as the release status, and
  * `isPublicRelease` is defined as "every check is done", so the visible
- * checklist and the download gate cannot drift apart.
+ * checklist and the download gate cannot drift apart. Input is parsed first, so
+ * malformed manifests fail closed instead of throwing or passing on truthiness.
  */
-export function releaseEvidence(release: MissionControlRelease): ReleaseCheck[] {
+export function releaseEvidence(raw: unknown): ReleaseCheck[] {
+  const release = parseRelease(raw);
   return [
     {
       id: "manifest",
@@ -52,16 +106,17 @@ export function releaseEvidence(release: MissionControlRelease): ReleaseCheck[] 
       id: "version",
       label: "Version and supported Macs",
       done:
-        Boolean(release.version?.trim()) &&
-        Boolean(release.minimumMacOS.trim()) &&
+        release.version !== null &&
+        release.minimumMacOS !== null &&
         release.architectures.length > 0
     },
     {
       id: "artifact",
       label: "HTTPS download and checksum",
       done:
-        isHttpsUrl(release.artifact?.url) &&
-        Boolean(release.artifact && /^[a-f0-9]{64}$/i.test(release.artifact.sha256))
+        release.artifact !== null &&
+        isHttpsUrl(release.artifact.url) &&
+        /^[a-f0-9]{64}$/i.test(release.artifact.sha256)
     },
     { id: "signature", label: "Developer ID signature", done: release.developerIDVerified },
     {
@@ -85,13 +140,14 @@ export function releaseEvidence(release: MissionControlRelease): ReleaseCheck[] 
       label: "Release notes and verification date",
       done:
         isHttpsUrl(release.releaseNotesUrl) &&
-        Boolean(release.verifiedAt && Number.isFinite(Date.parse(release.verifiedAt)))
+        release.verifiedAt !== null &&
+        Number.isFinite(Date.parse(release.verifiedAt))
     }
   ];
 }
 
-export function isPublicRelease(release: MissionControlRelease): boolean {
-  return releaseEvidence(release).every((check) => check.done);
+export function isPublicRelease(raw: unknown): boolean {
+  return releaseEvidence(raw).every((check) => check.done);
 }
 
 const ARCHITECTURE_NAMES: Record<string, string> = {
@@ -106,9 +162,10 @@ export function describeArchitectures(architectures: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-export const MISSION_CONTROL_RELEASE: MissionControlRelease = manifest;
-export const MISSION_CONTROL_DOWNLOAD_READY = isPublicRelease(MISSION_CONTROL_RELEASE);
-export const MISSION_CONTROL_EVIDENCE = releaseEvidence(MISSION_CONTROL_RELEASE);
+// The page renders only the parsed shape; the gate evaluates the raw manifest.
+export const MISSION_CONTROL_RELEASE: MissionControlRelease = parseRelease(manifest);
+export const MISSION_CONTROL_DOWNLOAD_READY = isPublicRelease(manifest);
+export const MISSION_CONTROL_EVIDENCE = releaseEvidence(manifest);
 export const MISSION_CONTROL_VOICE = tokens.voice;
 export const MISSION_CONTROL_META = tokens.meta;
 
