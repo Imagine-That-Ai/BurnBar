@@ -218,6 +218,15 @@ Current entries:
   The only fixed line is 7.0.2, a major firebase-tools has not adopted, and an
   override is untested against auth:import. Paired entries in `osv-scanner.toml`
   and `scripts/ci/check-npm-audit-fail-closed.mjs`.
+- **GHSA-vfj7-8cjw-p6xm** (braces nested-pattern DoS, expires 2026-12-09):
+  deeply nested brace patterns exhaust the stack in braces 3.0.3. The only
+  depender is chokidar 3.6.0, which `firebase-tools` (a `functions/`
+  **devDependency** that never reaches a deployed bundle) uses to watch
+  developer-configured local paths. No fixed release exists (3.0.3 is both
+  `last_affected` and the latest version), and `firebase-tools` 15.34.0 still
+  declares `chokidar: ^3.6.0`; forcing chokidar 4 drops the glob support it
+  relies on and is untested. Paired entries in `osv-scanner.toml` and
+  `scripts/ci/check-npm-audit-fail-closed.mjs`.
 
 The previous entry (GHSA-mh99-v99m-4gvg, brace-expansion DoS, expiring
 2026-08-21) was retired when the vendored callable CommonJS shim in

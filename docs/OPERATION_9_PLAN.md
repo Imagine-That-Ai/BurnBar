@@ -82,7 +82,7 @@ Each packet is self-contained: originating finding, exact files (paths corrected
 
 #### P-OPS-1 — Prove the production deploy plane (closes LB-1) → Ops
 - **Finding:** Ops §LB-1. Cloud Functions frozen at 6/18; `deploy-production.yml` fix (PR #1572) never exercised.
-- **Agent prep (no prod access needed):** produce `docs/ops/UNDEPLOYED_FUNCTIONS_AUDIT_2026-07.md` enumerating `git log 994bc55288 --since=2026-06-18 -- functions/` grouped by security-relevant vs. other; flag any auth/appCheck/rate-limit/validation change as **must-verify-before-deploy**. Confirm `functions/.env.burnbar.production` present and `SENTRY_DSN` wired (deploy step requires both).
+- **Agent prep (no prod access needed):** produce [`docs/ops/UNDEPLOYED_FUNCTIONS_AUDIT_2026-07.md`](ops/UNDEPLOYED_FUNCTIONS_AUDIT_2026-07.md) enumerating `git log 994bc55288 --since=2026-06-18 -- functions/` grouped by security-relevant vs. other; flag any auth/appCheck/rate-limit/validation change as **must-verify-before-deploy**. Confirm `functions/.env.burnbar.production` present and `SENTRY_DSN` wired (deploy step requires both).
 - **Workflow change (agent, part of P-OPS-1 scope):** modify both `deploy-production.yml` and `deploy-cloud-run.yml` to add a `candidate_sha` workflow_dispatch input (string, required when `dry_run=true`); in dry-run mode, accept dispatch from a non-tag branch ref but fail-closed if the input SHA does not match the checkout SHA AND `origin/main` HEAD (reject if not reachable from `origin/main`). Tag-ref dispatch (`push.tags: v*` or `workflow_dispatch` from a tag with `dry_run=false`) stays unchanged. Add a focused verifier/test that asserts: dry-run from a non-tag branch with matching SHA succeeds; dry-run from a non-tag branch with mismatched SHA fails (exit 1); tag push still triggers `dry_run=false` real deploy.
 - **Alberto actions (A1), two-phase fail-closed sequence:**
   1. Push a non-tag release-candidate branch (e.g. `release-candidate/v1.0.30`) at the exact current `main` SHA containing `bf7462683c`.
@@ -115,7 +115,7 @@ Each packet is self-contained: originating finding, exact files (paths corrected
 
 #### P-OPS-3 — Close the alert→action loop → Ops
 - **Finding:** Ops §"alerts accumulate as unread issues"; June P0 issues (#327/#308/#317/#304/#565/#1091) still open.
-- **Do:** triage every open `P0 - Critical` / `area: infra` issue; each gets a disposition comment (fixed-by-PR / superseded / won't-fix-because) and is closed or relabeled. Record the sweep in `docs/ops/ALERT_TRIAGE_2026-07.md`.
+- **Do:** triage every open `P0 - Critical` / `area: infra` issue; each gets a disposition comment (fixed-by-PR / superseded / won't-fix-because) and is closed or relabeled. Record the sweep in [`docs/ops/ALERT_TRIAGE_2026-07.md`](ops/ALERT_TRIAGE_2026-07.md).
 - **Invariant:** no mass-close without a per-issue disposition; #1091 is closed by P-OPS-1, not here.
 - **Done:** zero stale (>30-day) open P0 infra issues without a disposition.
 
@@ -264,7 +264,7 @@ Each packet is self-contained: originating finding, exact files (paths corrected
 ### Cross-cutting hardening (fold into the nearest wave-1 PR or a small standalone)
 
 - **P-SEC-4 — Scanner governance (needs A2/A5):** add `.gitleaks.toml`/`.gitleaksignore` to `.github/CODEOWNERS` security block; **A2:** enable `require_code_owner_reviews` (or ≥1 required approval) on `main` so the two-PR allowlist-weakening path is closed. Path-scope the global `key:\s+…` allowlist to Swift; tighten the `docs/linux-port/evidence/*` hex allowlist. Add a weekly full-history gitleaks cron.
-- **P-CQ-5 — Enforcement parity table:** document in `docs/ENFORCEMENT_PARITY.md` which gate binds which stack (the Swift-first reality), and extend the duplication gate (`.jscpd.json` + `scripts/ci/verify-jscpd-report.mjs`) to include C# and Rust so `requiredFormats` isn't Swift/Kotlin/TS only. Fix the Android detekt `**/ui/**` complexity exclusion (scope it, don't blanket-exempt the largest code mass). Remove the false `generated-by` header on `SwarmBackground.kt`.
+- **P-CQ-5 — Enforcement parity table:** document in [`docs/ENFORCEMENT_PARITY.md`](ENFORCEMENT_PARITY.md) which gate binds which stack (the Swift-first reality), and extend the duplication gate (`.jscpd.json` + `scripts/ci/verify-jscpd-report.mjs`) to include C# and Rust so `requiredFormats` isn't Swift/Kotlin/TS only. Fix the Android detekt `**/ui/**` complexity exclusion (scope it, don't blanket-exempt the largest code mass). Remove the false `generated-by` header on `SwarmBackground.kt`.
 - **P-CQ-6 — Force-unwrap ratchet (the one documented debt with no burn-down):** seed `budgets/force-unwrap-baseline.json` at the measured count (~715), add `scripts/debt/check-force-unwrap-budget.sh` copying the shrink-only pattern (`check-mission-splitbrain-budget.sh --update` + `budgets/mission-splitbrain-baseline.json` shape), wire into the harness `check-*-budget.sh` steps, add a `TECH_DEBT_METRICS.md` row (item 11). Add the new budget to the `LINT_RATIONALE.md` allowlist (Rule 9).
 
 ---
