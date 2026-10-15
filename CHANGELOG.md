@@ -39,7 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bar) and landscape (icon rail) compositions. The download stays withheld until
   `website/public/mission-control/release.json` carries every piece of
   distribution evidence; `releaseEvidence()` renders that checklist and defines
-  the gate, so the page and the gate cannot disagree.
+  the gate, so the page and the gate cannot disagree. Titles use a self-hosted
+  Space Grotesk SemiBold (600), instanced from the upstream variable font by
+  the reproducible `website/scripts/build-mission-control-semibold.py`.
 - **Menu-bar popover layout** — quotas are a tray section like every other
   block, not a pinned 340pt bar that crowds the rest of the drop-down. Users
   can show, hide, collapse, reorder, and size each section (relative weight,
