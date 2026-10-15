@@ -390,6 +390,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   materials and a red Halt. Halt is always opaque `MobileTheme.error`.
 
 ### Removed
+- **Factory Droid automatic PR review** — `.github/workflows/droid-review.yml`
+  is deleted and `droid-review` is no longer a required context of the
+  BurnBar CI Gate (`governance/burnbar-ci-gate.json` and
+  `burnbar-ci-gate.fast.json`). Pull requests no longer wait on, or spend
+  Factory credits for, a Droid review. Every other required lane stays
+  fail-closed.
 - **Mission floating action orb** — the dashboard-corner mission gauge FAB
   (macOS `MissionFAB` + shared `MissionFABGauge`) and the Android
   `MissionActivityOverlay` / `SkillRunPiPActivity` floating orb are gone.

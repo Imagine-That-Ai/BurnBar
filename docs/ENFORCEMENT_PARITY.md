@@ -94,8 +94,8 @@ file is machine-generated and safe to regenerate/overwrite.
 
 All gates listed above are **required** status checks per
 `governance/branch-protection.main.json` `required_status_checks.contexts`. The
-`Rust (fmt + clippy + cargo-deny)` context binds all Rust crates. The Android gate
-(`droid-review`) and `Android ktlint` contexts bind the Kotlin stack. The Windows
+`Rust (fmt + clippy + cargo-deny)` context binds all Rust crates. The `Android PR Gate`
+and `Android ktlint` contexts bind the Kotlin stack. The Windows
 gates (`PR Windows Gate`, `PR Windows Full Gate`) bind the C# stack.
 
 The jscpd duplication gate runs in `code-quality.yml` → `Duplicate Code Detection (jscpd)`,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -379,6 +379,47 @@ test("declared skippable contexts are reported, never passed", () => {
       url: "run",
     },
   ]);
+});
+
+for (const configName of ["burnbar-ci-gate.json", "burnbar-ci-gate.fast.json"]) {
+  test(`${configName} does not require the retired Factory droid-review lane`, () => {
+    const config = JSON.parse(
+      readFileSync(new URL(`../../governance/${configName}`, import.meta.url), "utf8"),
+    );
+    const required = config.required_contexts;
+    const skippableContexts = config.skippable_contexts ?? {};
+    assert.ok(!required.includes("droid-review"));
+    assert.ok(!Object.hasOwn(skippableContexts, "droid-review"));
+
+    const allGreen = new Map(required.map((context) => [context, { conclusion: "success" }]));
+    const green = evaluateGate(required, allGreen, { skippableContexts });
+    assert.equal(green.ready, true);
+    assert.deepEqual(green.missing, []);
+
+    const lane = required.find((context) => !Object.hasOwn(skippableContexts, context));
+    const red = evaluateGate(
+      required,
+      new Map([...allGreen, [lane, { conclusion: "failure", url: "run" }]]),
+      { skippableContexts },
+    );
+    assert.equal(red.ready, false);
+    assert.deepEqual(red.failed, [{ context: lane, conclusion: "failure", url: "run" }]);
+
+    const withoutLane = new Map(allGreen);
+    withoutLane.delete(lane);
+    const absent = evaluateGate(required, withoutLane, { skippableContexts });
+    assert.equal(absent.ready, false);
+    assert.deepEqual(absent.missing, [lane]);
+  });
+}
+
+test("no workflow runs the retired Factory Droid automatic PR review", () => {
+  const workflowDir = new URL("../../.github/workflows/", import.meta.url);
+  for (const name of readdirSync(workflowDir).filter((file) => /\.ya?ml$/u.test(file))) {
+    const source = readFileSync(new URL(name, workflowDir), "utf8");
+    assert.ok(!/^\s+automatic_review:/mu.test(source), `${name} runs Droid automatic review`);
+    assert.ok(!/^\s+name:\s*droid-review\s*$/mu.test(source), `${name} emits droid-review`);
+  }
 });
 
 test("gate fails closed on terminal failures", () => {

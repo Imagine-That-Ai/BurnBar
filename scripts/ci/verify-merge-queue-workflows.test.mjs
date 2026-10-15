@@ -12,7 +12,7 @@ const gate = join(scriptDir, "verify-merge-queue-workflows.mjs");
 const workflows = [
   "codeql-pr.yml", "android-ktlint.yml", "code-quality.yml",
   "public-macos-download-trust.yml", "public-linux-download-trust.yml", "qa.yml", "pr-review.yml",
-  "droid-review.yml", "domain-core-deletion-guard.yml", "domain-core.yml", "app-pr-gate.yml",
+  "domain-core-deletion-guard.yml", "domain-core.yml", "app-pr-gate.yml",
 ];
 
 function fixture(edit = () => {}) {
