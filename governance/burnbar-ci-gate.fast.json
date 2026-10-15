@@ -68,12 +68,10 @@
     "clippy security lints (burnbar-remote)",
     "clippy security lints (openburnbar-iroh)",
     "detect-public-macos-download-change",
-    "droid-review",
     "functional-qa",
     "guard"
   ],
   "skippable_contexts": {
-    "Rust (fmt + clippy + cargo-deny)": "The fast-feedback path filter reports skipped when no Rust paths changed.",
-    "droid-review": "Three mutually-exclusive jobs share this context name (review, synchronize, merge-group); the non-firing siblings always report skipped."
+    "Rust (fmt + clippy + cargo-deny)": "The fast-feedback path filter reports skipped when no Rust paths changed."
   }
 }

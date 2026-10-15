@@ -15,7 +15,6 @@ const requiredWorkflows = [
   "public-linux-download-trust.yml",
   "qa.yml",
   "pr-review.yml",
-  "droid-review.yml",
   "domain-core-deletion-guard.yml",
   "domain-core.yml",
 ];
@@ -238,12 +237,6 @@ const contracts = [
     "public-linux-download-trust.yml",
     "github.event.pull_request.base.sha || github.event.merge_group.base_sha",
     "public Linux download trust detection must compare the merge group against its base",
-  ],
-  [
-    "droid-review.yml",
-    "Reuse PR-head Droid review for merge queue",
-    "Droid's advisory check must emit a merge-group receipt without invoking PR-only APIs",
-    1,
   ],
 ];
 
