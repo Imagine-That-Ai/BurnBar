@@ -1,0 +1,1032 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import ControlRoomPreview from "@components/mission-control/ControlRoomPreview.astro";
+import {
+  MISSION_CONTROL_DOWNLOAD_READY as downloadReady,
+  MISSION_CONTROL_RELEASE as release,
+  MISSION_CONTROL_STYLE
+} from "@data/mission-control";
+
+const setupSteps = [
+  {
+    number: "01",
+    title: "Bring your own environments.",
+    body: "Start with a blank control room. Name your Mac and the remote machines you want to connect."
+  },
+  {
+    number: "02",
+    title: "Let your agent do the setup.",
+    body: "Give an agent you trust the setup brief. It proposes a profile using your existing connections and explicit actions."
+  },
+  {
+    number: "03",
+    title: "Review. Connect. Make it yours.",
+    body: "Review the machines and permissions before importing. Check a real connection, then run an action you chose."
+  }
+];
+---
+
+<BaseLayout
+  title="Mission Control — your environments, one control room"
+  description="A personal control room for your Mac and remote environments. Agent-assisted setup, explicit actions, and a native home for connection status and results."
+  ambientEffects={false}
+>
+  <link slot="head" rel="stylesheet" href="/mission-control/fonts/fonts.css" />
+  <div class="mission-control" style={MISSION_CONTROL_STYLE}>
+    <nav class="product-nav" aria-label="Mission Control">
+      <a class="product-brand" href="#mission-control">
+        <span class="product-mark" aria-hidden="true">
+          <i></i>
+          <i></i>
+          <i></i>
+        </span>
+        <span>
+          Mission Control <small>by BurnBar</small>
+        </span>
+      </a>
+      <div>
+        <a href="#setup">How it works</a>
+        <a href="#release">
+          {downloadReady ? "Get the app" : "Release status"} <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </nav>
+
+    <section class="mc-hero mc-container" id="mission-control" aria-labelledby="mc-title">
+      <p class="mc-eyebrow">
+        <span></span> A little more room to think.
+      </p>
+      <h1 id="mc-title">
+        Your environments.
+        <br />
+        <span>One control room.</span>
+      </h1>
+      <p class="hero-description">
+        Your Mac. Your remote machines. Your next idea.
+        <br class="desktop-break" /> Bring them into one calm, personal space.
+      </p>
+      <div class="mc-actions">
+        <a class="mc-button primary" href={downloadReady ? release.artifact?.url : "#release"}>
+          {downloadReady ? `Download for Mac · ${release.version}` : "Meet Mission Control"}
+          <span aria-hidden="true">{downloadReady ? "↓" : "↗"}</span>
+        </a>
+        <a class="mc-button secondary" href="#setup">
+          Make it yours <span aria-hidden="true">→</span>
+        </a>
+      </div>
+      <p class="hero-availability">
+        {downloadReady
+          ? `macOS ${release.minimumMacOS}+ · ${release.architectures.join(" / ")}`
+          : "Mac release in preparation · iPhone client developed separately"}
+      </p>
+      <div class="hero-preview">
+        <ControlRoomPreview />
+      </div>
+    </section>
+
+    <section class="mc-container mc-section experience" aria-labelledby="experience-title">
+      <header class="section-heading">
+        <p class="mc-eyebrow">A place for your whole setup</p>
+        <h2 id="experience-title">
+          Less window juggling.
+          <br />
+          More room for the work.
+        </h2>
+      </header>
+      <div class="experience-grid">
+        <article class="feature feature-wide">
+          <span class="feature-symbol pink-symbol" aria-hidden="true">
+            ↔
+          </span>
+          <h3>
+            A different view.
+            <br />
+            The same familiar place.
+          </h3>
+          <p>
+            Designed around the way you hold your screen. Portrait focuses on one environment.
+            Landscape makes space for context. Move between your machines without losing your place.
+          </p>
+          <div class="orientation-art" aria-hidden="true">
+            <div class="portrait-device">
+              <i></i>
+              <span></span>
+              <b></b>
+              <b></b>
+            </div>
+            <div class="landscape-device">
+              <i></i>
+              <div>
+                <span></span>
+                <b></b>
+                <b></b>
+              </div>
+            </div>
+          </div>
+          <span class="art-label">Layout concept · native Mac and iPhone clients</span>
+        </article>
+        <article class="feature">
+          <span class="feature-symbol orange-symbol" aria-hidden="true">
+            ◎
+          </span>
+          <h3>Know where things stand.</h3>
+          <p>
+            Connection state belongs beside the environment. A saved profile, a reachable machine
+            and a completed task should each tell their own story.
+          </p>
+        </article>
+        <article class="feature">
+          <span class="feature-symbol canary-symbol" aria-hidden="true">
+            ⌘
+          </span>
+          <h3>Your actions. Your call.</h3>
+          <p>
+            Choose named actions with defined commands and time limits. Review what is allowed
+            before giving a machine a place in your control room.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="mc-container mc-section setup-section" id="setup" aria-labelledby="setup-title">
+      <header class="section-heading">
+        <p class="mc-eyebrow">Made personal, from the first launch</p>
+        <h2 id="setup-title">
+          An empty room.
+          <br />
+          <span>Ready for your world.</span>
+        </h2>
+        <p>
+          The portable edition starts blank. No one else's devices, credentials or account sessions.
+          Just a starting point for your own setup.
+        </p>
+      </header>
+      <ol class="setup-steps">
+        {setupSteps.map((step) => (
+          <li>
+            <span class="step-number">{step.number}</span>
+            <h3>{step.title}</h3>
+            <p>{step.body}</p>
+          </li>
+        ))}
+      </ol>
+      <div class="setup-brief">
+        <div>
+          <h3>Your agent can take it from here.</h3>
+          <p>
+            The setup brief covers discovery, profile validation and a first real check. It uses
+            connections you authorize and keeps private keys where they belong.
+          </p>
+        </div>
+        <a class="mc-button secondary" href="/mission-control/agent-setup.md" download>
+          Get the setup brief <span aria-hidden="true">↓</span>
+        </a>
+      </div>
+      <p class="setup-note">
+        Use an agent and AI subscription you already have. Mission Control does not include an AI
+        subscription or additional cloud capacity.
+      </p>
+    </section>
+
+    <section
+      class="mc-container mc-section release-section"
+      id="release"
+      aria-labelledby="release-title"
+    >
+      <div class="release-card">
+        <div class="release-intro">
+          <span class="product-mark large" aria-hidden="true">
+            <i></i>
+            <i></i>
+            <i></i>
+          </span>
+          <p class="mc-eyebrow">Mission Control for Mac</p>
+          <h2 id="release-title">
+            {downloadReady ? "A new home for your setup." : "Getting ready for your Mac."}
+          </h2>
+          <p>
+            {downloadReady
+              ? "Download the portable edition, open the DMG and drag Mission Control into Applications. Your own setup begins at first launch."
+              : "The app and its bundled service are being prepared for public distribution. The download will appear here after signing, notarization and a clean-install check are verified."}
+          </p>
+        </div>
+        <div class="release-details">
+          <dl>
+            <div>
+              <dt>Mac requirements</dt>
+              <dd>macOS {release.minimumMacOS} or later</dd>
+            </div>
+            <div>
+              <dt>{downloadReady ? "Architectures" : "Build targets"}</dt>
+              <dd>Apple silicon and Intel</dd>
+            </div>
+            <div>
+              <dt>Distribution</dt>
+              <dd>
+                {downloadReady
+                  ? `Version ${release.version} · signed DMG`
+                  : "Public download not yet available"}
+              </dd>
+            </div>
+            <div>
+              <dt>iPhone</dt>
+              <dd>Separate iOS 17+ client build. No App Store release announced.</dd>
+            </div>
+          </dl>
+          {downloadReady ? (
+            <>
+              <a class="mc-button primary download-button" href={release.artifact?.url}>
+                Download for Mac <span aria-hidden="true">↓</span>
+              </a>
+              <a class="release-link" href={release.releaseNotesUrl ?? undefined}>
+                Read release notes <span aria-hidden="true">↗</span>
+              </a>
+              <details class="release-verification">
+                <summary>Download verification</summary>
+                <p>
+                  Developer ID signature verified. Notarization accepted and ticket stapled. Public
+                  download and clean installation checked.
+                </p>
+                <code>{release.artifact?.sha256}</code>
+                <p>Verified {release.verifiedAt}</p>
+              </details>
+            </>
+          ) : (
+            <div class="release-pending">
+              <span class="pending-dot" aria-hidden="true"></span>
+              <div>
+                <strong>Preparing the public release</strong>
+                <p>No installation file is offered yet.</p>
+              </div>
+            </div>
+          )}
+          <a class="release-link" href="/mission-control/release.json">
+            View release manifest <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="mc-container mc-section questions" aria-labelledby="questions-title">
+      <header class="section-heading">
+        <p class="mc-eyebrow">A few useful things</p>
+        <h2 id="questions-title">Before you move in.</h2>
+      </header>
+      <div class="question-list">
+        <details>
+          <summary>What comes in the Mac app?</summary>
+          <p>
+            The intended DMG contains Mission Control and its bundled service. You will not need a
+            separate Python or Node installation. Your own machines, existing logins and approved
+            connections complete the setup.
+          </p>
+        </details>
+        <details>
+          <summary>Can I give it to someone else?</summary>
+          <p>
+            That is what the portable edition is for. It begins with an empty profile, ready to be
+            configured for its new owner. The personal edition uses a separate owner profile and is
+            not the public download.
+          </p>
+        </details>
+        <details>
+          <summary>How does the iPhone connect?</summary>
+          <p>
+            The iPhone client connects to your own authenticated HTTPS service. Pairing is separate
+            from installing the Mac app. Your agent can help configure the route; account access and
+            device permissions remain yours to approve.
+          </p>
+        </details>
+        <details>
+          <summary>Does it take over my existing setup?</summary>
+          <p>
+            It is designed to use the connections and actions you explicitly configure. It does not
+            purchase cloud capacity, copy account sessions or turn every reachable computer into a
+            build worker.
+          </p>
+        </details>
+        <details>
+          <summary>Where can I get help?</summary>
+          <p>
+            Start with the <a href="/mission-control/agent-setup.md">setup brief</a>, or email{" "}
+            <a href="mailto:support@burnbar.ai">support@burnbar.ai</a>. Include your app version and
+            a description of the problem, without credentials or private keys.
+          </p>
+        </details>
+      </div>
+      <p class="design-note">
+        A new member of the BurnBar family. Built from the Po’dex design token foundation, with a
+        warmer point of view.{" "}
+        <a href="/mission-control/token-provenance.json">Token provenance ↗</a>
+      </p>
+    </section>
+  </div>
+</BaseLayout>
+
+<style>
+  .mission-control {
+    --font-display: "Mission Space", var(--font-body);
+    --font-body: "Mission Space", sans-serif;
+    --font-mono: "Mission Mono", monospace;
+    --mc-text: #f7f4f5;
+    --mc-muted: #b8b0ba;
+    --mc-inverse: #1a1a1a;
+    --mc-bg: #141216;
+    --mc-surface: #ffffff09;
+    --mc-glass: #201c24b8;
+    --mc-sidebar: #ffffff03;
+    --mc-border: #ffffff14;
+    --mc-border-bright: #ffffff25;
+    --mc-focus: var(--mc-pink);
+    font-family: var(--font-body);
+    background: var(--mc-bg);
+    color: var(--mc-text);
+    isolation: isolate;
+    overflow: clip;
+  }
+  .mission-control :global(:is(h1, h2, h3, h4)) {
+    text-shadow: none;
+  }
+  :global([data-theme="light"]) .mission-control {
+    --mc-text: #252127;
+    --mc-muted: #655e68;
+    --mc-inverse: #fff;
+    --mc-bg: #fcfafb;
+    --mc-surface: #ffffffc7;
+    --mc-glass: #ffffffe0;
+    --mc-sidebar: #f5f1f580;
+    --mc-border: #33213c18;
+    --mc-border-bright: #33213c30;
+    --mc-focus: #a02561;
+  }
+  .mc-container {
+    width: min(1120px, calc(100% - 48px));
+    margin-inline: auto;
+  }
+  .product-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    max-width: 1320px;
+    margin: auto;
+    padding: 26px 32px;
+    border-bottom: 1px solid var(--mc-border);
+  }
+  .product-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--mc-text);
+    font-size: 16px;
+    font-weight: var(--wght-medium);
+    text-decoration: none;
+  }
+  .product-brand small {
+    display: block;
+    font-size: 10px;
+    color: var(--mc-muted);
+    font-weight: var(--wght-regular);
+  }
+  .product-nav > div {
+    display: flex;
+    gap: 24px;
+    font-size: var(--mc-label);
+  }
+  .product-nav > div a {
+    color: var(--mc-text);
+    text-decoration: none;
+  }
+  .product-mark {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 36px;
+  }
+  .product-mark i {
+    position: absolute;
+    width: 25px;
+    height: 18px;
+    left: 4px;
+    border-radius: 6px;
+    transform: rotate(-25deg) skew(12deg);
+    background: var(--mc-canary);
+    bottom: 2px;
+    box-shadow: 0 1px 1px #00000018;
+  }
+  .product-mark i:nth-child(2) {
+    bottom: 9px;
+    background: var(--mc-orange);
+  }
+  .product-mark i:nth-child(3) {
+    bottom: 16px;
+    background: var(--mc-pink);
+  }
+  .mc-hero {
+    position: relative;
+    padding-top: 88px;
+    text-align: center;
+  }
+  .mc-hero::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    width: 1200px;
+    max-width: 160vw;
+    height: 850px;
+    top: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    background:
+      radial-gradient(ellipse at 24% 46%, #ff7eb621, transparent 50%),
+      radial-gradient(ellipse at 85% 52%, #ffb34724, transparent 45%),
+      radial-gradient(ellipse at 65% 85%, #ffea7014, transparent 45%);
+    pointer-events: none;
+  }
+  .mc-eyebrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 24px;
+    font-size: var(--mc-label);
+    color: var(--mc-muted);
+  }
+  .mc-eyebrow > span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--mc-pink);
+    box-shadow: 0 0 16px #ff7eb67f;
+  }
+  .mc-hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(46px, 6vw, 80px);
+    line-height: 1.06;
+    letter-spacing: -0.065em;
+    font-weight: var(--wght-medium);
+    margin: 0 auto 24px;
+  }
+  .mc-hero h1 > span {
+    background: linear-gradient(105deg, var(--mc-pink), var(--mc-orange) 65%, var(--mc-canary));
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  :global([data-theme="light"]) .mc-hero h1 > span {
+    background-image: linear-gradient(105deg, #ae2b68, #b6570e 65%, #7d6406);
+  }
+  .hero-description {
+    font-size: 18px;
+    line-height: 1.65;
+    color: var(--mc-muted);
+    margin: 0;
+  }
+  .mc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 32px;
+  }
+  .mc-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    min-height: 48px;
+    padding: 12px 22px;
+    border-radius: var(--mc-r-full);
+    font-size: var(--mc-label);
+    font-weight: var(--wght-medium);
+    text-decoration: none;
+    transition:
+      transform var(--mc-standard),
+      background var(--mc-standard);
+  }
+  .mc-button:hover {
+    transform: translateY(-2px);
+  }
+  .mc-button.primary {
+    background: var(--mc-text);
+    color: var(--mc-inverse);
+  }
+  .mc-button.secondary {
+    color: var(--mc-text);
+    border: 1px solid var(--mc-border-bright);
+    background: var(--mc-surface);
+  }
+  .hero-availability {
+    color: var(--mc-muted);
+    font-size: 11px;
+    margin: 18px 0 52px;
+  }
+  .hero-preview {
+    max-width: 940px;
+    margin: auto;
+  }
+  .mc-section {
+    padding-top: 120px;
+  }
+  .section-heading {
+    text-align: center;
+    margin: 0 auto 48px;
+    max-width: 670px;
+  }
+  .section-heading h2,
+  .release-intro h2 {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 4vw, 48px);
+    font-weight: var(--wght-medium);
+    line-height: 1.1;
+    letter-spacing: -0.05em;
+    margin: 0 0 24px;
+  }
+  .section-heading > p:not(.mc-eyebrow) {
+    color: var(--mc-muted);
+    font-size: 16px;
+    line-height: 1.7;
+    max-width: 560px;
+    margin: auto;
+  }
+  .experience-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 20px;
+  }
+  .feature {
+    border-radius: var(--mc-r-xl);
+    border: 1px solid var(--mc-border);
+    background: var(--mc-surface);
+    padding: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .feature-wide {
+    grid-row: span 2;
+    background: linear-gradient(135deg, #ff7eb609, #ffb34705), var(--mc-surface);
+  }
+  .feature-symbol {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--mc-r-md);
+    margin-bottom: 24px;
+    font-size: 22px;
+    color: var(--mc-ink);
+  }
+  .pink-symbol {
+    background: var(--mc-pink);
+  }
+  .orange-symbol {
+    background: var(--mc-orange);
+  }
+  .canary-symbol {
+    background: var(--mc-canary);
+  }
+  .feature h3 {
+    font-size: var(--mc-title);
+    font-weight: var(--wght-medium);
+    line-height: 1.2;
+    letter-spacing: -0.035em;
+    margin: 0 0 14px;
+  }
+  .feature p {
+    font-size: var(--mc-body);
+    line-height: 1.75;
+    color: var(--mc-muted);
+    margin: 0;
+  }
+  .orientation-art {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    justify-content: center;
+    height: 150px;
+    margin: 36px 0 20px;
+  }
+  .portrait-device {
+    width: 73px;
+    height: 143px;
+    padding: 13px 7px;
+    border: 1px solid var(--mc-border-bright);
+    border-radius: 15px;
+    background: var(--mc-glass);
+    box-shadow: 0 12px 24px #00000012;
+    transform: rotate(-8deg);
+  }
+  .portrait-device i {
+    display: block;
+    margin: 0 auto 14px;
+    width: 22px;
+    height: 4px;
+    border-radius: 10px;
+    background: var(--mc-border-bright);
+  }
+  .portrait-device span {
+    display: block;
+    width: 100%;
+    height: 52px;
+    background: linear-gradient(140deg, #ff7eb659, #ffb34718);
+    border-radius: 7px;
+    margin-bottom: 9px;
+  }
+  .portrait-device b {
+    display: block;
+    width: 60%;
+    height: 4px;
+    margin: 6px 0;
+    border-radius: 3px;
+    background: var(--mc-border-bright);
+  }
+  .landscape-device {
+    display: flex;
+    width: 199px;
+    height: 120px;
+    padding: 10px;
+    background: var(--mc-glass);
+    border: 1px solid var(--mc-border-bright);
+    border-radius: 14px;
+    transform: rotate(5deg);
+    box-shadow: 0 12px 24px #00000012;
+  }
+  .landscape-device > i {
+    width: 40px;
+    border-right: 1px solid var(--mc-border);
+    margin-right: 10px;
+    background: repeating-linear-gradient(
+      transparent 0 10px,
+      #ff7eb636 10px 16px,
+      transparent 16px 25px
+    );
+  }
+  .landscape-device > div {
+    flex: 1;
+  }
+  .landscape-device span {
+    display: block;
+    height: 58px;
+    border-radius: 5px;
+    background: linear-gradient(130deg, #ffb34718, #ffea7040);
+  }
+  .landscape-device b {
+    display: block;
+    height: 4px;
+    width: 70%;
+    margin: 7px 0;
+    border-radius: 3px;
+    background: var(--mc-border-bright);
+  }
+  .art-label {
+    display: block;
+    font-size: 10px;
+    color: var(--mc-muted);
+    text-align: center;
+  }
+  .setup-steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+  .step-number {
+    display: inline-block;
+    font-size: 13px;
+    padding-bottom: 24px;
+    color: var(--mc-muted);
+  }
+  .setup-steps li {
+    border-top: 1px solid var(--mc-border-bright);
+    padding-top: 20px;
+  }
+  .setup-steps h3 {
+    font-size: 19px;
+    font-weight: var(--wght-medium);
+    line-height: 1.25;
+    letter-spacing: -0.03em;
+    margin: 0 0 12px;
+  }
+  .setup-steps p,
+  .setup-brief p {
+    font-size: var(--mc-body);
+    line-height: 1.7;
+    color: var(--mc-muted);
+    margin: 0;
+  }
+  .setup-brief {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 40px;
+    border: 1px solid var(--mc-border);
+    border-radius: var(--mc-r-xl);
+    padding: 28px 32px;
+    margin-top: 48px;
+    background: var(--mc-surface);
+  }
+  .setup-brief > div {
+    max-width: 660px;
+  }
+  .setup-brief h3 {
+    margin: 0 0 8px;
+    font-size: 19px;
+    font-weight: var(--wght-medium);
+  }
+  .setup-brief .mc-button {
+    flex-shrink: 0;
+  }
+  .setup-note {
+    color: var(--mc-muted);
+    font-size: 11px;
+    text-align: center;
+    margin: 20px auto 0;
+  }
+  .release-card {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 72px;
+    padding: 64px;
+    border-radius: 32px;
+    border: 1px solid var(--mc-border-bright);
+    background:
+      radial-gradient(ellipse at top left, #ff7eb617, transparent 65%),
+      radial-gradient(ellipse at bottom right, #ffb34717, transparent 65%), var(--mc-surface);
+  }
+  .product-mark.large {
+    transform: scale(1.5);
+    transform-origin: left bottom;
+    margin-bottom: 32px;
+  }
+  .release-intro .mc-eyebrow {
+    justify-content: start;
+    margin-bottom: 20px;
+  }
+  .release-intro h2 {
+    font-size: clamp(30px, 3.5vw, 42px);
+  }
+  .release-intro > p:last-child {
+    margin: 0;
+    color: var(--mc-muted);
+    font-size: var(--mc-body);
+    line-height: 1.7;
+  }
+  .release-details dl {
+    margin: 0 0 28px;
+  }
+  .release-details dl > div {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--mc-border);
+  }
+  .release-details dt {
+    font-size: 11px;
+    color: var(--mc-muted);
+    margin-bottom: 5px;
+  }
+  .release-details dd {
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .release-pending {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 17px;
+    border-radius: var(--mc-r-md);
+    background: var(--mc-sidebar);
+    border: 1px solid var(--mc-border);
+  }
+  .pending-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--mc-orange);
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+  .release-pending strong {
+    display: block;
+    font-size: 13px;
+    font-weight: var(--wght-medium);
+  }
+  .release-pending p {
+    color: var(--mc-muted);
+    font-size: 11px;
+    margin: 5px 0 0;
+  }
+  .release-link {
+    display: inline-block;
+    font-size: 11px;
+    color: var(--mc-muted);
+    margin-top: 16px;
+    text-underline-offset: 4px;
+  }
+  .download-button {
+    width: 100%;
+  }
+  .release-verification {
+    margin-top: 20px;
+    font-size: 11px;
+    color: var(--mc-muted);
+  }
+  .release-verification code {
+    overflow-wrap: anywhere;
+  }
+  .questions {
+    max-width: 800px;
+    padding-bottom: 88px;
+  }
+  .question-list details {
+    border-top: 1px solid var(--mc-border-bright);
+    padding: 24px 0;
+  }
+  .question-list details:last-child {
+    border-bottom: 1px solid var(--mc-border-bright);
+  }
+  .question-list summary {
+    cursor: pointer;
+    font-size: 17px;
+    font-weight: var(--wght-medium);
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+  }
+  .question-list summary::-webkit-details-marker {
+    display: none;
+  }
+  .question-list summary::after {
+    content: "+";
+    font-size: 24px;
+    color: var(--mc-muted);
+    font-weight: var(--wght-regular);
+  }
+  .question-list details[open] summary::after {
+    content: "−";
+  }
+  .question-list details p {
+    font-size: var(--mc-body);
+    line-height: 1.75;
+    color: var(--mc-muted);
+    margin: 18px 32px 0 0;
+  }
+  .question-list a,
+  .design-note a {
+    color: inherit;
+    text-underline-offset: 4px;
+  }
+  .design-note {
+    text-align: center;
+    font-size: 11px;
+    color: var(--mc-muted);
+    line-height: 1.8;
+    margin: 48px auto 0;
+  }
+  .mission-control :is(a, summary):focus-visible {
+    outline: 2px solid var(--mc-focus);
+    outline-offset: 5px;
+  }
+  @media (max-width: 760px) {
+    .mc-container {
+      width: calc(100% - 40px);
+    }
+    .product-nav {
+      padding: 20px;
+      gap: 12px;
+    }
+    .product-nav > div {
+      gap: 12px;
+      font-size: 11px;
+    }
+    .product-nav > div a:first-child {
+      display: none;
+    }
+    .product-brand {
+      font-size: 14px;
+      gap: 8px;
+    }
+    .mc-hero {
+      padding-top: 56px;
+    }
+    .mc-hero h1 {
+      font-size: clamp(36px, 8.7vw, 62px);
+      letter-spacing: -0.055em;
+    }
+    .hero-description {
+      font-size: 16px;
+    }
+    .mc-actions {
+      gap: 10px;
+      margin-top: 26px;
+    }
+    .mc-button {
+      padding: 12px 18px;
+      gap: 14px;
+    }
+    .hero-availability {
+      max-width: 240px;
+      line-height: 1.7;
+      margin: 18px auto 40px;
+    }
+    .mc-section {
+      padding-top: 80px;
+    }
+    .section-heading {
+      margin-bottom: 32px;
+    }
+    .section-heading h2 {
+      font-size: 34px;
+    }
+    .experience-grid {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto;
+      gap: 16px;
+    }
+    .feature {
+      padding: 28px;
+    }
+    .feature-wide {
+      grid-row: auto;
+    }
+    .orientation-art {
+      height: 132px;
+    }
+    .setup-steps {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+    .setup-steps li {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 12px;
+      padding-top: 24px;
+    }
+    .step-number {
+      grid-row: span 2;
+      padding-bottom: 0;
+    }
+    .setup-steps h3 {
+      margin: 0;
+    }
+    .setup-steps p {
+      grid-column: 2;
+    }
+    .setup-brief {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 24px;
+      margin-top: 32px;
+      padding: 28px;
+    }
+    .setup-note {
+      max-width: 300px;
+      line-height: 1.8;
+    }
+    .release-card {
+      grid-template-columns: 1fr;
+      gap: 32px;
+      padding: 36px 28px;
+      border-radius: var(--mc-r-xl);
+    }
+    .release-intro h2 {
+      max-width: 340px;
+      font-size: 36px;
+    }
+    .questions {
+      padding-bottom: 56px;
+    }
+  }
+  @media (max-width: 400px) {
+    .mc-container {
+      width: calc(100% - 32px);
+    }
+    .desktop-break {
+      display: none;
+    }
+    .mc-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .mc-actions .mc-button {
+      width: 100%;
+    }
+    .orientation-art {
+      gap: 9px;
+    }
+    .landscape-device {
+      width: 180px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mc-button {
+      transition: none;
+    }
+    .mc-button:hover {
+      transform: none;
+    }
+  }
+</style>

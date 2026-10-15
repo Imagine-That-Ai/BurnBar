@@ -1,0 +1,529 @@
+---
+const environments = [
+  { id: "mac", name: "My Mac", kind: "Your everyday workspace", icon: "⌘", accent: "pink" },
+  { id: "linux", name: "Linux", kind: "Your remote workspace", icon: ">_", accent: "orange" },
+  { id: "windows", name: "Windows", kind: "Your Windows workspace", icon: "⊞", accent: "canary" }
+];
+---
+
+<figure class="mc-preview">
+  <figcaption class="preview-caption">
+    <span>Explore the control room</span>
+    <span class="preview-label">Interactive design preview</span>
+  </figcaption>
+  <div class="control-window">
+    <div class="window-bar" aria-hidden="true">
+      <span class="window-lights">
+        <i></i>
+        <i></i>
+        <i></i>
+      </span>
+      <span>Mission Control</span>
+      <span class="window-orbit">✳</span>
+    </div>
+    <div class="window-body">
+      <fieldset class="environment-picker">
+        <legend>Your environments</legend>
+        {environments.map((environment, index) => (
+          <div class="environment-option">
+            <input
+              type="radio"
+              name="preview-environment"
+              id={`preview-${environment.id}`}
+              value={environment.id}
+              checked={index === 0}
+              aria-controls={`panel-${environment.id}`}
+            />
+            <label for={`preview-${environment.id}`}>
+              <span class={`environment-icon ${environment.accent}`} aria-hidden="true">
+                {environment.icon}
+              </span>
+              <span>
+                <strong>{environment.name}</strong>
+                <small>Not connected</small>
+              </span>
+              <span class="environment-arrow" aria-hidden="true">
+                ›
+              </span>
+            </label>
+          </div>
+        ))}
+        <a class="add-environment" href="#setup">
+          <span aria-hidden="true">＋</span> Add your own
+        </a>
+      </fieldset>
+      <div class="environment-panels">
+        {environments.map((environment) => (
+          <section
+            id={`panel-${environment.id}`}
+            class={`environment-panel panel-${environment.id}`}
+            aria-label={`${environment.name} preview`}
+          >
+            <div class="environment-heading">
+              <div>
+                <span class="room-eyebrow">{environment.kind}</span>
+                <h3>{environment.name}</h3>
+              </div>
+              <span class="connection-state">
+                <span aria-hidden="true"></span> Setup needed
+              </span>
+            </div>
+            <div class="empty-workspace">
+              <div class={`workspace-orbit ${environment.accent}`} aria-hidden="true">
+                <span class="orbit-ring"></span>
+                <span class="orbit-ring inner"></span>
+                <span class="orbit-glyph">{environment.icon}</span>
+                <i></i>
+                <i></i>
+                <i></i>
+              </div>
+              <h4>
+                A little space.
+                <br />A lot of possibility.
+              </h4>
+              <p>
+                Bring this environment into view.
+                <br />
+                Its connection, actions and results belong here.
+              </p>
+              <a href="#setup" class="preview-setup">
+                Start with your agent <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+            <div class="workspace-bottom">
+              <span>
+                <span class="bottom-symbol" aria-hidden="true">
+                  ◎
+                </span>{" "}
+                You choose what can run.
+              </span>
+              <span>Profile → connection → results</span>
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  </div>
+  <p class="preview-note">
+    Illustrative environments. This preview does not connect to or control a device.
+  </p>
+</figure>
+
+<style>
+  .mc-preview {
+    margin: 0;
+    text-align: left;
+  }
+  .preview-caption {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--mc-cluster);
+    padding: 0 var(--mc-cluster) var(--mc-inset);
+    font-size: var(--mc-label);
+    color: var(--mc-muted);
+  }
+  .preview-label {
+    border: 1px solid var(--mc-border);
+    border-radius: var(--mc-r-full);
+    padding: 4px 10px;
+  }
+  .control-window {
+    overflow: hidden;
+    border: 1px solid var(--mc-border-bright);
+    border-radius: var(--mc-r-xl);
+    background: var(--mc-glass);
+    box-shadow:
+      0 40px 100px -60px #ff7eb699,
+      0 12px 40px #00000024;
+    backdrop-filter: blur(32px);
+  }
+  .window-bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 16px 20px;
+    color: var(--mc-muted);
+    border-bottom: 1px solid var(--mc-border);
+    font-size: var(--mc-label);
+  }
+  .window-lights {
+    display: flex;
+    gap: 6px;
+  }
+  .window-lights i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mc-border-bright);
+  }
+  .window-lights i:first-child {
+    background: var(--mc-pink);
+  }
+  .window-lights i:nth-child(2) {
+    background: var(--mc-orange);
+  }
+  .window-lights i:last-child {
+    background: var(--mc-canary);
+  }
+  .window-orbit {
+    justify-self: end;
+    color: var(--mc-text);
+    font-size: 18px;
+  }
+  .window-body {
+    display: grid;
+    grid-template-columns: 224px minmax(0, 1fr);
+    min-height: 440px;
+  }
+  .environment-picker {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: var(--mc-cluster);
+    border: 0;
+    border-right: 1px solid var(--mc-border);
+    margin: 0;
+    padding: var(--mc-section) 12px;
+    background: var(--mc-sidebar);
+  }
+  .environment-picker legend {
+    float: left;
+    width: 100%;
+    padding: 0 12px 16px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--mc-muted);
+    text-transform: uppercase;
+  }
+  .environment-option {
+    position: relative;
+  }
+  .environment-option input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+  }
+  .environment-option label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid transparent;
+    border-radius: var(--mc-r-md);
+    cursor: pointer;
+    transition:
+      background var(--mc-standard),
+      border-color var(--mc-standard);
+  }
+  .environment-option label:hover {
+    background: var(--mc-surface);
+  }
+  .environment-option input:checked + label {
+    background: var(--mc-surface);
+    border-color: var(--mc-border-bright);
+    box-shadow: 0 2px 8px #0000000f;
+  }
+  .environment-option input:focus-visible + label {
+    outline: 2px solid var(--mc-focus);
+    outline-offset: 2px;
+  }
+  .environment-option strong {
+    display: block;
+    color: var(--mc-text);
+    font-size: 14px;
+    font-weight: var(--wght-semibold);
+  }
+  .environment-option small {
+    display: block;
+    color: var(--mc-muted);
+    margin-top: 3px;
+    font-size: 11px;
+  }
+  .environment-icon {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    border-radius: 10px;
+    font-size: 18px;
+    color: var(--mc-ink);
+  }
+  .pink {
+    --environment-accent: var(--mc-pink);
+  }
+  .orange {
+    --environment-accent: var(--mc-orange);
+  }
+  .canary {
+    --environment-accent: var(--mc-canary);
+  }
+  .environment-icon {
+    background: var(--environment-accent);
+  }
+  .environment-arrow {
+    margin-left: auto;
+    color: var(--mc-muted);
+  }
+  .add-environment {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 12px;
+    margin-top: auto;
+    color: var(--mc-muted);
+    font-size: var(--mc-label);
+    text-decoration: none;
+  }
+  .add-environment span {
+    font-size: 20px;
+  }
+  .environment-panels {
+    min-width: 0;
+  }
+  .environment-panel {
+    display: none;
+    height: 100%;
+    padding: var(--mc-section) 32px var(--mc-inset);
+  }
+  .window-body:has(#preview-mac:checked) .panel-mac,
+  .window-body:has(#preview-linux:checked) .panel-linux,
+  .window-body:has(#preview-windows:checked) .panel-windows {
+    display: flex;
+    flex-direction: column;
+  }
+  .environment-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mc-inset);
+  }
+  .room-eyebrow {
+    color: var(--mc-muted);
+    font-size: 11px;
+  }
+  .environment-heading h3 {
+    margin: 3px 0 0;
+    font-size: var(--mc-title);
+    font-weight: var(--wght-semibold);
+    letter-spacing: -0.035em;
+    color: var(--mc-text);
+  }
+  .connection-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    color: var(--mc-muted);
+    font-size: 11px;
+  }
+  .connection-state > span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .empty-workspace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: var(--mc-section) 0;
+  }
+  .workspace-orbit {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 110px;
+    height: 110px;
+    margin-bottom: 14px;
+  }
+  .orbit-ring {
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--mc-border);
+    border-radius: 50%;
+  }
+  .orbit-ring.inner {
+    inset: 15px;
+  }
+  .orbit-glyph {
+    display: grid;
+    place-items: center;
+    width: 50px;
+    height: 50px;
+    border-radius: var(--mc-r-lg);
+    background: var(--environment-accent);
+    color: var(--mc-ink);
+    font-size: 29px;
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--environment-accent) 25%, transparent);
+  }
+  .workspace-orbit i {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: var(--environment-accent);
+    border-radius: 50%;
+    top: 15px;
+    left: 15px;
+  }
+  .workspace-orbit i:nth-last-child(2) {
+    top: 55px;
+    left: auto;
+    right: -2px;
+    background: var(--mc-orange);
+  }
+  .workspace-orbit i:last-child {
+    top: auto;
+    bottom: 8px;
+    left: 25px;
+    background: var(--mc-canary);
+  }
+  .empty-workspace h4 {
+    color: var(--mc-text);
+    font-size: 27px;
+    line-height: 1.15;
+    letter-spacing: -0.04em;
+    font-weight: var(--wght-semibold);
+    margin: 0 0 12px;
+  }
+  .empty-workspace p {
+    font-size: var(--mc-label);
+    line-height: 1.65;
+    margin: 0 0 18px;
+    color: var(--mc-muted);
+  }
+  .preview-setup {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    border-radius: var(--mc-r-full);
+    background: var(--mc-text);
+    color: var(--mc-inverse);
+    font-size: var(--mc-label);
+    font-weight: var(--wght-semibold);
+    text-decoration: none;
+  }
+  .workspace-bottom {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--mc-cluster);
+    padding-top: 14px;
+    border-top: 1px solid var(--mc-border);
+    font-size: 10px;
+    color: var(--mc-muted);
+  }
+  .bottom-symbol {
+    margin-right: 4px;
+  }
+  .preview-note {
+    color: var(--mc-muted);
+    font-size: 11px;
+    text-align: center;
+    margin: 16px 0 0;
+  }
+  @media (max-width: 680px) {
+    .window-body {
+      grid-template-columns: 1fr;
+    }
+    .window-bar {
+      padding: 14px 16px;
+    }
+    .environment-picker {
+      flex-direction: row;
+      overflow-x: auto;
+      border-right: 0;
+      border-bottom: 1px solid var(--mc-border);
+      padding: 12px;
+      gap: 6px;
+      scroll-snap-type: x mandatory;
+    }
+    .environment-picker legend {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+    .environment-option {
+      flex-shrink: 0;
+      scroll-snap-align: start;
+    }
+    .environment-option label {
+      padding: 10px;
+    }
+    .environment-option small,
+    .environment-arrow {
+      display: none;
+    }
+    .environment-icon {
+      width: 26px;
+      height: 26px;
+      flex-basis: 26px;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    .environment-option strong {
+      font-size: 12px;
+    }
+    .add-environment {
+      padding: 8px;
+      white-space: nowrap;
+      margin: 0;
+      font-size: 11px;
+    }
+    .environment-panel {
+      min-height: 430px;
+      padding: 20px;
+    }
+    .room-eyebrow {
+      font-size: 10px;
+    }
+    .environment-heading h3 {
+      font-size: 22px;
+    }
+    .connection-state {
+      font-size: 10px;
+    }
+    .workspace-bottom {
+      font-size: 9px;
+    }
+  }
+  @media (max-width: 900px) and (orientation: landscape) {
+    .window-body {
+      grid-template-columns: 185px minmax(0, 1fr);
+    }
+    .environment-picker {
+      flex-direction: column;
+      overflow: visible;
+      border-right: 1px solid var(--mc-border);
+      border-bottom: 0;
+    }
+    .environment-picker legend {
+      position: static;
+      width: 100%;
+      height: auto;
+      clip-path: none;
+      padding: 8px;
+    }
+    .add-environment {
+      margin-top: auto;
+    }
+    .environment-panel {
+      min-height: 380px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .environment-option label {
+      transition: none;
+    }
+  }
+</style>

@@ -1,0 +1,227 @@
+{
+  "meta": {
+    "frozen": "2026-08-20",
+    "wordmark": "Mission Control",
+    "wordmarkTechnical": "Mission Control",
+    "tagline": "Your environments. One control room.",
+    "provenance": "by BurnBar",
+    "entity": "Imagine That AI LLC",
+    "publicURL": "",
+    "appearanceDefault": "light",
+    "typeUI": "Space Grotesk",
+    "typeCode": "Space Mono",
+    "sourceProduct": "Po’dex"
+  },
+  "colors": {
+    "coral": "#FF8080",
+    "orange": "#FFB347",
+    "indigo": "#8080FF",
+    "mint": "#3EBA89",
+    "ink": "#1A1A1A",
+    "lightBase": "#FFFFFF",
+    "lightRaised": "#F7F7FA",
+    "darkBase": "#1A1A1A",
+    "darkRaised": "#22222A",
+    "pearlLight": "#FFFFFF",
+    "pearlDark": "#2C2C34",
+    "hairlineLight": "#8A8A94",
+    "hairlineDark": "#7A7A88",
+    "labelSecondaryLight": "#3D3D3D",
+    "labelSecondaryDark": "#C8C8D2",
+    "pink": "#FF7EB6",
+    "canary": "#FFEA70",
+    "brandPrimary": "#FF7EB6",
+    "brandSecondary": "#FFB347",
+    "brandTertiary": "#FFEA70"
+  },
+  "phases": {
+    "author": {
+      "hex": "#FF8080",
+      "label": "You write it"
+    },
+    "assemble": {
+      "hex": "#FFB347",
+      "label": "We put it together"
+    },
+    "execute": {
+      "hex": "#8080FF",
+      "label": "It gets things done"
+    },
+    "settled": {
+      "hex": "#3EBA89",
+      "label": "done."
+    }
+  },
+  "gradients": {
+    "stack": ["#FF7EB6", "#FFB347", "#FFEA70"],
+    "pattern": ["#FF7EB6", "#FFEA70", "#FFB347"],
+    "iconDiagonal": ["#FF7EB6", "#FFB347"]
+  },
+  "mark": {
+    "planes": 4,
+    "topGlyph": "",
+    "assembleMid": "#FFD28A"
+  },
+  "empty": {
+    "headlineColor": "#FF7EB6",
+    "actions": "stacked-chevron",
+    "actionFill": "#FF7EB622"
+  },
+  "launch": {
+    "appearance": "dark",
+    "wash": "#FF7EB6"
+  },
+  "typeScale": {
+    "display": {
+      "size": 40,
+      "weight": "Bold",
+      "tracking": -0.8
+    },
+    "title": {
+      "size": 24,
+      "weight": "Semibold",
+      "tracking": -0.3
+    },
+    "headline": {
+      "size": 18,
+      "weight": "Medium",
+      "tracking": -0.2
+    },
+    "body": {
+      "size": 15,
+      "weight": "Regular",
+      "tracking": 0
+    },
+    "label": {
+      "size": 13,
+      "weight": "Medium",
+      "tracking": 0.2
+    },
+    "caption": {
+      "size": 11,
+      "weight": "Regular",
+      "tracking": 0.2
+    },
+    "code": {
+      "size": 13,
+      "weight": "Regular",
+      "family": "Space Mono"
+    }
+  },
+  "typeRoles": {
+    "thread": {
+      "ios": 17,
+      "mac": 15,
+      "textStyle": "body"
+    },
+    "composer": {
+      "ios": 17,
+      "mac": 15,
+      "textStyle": "body"
+    },
+    "supporting": {
+      "ios": 16,
+      "mac": 13,
+      "textStyle": "callout"
+    },
+    "pageTitle": {
+      "size": 22,
+      "textStyle": "title2"
+    },
+    "prompt": {
+      "size": 28,
+      "textStyle": "title"
+    },
+    "chip": {
+      "ios": 15,
+      "mac": 13,
+      "textStyle": "subheadline"
+    },
+    "meta": {
+      "ios": 12,
+      "mac": 11,
+      "textStyle": "caption"
+    },
+    "codeBody": 13,
+    "codeMeta": 11
+  },
+  "space": {
+    "unit": 4,
+    "scale": [4, 8, 12, 16, 20, 24, 32, 40, 48, 64]
+  },
+  "spaceRoles": {
+    "row": 4,
+    "cluster": 8,
+    "control": 12,
+    "inset": 16,
+    "page": 20,
+    "section": 24,
+    "empty": 40
+  },
+  "measure": {
+    "conversationMax": 720,
+    "composerMin": 36,
+    "composerMax": 120,
+    "sidebarMin": 220,
+    "sidebarIdeal": 232,
+    "sidebarMax": 260,
+    "sidebarLabeledMin": 180,
+    "sidebarContextMax": 320,
+    "iconRail": 72,
+    "placesBarCompact": 44,
+    "placesBarLabeled": 52,
+    "placesBarContext": 88,
+    "workspaceRailMin": 180,
+    "workspaceRailIdeal": 240,
+    "workspaceRailMax": 420,
+    "logoComposer": 28,
+    "sendGlyph": 22,
+    "threadLeading": 24,
+    "threadTrailing": 16
+  },
+  "radii": {
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "full": 999
+  },
+  "elevation": {
+    "0": {
+      "y": 0,
+      "blur": 0,
+      "alpha": 0
+    },
+    "1": {
+      "y": 2,
+      "blur": 8,
+      "alpha": 0.06
+    },
+    "2": {
+      "y": 8,
+      "blur": 24,
+      "alpha": 0.08
+    }
+  },
+  "motion": {
+    "snappy": {
+      "response": 0.25,
+      "damping": 0.8
+    },
+    "standard": {
+      "response": 0.35,
+      "damping": 0.85
+    },
+    "gentle": {
+      "response": 0.5,
+      "damping": 0.9
+    },
+    "fadeMs": [120, 200, 320],
+    "reduceMotion": "crossfade-only"
+  },
+  "voice": {
+    "empty": "Bring your environments together.",
+    "actions": ["Configure environments", "Import profile", "View jobs"],
+    "humility": "Configured is not the same as connected."
+  }
+}
