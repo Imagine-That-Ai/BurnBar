@@ -35,6 +35,7 @@ const ALLOWLIST_FILES = new Set([
   "robots.txt", // crawler convention, never linked
   ".well-known/security.txt", // RFC 9116 convention, never linked
   "data/models.json", // consumed by the iOS app, not the site
+  "c/v1.html", // Afar card fallback, opened only from card links (card-host/)
 ]);
 
 // File types whose text can carry asset references.
