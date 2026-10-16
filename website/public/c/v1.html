@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-7pvWBAN4b/f1BrKHfOsVLJxyf62XUDl5PcSLp3cqc1E='; style-src 'sha256-pmti3sq534Bp5OAhsR3afbZDB27x3cn61sSYJbKEhvY='; base-uri 'none'; form-action 'none'">
+<title>Afar card</title>
+<style>
+  :root { --pink: #FF7EB6; --orange: #FFB347; --canary: #FFEA70; --ink: #1A1A1A; --paper: #F7F7FA; --text: #1A1A1A; --muted: #3D3D3D; --panel: #FFFFFF; }
+  @media (prefers-color-scheme: dark) { :root { --paper: #1A1A1A; --text: #F2F2F5; --muted: #C8C8D2; --panel: #22222A; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--text); font: 17px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: grid; place-items: center; padding: 24px 16px; }
+  main { width: min(100%, 460px); display: grid; gap: 16px; }
+  .card { border-radius: 24px; padding: 20px; color: var(--ink); background: linear-gradient(135deg, var(--pink), var(--orange), var(--canary)); border: 1px solid rgba(255, 255, 255, .45); }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .12em; opacity: .8; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 10px 0 4px; overflow-wrap: anywhere; }
+  .status { font-weight: 600; }
+  .headline { overflow-wrap: anywhere; }
+  .note { font-size: 13px; opacity: .85; margin-top: 14px; }
+  .notice { background: var(--panel); border-radius: 16px; padding: 16px; }
+  .notice h2 { font-size: 19px; margin: 0 0 4px; }
+  .notice p { margin: 0; color: var(--muted); }
+  a.open { display: block; text-align: center; padding: 14px; border-radius: 14px; background: var(--ink); color: #FFFFFF; text-decoration: none; font-weight: 600; }
+  @media (prefers-color-scheme: dark) { a.open { background: var(--pink); color: var(--ink); } }
+  a.open:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+  p.help { margin: 0; color: var(--muted); font-size: 15px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body data-scheme="fleetmissioncontrol">
+<main>
+  <section class="card" id="card" hidden aria-labelledby="name">
+    <div class="eyebrow">AFAR · <span id="kind"></span></div>
+    <h1 id="name"></h1>
+    <div class="status" id="status"></div>
+    <div class="headline" id="headline"></div>
+    <div class="note">The name and status are what the sender saw; they aren't verified. The card opens only for people already paired with the same service.</div>
+  </section>
+  <section class="notice" id="notice" role="status" aria-live="polite" hidden>
+    <h2 id="notice-title"></h2>
+    <p id="notice-detail"></p>
+  </section>
+  <noscript>
+    <section class="notice">
+      <h2>Open this card in Afar</h2>
+      <p>This page needs JavaScript to read the card in the link. On a device with Afar, open the link there instead.</p>
+    </section>
+  </noscript>
+  <a class="open" id="open" hidden>Open in Afar</a>
+  <p class="help">A card never grants access by itself, and this page never asks for credentials. Nothing in the link reaches this server: the card lives after the “#”, which browsers don't send.</p>
+</main>
+<script>
+"use strict";
+// Mirrors MissionControlCards.CardLink (native/Sources/MissionControlCards/CardLink.swift). Stricter in
+// one place: raw control or invisible format characters are rejected, where the app would normalize
+// them; a genuine card never contains them. Text is written only with textContent.
+(function () {
+  var MAXIMUM_LINK_BYTES = 2500, MAXIMUM_PAIRS = 24, NAME_LIMIT = 64, HEADLINE_LIMIT = 80;
+  var MAXIMUM_LIFETIME = 2592000, CLOCK_TOLERANCE = 300;
+  var KNOWN = Object.freeze(["v", "k", "r", "s", "n", "st", "h", "i", "e"]);
+  var KINDS = new Map([["environment", "Environment"], ["terminal", "Terminal"], ["status", "Status"]]);
+  var STATUSES = new Map([["online", "Reachable"], ["busy", "Busy"], ["offline", "Offline"], ["attention", "Needs attention"], ["unknown", "Status unknown"]]);
+  var RESERVED_SCHEMES = new Set(["http", "https", "file", "data", "javascript", "sms", "tel", "mailto", "imessage", "im"]);
+  var NOTICES = Object.freeze({
+    expired: ["This card has expired", "Ask the sender for a fresh card."],
+    newer: ["This card needs a newer version", "Update Afar, then open the card again."],
+    lifetime: ["This card can't be read", "Its dates aren't valid (issued in the future or valid for longer than 30 days)."],
+    malformed: ["This card can't be read", "The link is incomplete or damaged."],
+    empty: ["No card in this link", "Open the card from the message it was sent in."],
+    unconfigured: ["Afar can't be opened from this page", "This page isn't set up with the app's link. Open the card from Messages on a device with Afar."]
+  });
+  var HEX32 = /^[0-9a-f]{32}$/, SECONDS = /^[0-9]{1,12}$/, SCHEME = /^[a-z][a-z0-9+.-]{2,31}$/;
+  // Anything the app's normalizer would have removed or rewritten: controls, line breaks, whitespace
+  // other than single spaces, and invisible formatting except the emoji joiner and variation selectors.
+  var UNSAFE_TEXT = /[\p{Cc}\p{Zl}\p{Zp}]|[^\S ]| {2}|(?![\u200D\uFE00-\uFE0F\u{E0100}-\u{E01EF}])[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
+
+  function byteLength(text) { return new TextEncoder().encode(text).length; }
+
+  function graphemes(text) {
+    if (typeof Intl === "object" && typeof Intl.Segmenter === "function") {
+      var count = 0, iterator = new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)[Symbol.iterator]();
+      while (!iterator.next().done) count += 1;
+      return count;
+    }
+    return Array.from(text).length; // Never fewer than graphemes: errs toward rejecting.
+  }
+
+  function fits(text, limit) { return graphemes(text) <= limit && byteLength(text) <= limit * 4; }
+
+  function displayable(text, limit) {
+    return typeof text === "string" && text.length > 0 && text.trim() === text && !UNSAFE_TEXT.test(text) && fits(text, limit);
+  }
+
+  function parse(fragment) {
+    var fields = Object.create(null), pairs = fragment.split("&").filter(function (pair) { return pair.length > 0; });
+    if (pairs.length > MAXIMUM_PAIRS) return null;
+    for (var index = 0; index < pairs.length; index += 1) {
+      var separator = pairs[index].indexOf("=");
+      if (separator < 0) return null;
+      var key, value;
+      try {
+        key = decodeURIComponent(pairs[index].slice(0, separator));
+        value = decodeURIComponent(pairs[index].slice(separator + 1));
+      } catch (error) {
+        return null;
+      }
+      if (KNOWN.indexOf(key) < 0) continue;
+      if (Object.prototype.hasOwnProperty.call(fields, key)) return null;
+      fields[key] = value;
+    }
+    return fields;
+  }
+
+  // The app accepts only the exact path, so the link it receives is rebuilt in that form even if a
+  // host serves this page at "/c/v1/" as well.
+  function canonicalLink(location) { return location.origin + "/c/v1" + location.hash; }
+
+  function decode(location, nowSeconds) {
+    if (byteLength(canonicalLink(location)) > MAXIMUM_LINK_BYTES) return { notice: "malformed" };
+    if ((location.pathname !== "/c/v1" && location.pathname !== "/c/v1/") || location.search !== "") return { notice: "malformed" };
+    var fragment = location.hash.slice(1);
+    if (fragment.length === 0) return { notice: "empty" };
+    var fields = parse(fragment);
+    if (fields === null) return { notice: "malformed" };
+    if (fields.v === undefined) return { notice: "malformed" };
+    if (fields.v !== "1") return { notice: "newer" };
+    if (fields.k === undefined) return { notice: "malformed" };
+    if (!KINDS.has(fields.k)) return { notice: "newer" };
+    if (!HEX32.test(fields.r || "") || !HEX32.test(fields.s || "") || !SECONDS.test(fields.i || "") || !SECONDS.test(fields.e || "")
+        || !displayable(fields.n, NAME_LIMIT) || (fields.h !== undefined && fields.h !== "" && !displayable(fields.h, HEADLINE_LIMIT))) {
+      return { notice: "malformed" };
+    }
+    var issued = Number(fields.i), expires = Number(fields.e), lifetime = expires - issued;
+    if (issued - nowSeconds > CLOCK_TOLERANCE || lifetime <= 0 || lifetime > MAXIMUM_LIFETIME) return { notice: "lifetime" };
+    var card = {
+      kind: KINDS.get(fields.k),
+      name: fields.n,
+      status: STATUSES.has(fields.st) ? STATUSES.get(fields.st) : STATUSES.get("unknown"),
+      headline: fields.h || ""
+    };
+    return nowSeconds >= expires ? { notice: "expired", card: card } : { card: card };
+  }
+
+  function openLink(scheme, href) {
+    if (!SCHEME.test(scheme || "") || RESERVED_SCHEMES.has(scheme)) return null;
+    return scheme + "://card?u=" + encodeURIComponent(href);
+  }
+
+  function render(document, result, link) {
+    if (result.card) {
+      document.getElementById("kind").textContent = result.card.kind.toUpperCase();
+      document.getElementById("name").textContent = result.card.name;
+      document.getElementById("status").textContent = result.card.status;
+      document.getElementById("headline").textContent = result.card.headline;
+      document.getElementById("card").hidden = false;
+    }
+    var notice = result.notice || (result.card && !link ? "unconfigured" : null);
+    if (notice) {
+      document.getElementById("notice-title").textContent = NOTICES[notice][0];
+      document.getElementById("notice-detail").textContent = NOTICES[notice][1];
+      document.getElementById("notice").hidden = false;
+    }
+    var open = document.getElementById("open");
+    if (!notice && result.card && link) {
+      open.href = link;
+      open.hidden = false;
+    } else {
+      open.removeAttribute("href");
+      open.hidden = true;
+    }
+  }
+
+  var result = decode(window.location, Math.floor(Date.now() / 1000));
+  render(document, result, result.card && !result.notice ? openLink(document.body.getAttribute("data-scheme"), canonicalLink(window.location)) : null);
+})();
+</script>
+</body>
+</html>

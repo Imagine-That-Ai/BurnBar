@@ -8,6 +8,7 @@ import {
   isReviewedCollectorOrigin,
   resolveCollectorLane
 } from "../../services/analytics-collector/contract/collector-origins.mjs";
+import { isCardFallbackDistFile } from "./lib/card-host.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEBSITE_ROOT = join(HERE, "..");
@@ -61,7 +62,13 @@ function inlineHashesFromDist() {
   const styleElementHashes = new Set();
   const styleAttributeHashes = new Set();
 
-  for (const file of walk(DIST).filter((candidate) => candidate.endsWith(".html"))) {
+  // The Afar card fallback (/c/v1) carries its own route-scoped CSP in
+  // firebase.json; adding its hashes here would widen every other page's CSP.
+  // The check also proves the page is still the imported bytes.
+  const pages = walk(DIST).filter(
+    (candidate) => candidate.endsWith(".html") && !isCardFallbackDistFile(candidate)
+  );
+  for (const file of pages) {
     const body = readFileSync(file, "utf8");
     for (const match of body.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/gi)) {
       if (INERT_DATA_BLOCK_TYPE.test(match[1])) continue;
