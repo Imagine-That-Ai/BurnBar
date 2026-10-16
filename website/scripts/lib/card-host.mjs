@@ -66,6 +66,11 @@ export function gitBlobId(bytes) {
   return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
+/** Escape every RegExp metacharacter, so a literal can never change the pattern. */
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function cspSource(text) {
   return `'sha256-${createHash("sha256").update(text).digest("base64")}'`;
 }
@@ -187,9 +192,9 @@ export function globToRegExp(glob) {
       const options = glob.slice(i + 2, close).split("|");
       if (options.some((option) => !/^[A-Za-z0-9._-]+$/.test(option)))
         fail(`unsupported @( ) options in source ${glob}`);
-      out += `(?:${options.map((option) => option.replace(/\./g, "\\.")).join("|")})`;
+      out += `(?:${options.map(escapeRegExp).join("|")})`;
       i = close;
-    } else if (/[A-Za-z0-9/_.-]/.test(c)) out += c === "." ? "\\." : c;
+    } else if (/[A-Za-z0-9/_.-]/.test(c)) out += escapeRegExp(c);
     else fail(`unsupported glob syntax ${JSON.stringify(c)} in source ${glob}`);
   }
   return new RegExp(`^/?${out.replace(/^\//, "")}$`);
