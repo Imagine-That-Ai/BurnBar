@@ -1,18 +1,31 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { publish, PublishError, sha256Hex, validateContract } from "./afar-mac-artifact-publish.mjs";
+import {
+  awsArgv,
+  awsCommands,
+  boundedGet,
+  DEFAULT_LIMITS,
+  publish,
+  PublishError,
+  sha256Hex,
+  validateContract
+} from "./afar-mac-artifact-publish.mjs";
 
 const root = new URL("../../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
 const committed = JSON.parse(read("config/afar-mac-release.json"));
 
-const ARTIFACT = Buffer.from("afar blank dmg bytes");
+const ARTIFACT = Buffer.from("afar blank dmg bytes, streamed in several chunks for the test");
 const ACCOUNT = "0123456789abcdef0123456789abcdef";
 const REPO = "Imagine-That-Ai/BurnBar";
+const API_ASSET_URL = `https://api.github.com/repos/${REPO}/releases/assets/1`;
+const STORAGE_URL = "https://release-assets.githubusercontent.com/blob";
 const FEEDS = { "latest-macos.json": Buffer.from('{"version":"1.0.0"}'), "appcast.xml": Buffer.from("<rss/>") };
+const FAST = { ...DEFAULT_LIMITS, apiDeadlineMs: 500, feedDeadlineMs: 500, artifactDeadlineMs: 500, idleMs: 100 };
 
 function contract(overrides = {}) {
   const sha = sha256Hex(ARTIFACT);
@@ -29,45 +42,68 @@ function contract(overrides = {}) {
   };
 }
 
-function response(status, body = Buffer.alloc(0), headers = {}) {
+/** A fetch Response stand-in with a real ReadableStream body. */
+function response(status, body = Buffer.alloc(0), { headers = {}, chunk = 7, stallAfter = null, declareLength = true } = {}) {
+  let offset = 0;
+  let sent = 0;
+  let cancelled = false;
+  const stream = new ReadableStream({
+    pull(controller) {
+      if (stallAfter !== null && sent >= stallAfter) return new Promise(() => {});
+      if (offset >= body.length) return controller.close();
+      controller.enqueue(new Uint8Array(body.subarray(offset, offset + chunk)));
+      offset += chunk;
+      sent += 1;
+    },
+    cancel() {
+      cancelled = true;
+    }
+  });
+  const all = { ...headers };
+  if (declareLength && status === 200) all["content-length"] ??= String(body.length);
   return {
     status,
     ok: status >= 200 && status < 300,
-    headers: { get: (name) => headers[name.toLowerCase()] ?? null },
-    json: async () => JSON.parse(body.toString()),
-    arrayBuffer: async () => body
+    headers: { get: (name) => all[name.toLowerCase()] ?? null },
+    body: stream,
+    get cancelled() {
+      return cancelled;
+    }
   };
 }
 
-/** A fake GitHub + public host + R2 bucket. */
-function world({ draft = true, assetBytes = ARTIFACT, bucketProbe = FEEDS["latest-macos.json"], existing = null, changeFeedOnPut = false } = {}) {
-  const sha = sha256Hex(ARTIFACT);
+/** A fake GitHub API + asset storage + public host + R2 bucket. */
+function world({
+  draft = true,
+  assetBytes = ARTIFACT,
+  assetType = "application/octet-stream",
+  assetRedirect = STORAGE_URL,
+  assetResponse = null,
+  publicType = "application/x-apple-diskimage",
+  bucketProbe = FEEDS["latest-macos.json"],
+  existing = null,
+  changeFeedOnPut = false
+} = {}) {
   const c = contract();
   const objects = new Map(Object.entries(FEEDS));
   if (existing) objects.set(c.objectKey, existing);
-  const calls = { aws: [], fetch: [], tokenOffOrigin: false };
+  const calls = { aws: [], fetch: [], authOrigins: new Set() };
   const fetchImpl = async (url, init = {}) => {
     calls.fetch.push(url);
-    const auth = init.headers?.Authorization;
-    if (url.startsWith("https://api.github.com/repos/")) {
-      if (url.includes("/releases?")) {
-        const release = {
-          tag_name: c.draftReleaseTag,
-          draft,
-          assets: [{ name: c.artifact.fileName, size: assetBytes.length, url: `https://api.github.com/repos/${REPO}/releases/assets/1` }]
-        };
-        return response(200, Buffer.from(JSON.stringify([release])));
-      }
-      return response(302, Buffer.alloc(0), { location: "https://objects.githubusercontent.com/blob" });
+    if (init.headers?.Authorization) calls.authOrigins.add(new URL(url).origin);
+    if (url.startsWith(`https://api.github.com/repos/${REPO}/releases?`)) {
+      const release = { tag_name: c.draftReleaseTag, draft, assets: [{ name: c.artifact.fileName, size: c.artifact.size, url: API_ASSET_URL }] };
+      return response(200, Buffer.from(JSON.stringify([release])), { headers: { "content-type": "application/json; charset=utf-8" } });
     }
-    if (url.startsWith("https://objects.githubusercontent.com/")) {
-      if (auth) calls.tokenOffOrigin = true;
-      return response(200, assetBytes);
+    if (url === API_ASSET_URL) return response(302, Buffer.alloc(0), { headers: { location: assetRedirect } });
+    if (url === assetRedirect) {
+      return assetResponse ?? response(200, assetBytes, { headers: { "content-type": assetType } });
     }
     if (url.startsWith("https://downloads.burnbar.ai/")) {
-      if (auth) calls.tokenOffOrigin = true;
       const key = url.slice("https://downloads.burnbar.ai/".length).split("?")[0];
-      return objects.has(key) ? response(200, objects.get(key)) : response(404);
+      if (!objects.has(key)) return response(404);
+      const type = key.endsWith(".dmg") ? publicType : "application/json";
+      return response(200, objects.get(key), { headers: { "content-type": type } });
     }
     throw new Error(`unexpected fetch ${url}`);
   };
@@ -75,7 +111,7 @@ function world({ draft = true, assetBytes = ARTIFACT, bucketProbe = FEEDS["lates
     calls.aws.push(args);
     const value = (flag) => args[args.indexOf(flag) + 1];
     if (args[1] === "get-object") {
-      writeFileSync(args[args.length - 1], bucketProbe);
+      writeFileSync(args.at(-1), bucketProbe);
       return { status: 0, stdout: "{}", stderr: "" };
     }
     if (args[1] === "put-object") {
@@ -89,7 +125,7 @@ function world({ draft = true, assetBytes = ARTIFACT, bucketProbe = FEEDS["lates
     }
     return { status: 1, stdout: "", stderr: "unexpected" };
   };
-  return { c, sha, calls, objects, fetchImpl, runAws };
+  return { c, calls, objects, fetchImpl, runAws };
 }
 
 async function run(w, overrides = {}) {
@@ -101,7 +137,8 @@ async function run(w, overrides = {}) {
     fetchImpl: w.fetchImpl,
     runAws: w.runAws,
     workDir: mkdtempSync(join(tmpdir(), "afar-publish-test-")),
-    sleep: async () => {}
+    sleep: async () => {},
+    limits: overrides.limits ?? FAST
   });
 }
 
@@ -135,7 +172,7 @@ test("every binding field is pinned, so a changed key, bucket or host fails clos
     { bucket: "another-bucket" },
     { publicBaseUrl: "https://example.com" },
     { draftReleaseTag: "v0.1.12" },
-    { bindingProbeKey: "appcast.xml" },
+    { consistencyProbeKey: "appcast.xml" },
     { artifact: { ...committed.artifact, fileName: "MissionControl-personal-0.1.12.dmg" } },
     { product: "OpenBurnBar" }
   ]) {
@@ -143,7 +180,7 @@ test("every binding field is pinned, so a changed key, bucket or host fails clos
   }
 });
 
-test("publishes one conditional object and verifies it publicly", async () => {
+test("publishes one conditional object, streams in chunks and verifies it publicly", async () => {
   const w = world();
   const receipt = await run(w);
   assert.equal(receipt.result, "published");
@@ -152,10 +189,11 @@ test("publishes one conditional object and verifies it publicly", async () => {
   assert.equal(args[args.indexOf("--key") + 1], w.c.objectKey);
   assert.equal(args[args.indexOf("--bucket") + 1], "openburnbar-downloads");
   assert.equal(args[args.indexOf("--if-none-match") + 1], "*");
-  assert.equal(args[args.indexOf("--checksum-sha256") + 1], Buffer.from(w.sha, "hex").toString("base64"));
+  assert.equal(args[args.indexOf("--checksum-sha256") + 1], Buffer.from(w.c.artifact.sha256, "hex").toString("base64"));
+  assert.equal(args[args.indexOf("--content-type") + 1], "application/x-apple-diskimage");
   assert.equal(args[args.indexOf("--endpoint-url") + 1], `https://${ACCOUNT}.r2.cloudflarestorage.com`);
   assert.deepEqual(w.calls.aws.map((a) => a[1]), ["get-object", "put-object"]);
-  assert.equal(w.calls.tokenOffOrigin, false);
+  assert.deepEqual([...w.calls.authOrigins], ["https://api.github.com"]);
   assert.equal(w.objects.get("latest-macos.json"), FEEDS["latest-macos.json"]);
 });
 
@@ -173,14 +211,85 @@ test("refuses a published (public) staging release", async () => {
 });
 
 test("refuses staged bytes that differ from the contract", async () => {
-  const w = world({ assetBytes: Buffer.from("afar blank dmg byteZ") });
+  const bad = Buffer.from(ARTIFACT);
+  bad[0] ^= 1;
+  const w = world({ assetBytes: bad });
   await assert.rejects(run(w), /SHA-256 does not match/);
   assert.equal(w.calls.aws.length, 0);
 });
 
-test("refuses to write when the bucket is not the one behind the public host", async () => {
+test("stops an oversized artifact by its declared length and while streaming", async () => {
+  const big = Buffer.concat([ARTIFACT, Buffer.from("extra")]);
+  await assert.rejects(run(world({ assetBytes: big })), /exceeds the \d+-byte cap/);
+  const undeclared = response(200, big, { headers: { "content-type": "application/octet-stream" }, declareLength: false });
+  const w = world({ assetResponse: undeclared });
+  await assert.rejects(run(w), /exceeded the \d+-byte cap/);
+  assert.equal(undeclared.cancelled, true);
+  assert.equal(w.calls.aws.length, 0);
+});
+
+test("accepts an undeclared-length chunked artifact of exactly the right size", async () => {
+  const w = world({ assetResponse: response(200, ARTIFACT, { headers: { "content-type": "application/octet-stream" }, declareLength: false, chunk: 3 }) });
+  assert.equal((await run(w)).result, "published");
+});
+
+test("rejects a short artifact and a stalled stream", async () => {
+  await assert.rejects(run(world({ assetResponse: response(200, ARTIFACT.subarray(1), { headers: { "content-type": "application/octet-stream" }, declareLength: false }) })), /expected exactly/);
+  const stalled = response(200, ARTIFACT, { headers: { "content-type": "application/octet-stream" }, stallAfter: 2 });
+  const w = world({ assetResponse: stalled });
+  await assert.rejects(run(w), /stalled|deadline/);
+  assert.equal(stalled.cancelled, true);
+  assert.equal(w.calls.aws.length, 0);
+});
+
+test("refuses prohibited redirects for the artifact", async () => {
+  for (const target of [
+    "http://release-assets.githubusercontent.com/blob",
+    "https://evil.example.com/blob",
+    "https://user:pass@release-assets.githubusercontent.com/blob",
+    "https://release-assets.githubusercontent.com:8443/blob",
+    "https://api.github.com/other"
+  ]) {
+    const w = world({ assetRedirect: target });
+    await assert.rejects(run(w), /refusing/, target);
+    assert.equal(w.calls.aws.length, 0);
+  }
+});
+
+test("the public host is read without redirects", async () => {
+  const fetchImpl = async () => response(302, Buffer.alloc(0), { headers: { location: "https://downloads.burnbar.ai/elsewhere" } });
+  await assert.rejects(
+    boundedGet("https://downloads.burnbar.ai/latest-macos.json", { fetchImpl, origins: ["https://downloads.burnbar.ai"], accept: "*/*", maxBytes: 10, deadlineMs: 500, idleMs: 100 }),
+    /refusing redirect/
+  );
+});
+
+test("never sends the GitHub token outside api.github.com", async () => {
+  const seen = [];
+  const fetchImpl = async (url, init) => {
+    seen.push([new URL(url).origin, Boolean(init.headers.Authorization)]);
+    return url.startsWith("https://api.github.com")
+      ? response(302, Buffer.alloc(0), { headers: { location: STORAGE_URL } })
+      : response(200, Buffer.from("ok"), { headers: { "content-type": "application/octet-stream" } });
+  };
+  await boundedGet(API_ASSET_URL, {
+    fetchImpl, origins: ["https://api.github.com"], redirectOrigins: ["https://release-assets.githubusercontent.com"],
+    maxRedirects: 1, token: "ghs_test", accept: "application/octet-stream", maxBytes: 10, deadlineMs: 500, idleMs: 100
+  });
+  assert.deepEqual(seen, [["https://api.github.com", true], ["https://release-assets.githubusercontent.com", false]]);
+});
+
+test("rejects wrong media types for the staged and the published artifact", async () => {
+  const w1 = world({ assetType: "text/html" });
+  await assert.rejects(run(w1), /unexpected media type text\/html/);
+  assert.equal(w1.calls.aws.length, 0);
+  const w2 = world({ publicType: "text/html" });
+  await assert.rejects(run(w2), /unexpected media type text\/html/);
+});
+
+test("refuses to write when the bucket and the public host disagree", async () => {
   const w = world({ bucketProbe: Buffer.from("different bucket") });
-  await assert.rejects(run(w), /disagree on the binding probe/);
+  await assert.rejects(run(w), /disagree on the consistency probe/);
   assert.equal(puts(w).length, 0);
 });
 
@@ -192,7 +301,8 @@ test("an existing identical object is reported, never overwritten", async () => 
 });
 
 test("an existing different object is a conflict and is left untouched", async () => {
-  const other = Buffer.from("someone else's bytes");
+  const other = Buffer.from(ARTIFACT);
+  other[3] ^= 1;
   const w = world({ existing: other });
   await assert.rejects(run(w), /conflict, not overwritten/);
   assert.equal(w.objects.get(w.c.objectKey), other);
@@ -201,6 +311,33 @@ test("an existing different object is a conflict and is left untouched", async (
 test("fails if an OpenBurnBar feed changes during publication", async () => {
   const w = world({ changeFeedOnPut: true });
   await assert.rejects(run(w), /feed appcast.xml changed/);
+});
+
+test("the AWS argv uses only aws-cli 1.x options", () => {
+  const commands = awsCommands({ contract: validateContract(committed), endpoint: `https://${ACCOUNT}.r2.cloudflarestorage.com`, artifactPath: "/tmp/a.dmg", probePath: "/tmp/p" });
+  for (const args of Object.values(commands)) {
+    const argv = awsArgv(args);
+    assert.ok(!argv.includes("--no-cli-pager"));
+    assert.deepEqual(argv.slice(-2), ["--output", "json"]);
+  }
+});
+
+// Offline parse of the exact argv by the pinned CLI: point it at a closed local
+// port so a fully parsed command fails only at connect, while any unknown
+// option fails at parse time. Runs when AFAR_PINNED_AWS_BIN is set.
+test("the pinned AWS CLI parses both exact commands", { skip: !process.env.AFAR_PINNED_AWS_BIN }, () => {
+  const dir = mkdtempSync(join(tmpdir(), "afar-awsparse-"));
+  writeFileSync(join(dir, "a.dmg"), "x");
+  const commands = awsCommands({ contract: validateContract(committed), endpoint: "http://127.0.0.1:9", artifactPath: join(dir, "a.dmg"), probePath: join(dir, "p") });
+  for (const args of Object.values(commands)) {
+    const result = spawnSync(process.env.AFAR_PINNED_AWS_BIN, awsArgv(args), {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, AWS_ACCESS_KEY_ID: "test", AWS_SECRET_ACCESS_KEY: "test", AWS_DEFAULT_REGION: "auto", AWS_MAX_ATTEMPTS: "1", AWS_EC2_METADATA_DISABLED: "true" }
+    });
+    const output = `${result.stdout}${result.stderr}`;
+    assert.doesNotMatch(output, /Unknown options|usage:/);
+    assert.match(output, /Could not connect to the endpoint URL/);
+  }
 });
 
 test("the workflow is dispatch-only, main-only, pinned and scoped to the release environment", () => {
@@ -223,8 +360,9 @@ test("the workflow is dispatch-only, main-only, pinned and scoped to the release
 });
 
 test("the AWS CLI requirements are fully hash-pinned", () => {
-  const lines = read("scripts/ci/afar-mac-awscli-requirements.txt").split("\n").filter((l) => /^[a-z]/i.test(l));
+  const text = read("scripts/ci/afar-mac-awscli-requirements.txt");
+  const lines = text.split("\n").filter((l) => /^[a-z]/i.test(l));
   assert.ok(lines.some((l) => l.startsWith("awscli==1.46.1 ")));
   for (const line of lines) assert.match(line, /^[a-z0-9-]+==[\w.]+ \\$/);
-  assert.equal((read("scripts/ci/afar-mac-awscli-requirements.txt").match(/--hash=sha256:[0-9a-f]{64}/g) ?? []).length, lines.length);
+  assert.equal((text.match(/--hash=sha256:[0-9a-f]{64}/g) ?? []).length, lines.length);
 });

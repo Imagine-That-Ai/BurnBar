@@ -11,7 +11,7 @@
   "bucket": "openburnbar-downloads",
   "publicBaseUrl": "https://downloads.burnbar.ai",
   "objectKey": "mission-control/0.1.12/MissionControl-blank-0.1.12-universal-release.dmg",
-  "bindingProbeKey": "latest-macos.json",
+  "consistencyProbeKey": "latest-macos.json",
   "cleanGuiAcceptance": {
     "accepted": false,
     "installedArtifactSha256": null,

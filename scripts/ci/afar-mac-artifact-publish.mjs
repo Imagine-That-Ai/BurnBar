@@ -9,16 +9,21 @@
  *      exact artifact SHA-256. A false or mismatched acceptance stops here.
  *   2. The artifact is read from a DRAFT GitHub release (private staging in this
  *      public repository) and must match the contract's size and SHA-256.
- *   3. Binding probe: the bucket's copy of the probe key must equal the public
- *      host's copy, proving the bucket serves downloads.burnbar.ai. Zero writes
- *      happen before this passes.
+ *   3. Consistency probe: the bucket's copy of latest-macos.json must equal the
+ *      public host's copy. This is a consistency check, not authoritative proof
+ *      of the bucket/domain binding; the custodian's binding verification stays
+ *      an operational gate. Zero writes happen before it passes.
  *   4. One conditional PutObject (If-None-Match: *) of the one contract key, with
  *      an x-amz-checksum-sha256 for server-side verification. An existing key
  *      (412) is never overwritten: identical public bytes mean "already
  *      published", anything else is a conflict.
- *   5. Anonymous public re-fetch must match size and SHA-256, and the OpenBurnBar
- *      feeds (latest-macos.json, appcast.xml) must be byte-identical to the
- *      snapshot taken before the write.
+ *   5. Anonymous public re-fetch must match size, SHA-256 and media type, and the
+ *      OpenBurnBar feeds (latest-macos.json, appcast.xml) must be byte-identical
+ *      to the snapshot taken before the write.
+ *
+ * Every HTTP read goes through boundedGet(): HTTPS only, no userinfo or port,
+ * per-hop origin allow-lists, the GitHub token only on api.github.com, a byte
+ * cap enforced while streaming, and both overall and idle deadlines.
  *
  * It never writes any key other than the contract's, never touches OpenBurnBar
  * feeds, metadata or GitHub releases, and never reads release.json.
@@ -32,13 +37,30 @@ import { pathToFileURL } from "node:url";
 
 export const EXPECTED_BUCKET = "openburnbar-downloads";
 export const EXPECTED_PUBLIC_BASE_URL = "https://downloads.burnbar.ai";
-export const BINDING_PROBE_KEY = "latest-macos.json";
+export const CONSISTENCY_PROBE_KEY = "latest-macos.json";
 export const FEED_KEYS = Object.freeze(["latest-macos.json", "appcast.xml"]);
+export const DMG_MEDIA_TYPE = "application/x-apple-diskimage";
+const GITHUB_API_ORIGIN = "https://api.github.com";
+// GitHub release-asset downloads redirect to one of these storage hosts.
+const GITHUB_ASSET_STORAGE_ORIGINS = Object.freeze([
+  "https://objects.githubusercontent.com",
+  "https://release-assets.githubusercontent.com"
+]);
 const MAX_SINGLE_PUT_BYTES = 5 * 1024 ** 3;
 const HEX64 = /^[a-f0-9]{64}$/u;
 const VERSION = /^\d+\.\d+\.\d+$/u;
 const ACCOUNT_ID = /^[a-f0-9]{32}$/u;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
+
+/** Byte caps and deadlines. Tests shrink the deadlines; production uses these. */
+export const DEFAULT_LIMITS = Object.freeze({
+  apiMaxBytes: 8 * 1024 * 1024,
+  feedMaxBytes: 1024 * 1024,
+  apiDeadlineMs: 30_000,
+  feedDeadlineMs: 30_000,
+  artifactDeadlineMs: 300_000,
+  idleMs: 30_000
+});
 
 export class PublishError extends Error {}
 
@@ -76,7 +98,7 @@ export function validateContract(raw, { requireAccepted = false } = {}) {
   if (raw.objectKey !== `mission-control/${version}/${fileName}`) {
     fail(`objectKey must be mission-control/${version}/${fileName}`);
   }
-  if (raw.bindingProbeKey !== BINDING_PROBE_KEY) fail(`bindingProbeKey must be ${BINDING_PROBE_KEY}`);
+  if (raw.consistencyProbeKey !== CONSISTENCY_PROBE_KEY) fail(`consistencyProbeKey must be ${CONSISTENCY_PROBE_KEY}`);
   const acceptance = raw.cleanGuiAcceptance;
   if (!isPlainObject(acceptance)) fail("cleanGuiAcceptance must be an object");
   if (requireAccepted) {
@@ -104,24 +126,152 @@ export function validateContract(raw, { requireAccepted = false } = {}) {
   });
 }
 
-const GITHUB_HEADERS = {
-  Accept: "application/vnd.github+json",
-  "X-GitHub-Api-Version": "2022-11-28"
-};
+/** HTTPS, default port, no userinfo, and an origin from the allow-list for this hop. */
+function checkedUrl(raw, allowedOrigins) {
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    fail(`refusing malformed URL ${String(raw).slice(0, 120)}`);
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.port) {
+    fail(`refusing non-HTTPS or credentialed URL for origin ${url.origin}`);
+  }
+  if (!allowedOrigins.includes(url.origin)) fail(`refusing request to unapproved origin ${url.origin}`);
+  return url;
+}
+
+function mediaType(response) {
+  return (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+}
+
+async function readChunk(reader, idleMs, deadlineAt) {
+  const wait = Math.min(idleMs, deadlineAt - Date.now());
+  if (wait <= 0) fail("response exceeded its deadline");
+  let timer;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new PublishError("response stalled or exceeded its deadline")), wait);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Stream a body, stopping as soon as it passes maxBytes or a deadline. */
+async function readBounded(response, { maxBytes, idleMs, deadlineAt }) {
+  const declared = response.headers.get("content-length");
+  if (declared !== null && (!/^\d+$/u.test(declared) || Number(declared) > maxBytes)) {
+    fail(`declared response size ${declared} exceeds the ${maxBytes}-byte cap`);
+  }
+  if (!response.body) fail("response has no body stream");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await readChunk(reader, idleMs, deadlineAt);
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) fail(`response exceeded the ${maxBytes}-byte cap`);
+      chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  }
+  return Buffer.concat(chunks, total);
+}
+
+/**
+ * One bounded GET. Redirects are followed manually, each hop re-checked against
+ * redirectOrigins; Authorization is attached only when the hop's origin is the
+ * GitHub API. Returns { status: 404 } for a missing object, else the bytes.
+ */
+export async function boundedGet(rawUrl, {
+  fetchImpl,
+  origins,
+  redirectOrigins = [],
+  maxRedirects = 0,
+  token = null,
+  accept,
+  maxBytes,
+  exactBytes = null,
+  mediaTypes = null,
+  deadlineMs,
+  idleMs,
+  noCache = false
+}) {
+  const controller = new AbortController();
+  const deadlineAt = Date.now() + deadlineMs;
+  const timer = setTimeout(() => controller.abort(), deadlineMs);
+  try {
+    let url = checkedUrl(rawUrl, origins);
+    for (let hop = 0; ; hop++) {
+      const headers = { Accept: accept };
+      if (url.origin === GITHUB_API_ORIGIN) {
+        headers["X-GitHub-Api-Version"] = "2022-11-28";
+        if (token) headers.Authorization = `Bearer ${token}`;
+      }
+      if (noCache) headers["Cache-Control"] = "no-cache";
+      const response = await fetchImpl(url.href, { headers, redirect: "manual", signal: controller.signal });
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel?.().catch(() => {});
+        if (hop >= maxRedirects) fail(`refusing redirect from ${url.origin}`);
+        const location = response.headers.get("location");
+        if (!location) fail("redirect has no location");
+        url = checkedUrl(new URL(location, url).href, redirectOrigins);
+        continue;
+      }
+      if (response.status === 404) {
+        await response.body?.cancel?.().catch(() => {});
+        return { status: 404, bytes: null };
+      }
+      if (!response.ok) {
+        await response.body?.cancel?.().catch(() => {});
+        fail(`GET ${url.origin}${url.pathname} failed with HTTP ${response.status}`);
+      }
+      if (mediaTypes && !mediaTypes.includes(mediaType(response))) {
+        await response.body?.cancel?.().catch(() => {});
+        fail(`unexpected media type ${mediaType(response) || "(none)"} from ${url.origin}`);
+      }
+      const bytes = await readBounded(response, { maxBytes, idleMs, deadlineAt });
+      if (exactBytes !== null && bytes.length !== exactBytes) {
+        fail(`expected exactly ${exactBytes} bytes, received ${bytes.length}`);
+      }
+      return { status: response.status, bytes, mediaType: mediaType(response) };
+    }
+  } catch (error) {
+    if (error instanceof PublishError) throw error;
+    if (controller.signal.aborted) fail("request exceeded its deadline");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Read the artifact from the single DRAFT release carrying the contract tag. */
-export async function downloadDraftAsset({ contract, repository, token, fetchImpl }) {
+export async function downloadDraftAsset({ contract, repository, token, fetchImpl, limits = DEFAULT_LIMITS }) {
   if (!REPOSITORY.test(repository ?? "")) fail("GITHUB_REPOSITORY is malformed");
   if (!token) fail("GH_TOKEN is required to read the draft release");
-  const auth = { ...GITHUB_HEADERS, Authorization: `Bearer ${token}` };
+  const api = {
+    fetchImpl,
+    origins: [GITHUB_API_ORIGIN],
+    token,
+    accept: "application/vnd.github+json",
+    maxBytes: limits.apiMaxBytes,
+    mediaTypes: ["application/json"],
+    deadlineMs: limits.apiDeadlineMs,
+    idleMs: limits.idleMs
+  };
   const matches = [];
   for (let page = 1; page <= 10; page++) {
-    const response = await fetchImpl(
-      `https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`,
-      { headers: auth }
-    );
-    if (!response.ok) fail(`listing releases failed with HTTP ${response.status}`);
-    const releases = await response.json();
+    const { bytes } = await boundedGet(`${GITHUB_API_ORIGIN}/repos/${repository}/releases?per_page=100&page=${page}`, api);
+    if (bytes === null) fail("releases listing returned 404");
+    const releases = JSON.parse(bytes.toString("utf8"));
     if (!Array.isArray(releases)) fail("releases listing is not an array");
     matches.push(...releases.filter((release) => release?.tag_name === contract.draftReleaseTag));
     if (releases.length < 100) break;
@@ -133,100 +283,129 @@ export async function downloadDraftAsset({ contract, repository, token, fetchImp
   if (assets.length !== 1) fail(`expected exactly one ${contract.fileName} asset on the draft`);
   const [asset] = assets;
   if (asset.size !== contract.size) fail("draft asset size does not match the contract");
-  // Follow the storage redirect manually so the token is never sent to another origin.
-  const first = await fetchImpl(asset.url, {
-    headers: { ...auth, Accept: "application/octet-stream" },
-    redirect: "manual"
+  const { bytes } = await boundedGet(asset.url, {
+    fetchImpl,
+    origins: [GITHUB_API_ORIGIN],
+    redirectOrigins: GITHUB_ASSET_STORAGE_ORIGINS,
+    maxRedirects: 1,
+    token,
+    accept: "application/octet-stream",
+    maxBytes: contract.size,
+    exactBytes: contract.size,
+    mediaTypes: ["application/octet-stream", DMG_MEDIA_TYPE],
+    deadlineMs: limits.artifactDeadlineMs,
+    idleMs: limits.idleMs
   });
-  let response = first;
-  if (first.status >= 300 && first.status < 400) {
-    const location = first.headers.get("location");
-    if (!location) fail("asset redirect has no location");
-    response = await fetchImpl(location, { redirect: "follow" });
-  }
-  if (!response.ok) fail(`downloading the draft asset failed with HTTP ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length !== contract.size) fail("downloaded draft asset size does not match the contract");
+  if (bytes === null) fail("draft asset returned 404");
   if (sha256Hex(bytes) !== contract.sha256) fail("downloaded draft asset SHA-256 does not match the contract");
   return bytes;
 }
 
-/** Anonymous, uncached public GET. Returns null on 404 so callers can decide. */
-export async function publicGet(url, { fetchImpl, attempts = 1, sleep = async () => {} }) {
-  let lastStatus = 0;
+/** Anonymous, uncached GET from the public host only, never redirected. */
+async function publicGet(contract, key, { fetchImpl, limits, sleep, attempts, artifact = false }) {
+  const options = {
+    fetchImpl,
+    origins: [contract.publicBaseUrl],
+    accept: artifact ? DMG_MEDIA_TYPE : "*/*",
+    maxBytes: artifact ? contract.size : limits.feedMaxBytes,
+    exactBytes: artifact ? contract.size : null,
+    mediaTypes: artifact ? [DMG_MEDIA_TYPE] : null,
+    deadlineMs: artifact ? limits.artifactDeadlineMs : limits.feedDeadlineMs,
+    idleMs: limits.idleMs,
+    noCache: true
+  };
+  let last = null;
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const separator = url.includes("?") ? "&" : "?";
-    const response = await fetchImpl(`${url}${separator}afar-verify=${Date.now()}-${attempt}`, {
-      headers: { "Cache-Control": "no-cache" },
-      redirect: "follow"
-    });
-    lastStatus = response.status;
-    if (response.ok) return Buffer.from(await response.arrayBuffer());
-    if (response.status === 404 && attempt === attempts) return null;
-    if (attempt < attempts) await sleep(attempt * 2000);
+    try {
+      const result = await boundedGet(`${contract.publicBaseUrl}/${key}?afar-verify=${Date.now()}-${attempt}`, options);
+      if (result.status !== 404 || attempt === attempts) return result.bytes;
+    } catch (error) {
+      last = error;
+      if (attempt === attempts) throw error;
+    }
+    await sleep(attempt * 2000);
   }
-  if (lastStatus === 404) return null;
-  fail(`public GET ${url} failed with HTTP ${lastStatus}`);
+  if (last) throw last;
+  return null;
+}
+
+/** The exact AWS CLI argument vector. aws-cli 1.x: no v2-only flags such as --no-cli-pager. */
+export function awsArgv(args) {
+  return [...args, "--output", "json"];
 }
 
 function isPreconditionFailed(result) {
   return /PreconditionFailed|\(412\)|status code: 412/u.test(`${result.stderr}\n${result.stdout}`);
 }
 
+/** Both AWS commands the publisher runs, for review and offline parsing checks. */
+export function awsCommands({ contract, endpoint, artifactPath, probePath }) {
+  return {
+    probe: [
+      "s3api", "get-object", "--endpoint-url", endpoint,
+      "--bucket", contract.bucket, "--key", CONSISTENCY_PROBE_KEY, probePath
+    ],
+    put: [
+      "s3api", "put-object", "--endpoint-url", endpoint,
+      "--bucket", contract.bucket, "--key", contract.objectKey, "--body", artifactPath,
+      "--if-none-match", "*",
+      "--checksum-sha256", Buffer.from(contract.sha256, "hex").toString("base64"),
+      "--content-type", DMG_MEDIA_TYPE,
+      "--cache-control", "public, max-age=31536000, immutable"
+    ]
+  };
+}
+
 /** The full guarded publication. Every external effect goes through injected functions. */
-export async function publish({ contractRaw, repository, token, accountId, fetchImpl, runAws, workDir, sleep }) {
+export async function publish({ contractRaw, repository, token, accountId, fetchImpl, runAws, workDir, sleep, limits = DEFAULT_LIMITS }) {
   const contract = validateContract(contractRaw, { requireAccepted: true });
   if (!ACCOUNT_ID.test(accountId ?? "")) fail("CLOUDFLARE_ACCOUNT_ID must be 32 lowercase hex characters");
   const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+  const io = { fetchImpl, limits, sleep };
 
-  const bytes = await downloadDraftAsset({ contract, repository, token, fetchImpl });
+  const bytes = await downloadDraftAsset({ contract, repository, token, fetchImpl, limits });
   const artifactPath = join(workDir, contract.fileName);
   writeFileSync(artifactPath, bytes);
+  const commands = awsCommands({ contract, endpoint, artifactPath, probePath: join(workDir, "consistency-probe") });
 
   const feedsBefore = {};
   for (const key of FEED_KEYS) {
-    const body = await publicGet(`${contract.publicBaseUrl}/${key}`, { fetchImpl, attempts: 3, sleep });
+    const body = await publicGet(contract, key, { ...io, attempts: 3 });
     feedsBefore[key] = body === null ? null : sha256Hex(body);
   }
 
-  const probePublic = await publicGet(`${contract.publicBaseUrl}/${BINDING_PROBE_KEY}`, { fetchImpl, attempts: 3, sleep });
-  if (probePublic === null) fail("binding probe key is not served by the public host; refusing to write");
-  const probePath = join(workDir, "binding-probe");
-  const probe = runAws([
-    "s3api", "get-object", "--endpoint-url", endpoint,
-    "--bucket", contract.bucket, "--key", BINDING_PROBE_KEY, probePath
-  ]);
-  if (probe.status !== 0) fail("binding probe could not read the bucket; refusing to write");
-  const probeSha = sha256Hex(readFileSync(probePath));
+  const probePublic = await publicGet(contract, CONSISTENCY_PROBE_KEY, { ...io, attempts: 3 });
+  if (probePublic === null) fail("consistency probe key is not served by the public host; refusing to write");
+  const probe = runAws(commands.probe);
+  if (probe.status !== 0) fail("consistency probe could not read the bucket; refusing to write");
+  const probeSha = sha256Hex(readFileSync(commands.probe.at(-1)));
   if (probeSha !== sha256Hex(probePublic)) {
-    fail("bucket and public host disagree on the binding probe; refusing to write");
+    fail("bucket and public host disagree on the consistency probe; refusing to write");
   }
 
-  const checksum = Buffer.from(contract.sha256, "hex").toString("base64");
-  const put = runAws([
-    "s3api", "put-object", "--endpoint-url", endpoint,
-    "--bucket", contract.bucket, "--key", contract.objectKey, "--body", artifactPath,
-    "--if-none-match", "*",
-    "--checksum-sha256", checksum,
-    "--content-type", "application/x-apple-diskimage",
-    "--cache-control", "public, max-age=31536000, immutable"
-  ]);
+  const put = runAws(commands.put);
   let result = "published";
   if (put.status !== 0) {
     if (!isPreconditionFailed(put)) fail("conditional PutObject failed; nothing was overwritten");
     result = "already-published";
   }
 
-  const published = await publicGet(contract.publicUrl, { fetchImpl, attempts: 6, sleep });
+  let published;
+  try {
+    published = await publicGet(contract, contract.objectKey, { ...io, attempts: 6, artifact: true });
+  } catch (error) {
+    if (result === "already-published") fail("the key already exists with different bytes; conflict, not overwritten");
+    throw error;
+  }
   if (published === null) fail("published object is not reachable on the public host");
-  if (published.length !== contract.size || sha256Hex(published) !== contract.sha256) {
+  if (sha256Hex(published) !== contract.sha256) {
     fail(result === "already-published"
       ? "the key already exists with different bytes; conflict, not overwritten"
       : "public bytes do not match the contract");
   }
 
   for (const key of FEED_KEYS) {
-    const body = await publicGet(`${contract.publicBaseUrl}/${key}`, { fetchImpl, attempts: 3, sleep });
+    const body = await publicGet(contract, key, { ...io, attempts: 3 });
     const after = body === null ? null : sha256Hex(body);
     if (after !== feedsBefore[key]) fail(`OpenBurnBar feed ${key} changed during publication`);
   }
@@ -239,7 +418,7 @@ export async function publish({ contractRaw, repository, token, accountId, fetch
     objectKey: contract.objectKey,
     sha256: contract.sha256,
     size: contract.size,
-    bindingProbeSha256: probeSha,
+    consistencyProbeSha256: probeSha,
     feedsUnchanged: feedsBefore
   };
 }
@@ -270,13 +449,11 @@ async function main(argv) {
     AWS_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
     AWS_DEFAULT_REGION: "auto",
-    AWS_EC2_METADATA_DISABLED: "true"
+    AWS_EC2_METADATA_DISABLED: "true",
+    AWS_PAGER: ""
   };
   const runAws = (awsArgs) => {
-    const result = spawnSync(awsBin, [...awsArgs, "--no-cli-pager", "--output", "json"], {
-      env: awsEnv,
-      encoding: "utf8"
-    });
+    const result = spawnSync(awsBin, awsArgv(awsArgs), { env: awsEnv, encoding: "utf8", timeout: 600_000 });
     return { status: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
   };
   const workDir = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), "afar-mac-publish-"));
