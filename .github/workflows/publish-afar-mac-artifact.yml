@@ -26,7 +26,9 @@ jobs:
     name: Publish one Afar Mac artifact
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Above the helper's 40-minute run budget, so the runner never kills it
+    # between the write and its verification.
+    timeout-minutes: 45
     environment: release
     permissions:
       # The DMG is staged on a DRAFT release so it stays private in this public

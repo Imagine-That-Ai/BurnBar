@@ -9,6 +9,7 @@ import {
   awsCommands,
   boundedGet,
   DEFAULT_LIMITS,
+  isIsoUtcTimestamp,
   publish,
   PublishError,
   sha256Hex,
@@ -87,7 +88,7 @@ function world({
   const c = contract();
   const objects = new Map(Object.entries(FEEDS));
   if (existing) objects.set(c.objectKey, existing);
-  const calls = { aws: [], fetch: [], authOrigins: new Set() };
+  const calls = { aws: [], awsTimeouts: [], fetch: [], authOrigins: new Set() };
   const fetchImpl = async (url, init = {}) => {
     calls.fetch.push(url);
     if (init.headers?.Authorization) calls.authOrigins.add(new URL(url).origin);
@@ -108,8 +109,9 @@ function world({
     }
     throw new Error(`unexpected fetch ${url}`);
   };
-  const runAws = (args) => {
+  const runAws = (args, timeoutMs) => {
     calls.aws.push(args);
+    calls.awsTimeouts.push(timeoutMs);
     const value = (flag) => args[args.indexOf(flag) + 1];
     if (args[1] === "get-object") {
       writeFileSync(args.at(-1), bucketProbe);
@@ -139,7 +141,8 @@ async function run(w, overrides = {}) {
     runAws: w.runAws,
     workDir: mkdtempSync(join(tmpdir(), "afar-publish-test-")),
     sleep: async () => {},
-    limits: overrides.limits ?? FAST
+    limits: overrides.limits ?? FAST,
+    ...(overrides.now ? { now: overrides.now } : {})
   });
 }
 
@@ -160,9 +163,36 @@ test("acceptance must name the exact artifact and carry evidence", () => {
     { ...base.cleanGuiAcceptance, accepted: "true" },
     { ...base.cleanGuiAcceptance, installedArtifactSha256: "f".repeat(64) },
     { ...base.cleanGuiAcceptance, evidenceSha256: null },
-    { ...base.cleanGuiAcceptance, acceptedAt: "yesterday" }
+    { ...base.cleanGuiAcceptance, acceptedAt: "yesterday" },
+    { ...base.cleanGuiAcceptance, acceptedAt: "2026" },
+    { ...base.cleanGuiAcceptance, acceptedAt: "2026-02-31T00:00:00Z" }
   ]) {
     assert.throws(() => validateContract({ ...base, cleanGuiAcceptance: acceptance }, { requireAccepted: true }), PublishError);
+  }
+});
+
+test("acceptedAt is a real RFC 3339 UTC instant, not anything Date.parse tolerates", () => {
+  for (const good of ["2026-10-19T00:00:00Z", "2026-10-19T23:59:59.123Z", "2028-02-29T12:00:00Z"]) {
+    assert.ok(isIsoUtcTimestamp(good), good);
+  }
+  for (const bad of [
+    "2026",
+    "0",
+    "2026-10-19",
+    "2026-02-31T00:00:00Z",
+    "2027-02-29T00:00:00Z",
+    "2026-10-19T24:00:00Z",
+    "2026-10-19T00:00:60Z",
+    "2026-10-19T00:00:00",
+    "2026-10-19T00:00:00+02:00",
+    "2026-10-19 00:00:00Z",
+    "Mon, 19 Oct 2026 00:00:00 GMT",
+    " 2026-10-19T00:00:00Z",
+    0,
+    null,
+    1792368000000
+  ]) {
+    assert.equal(isIsoUtcTimestamp(bad), false, String(bad));
   }
 });
 
@@ -194,6 +224,7 @@ test("publishes one conditional object, streams in chunks and verifies it public
   assert.equal(args[args.indexOf("--content-type") + 1], "application/x-apple-diskimage");
   assert.equal(args[args.indexOf("--endpoint-url") + 1], `https://${ACCOUNT}.r2.cloudflarestorage.com`);
   assert.deepEqual(w.calls.aws.map((a) => a[1]), ["get-object", "put-object"]);
+  assert.deepEqual(w.calls.awsTimeouts, [FAST.awsProbeTimeoutMs, FAST.awsPutTimeoutMs]);
   assert.deepEqual([...w.calls.authOrigins], ["https://api.github.com"]);
   assert.equal(w.objects.get("latest-macos.json"), FEEDS["latest-macos.json"]);
 });
@@ -292,6 +323,33 @@ test("refuses to write when the bucket and the public host disagree", async () =
   const w = world({ bucketProbe: Buffer.from("different bucket") });
   await assert.rejects(run(w), /disagree on the consistency probe/);
   assert.equal(puts(w).length, 0);
+});
+
+test("refuses to start a write that the run budget could not verify", async () => {
+  const w = world();
+  let clock = 0;
+  // Each clock read advances it; the pre-write phase alone exceeds the write window.
+  const now = () => (clock += FAST.totalBudgetMs - FAST.postWriteReserveMs + 1);
+  await assert.rejects(run(w, { now }), /not enough of the run budget remains/);
+  assert.equal(puts(w).length, 0);
+  assert.equal(w.calls.aws.length, 1);
+});
+
+test("the run budget leaves the post-write reserve and fits inside the job timeout", () => {
+  const L = DEFAULT_LIMITS;
+  // Worst case after the write starts: the PUT, every public artifact read and
+  // the feed re-reads (3 attempts each), all at their full deadlines, plus the
+  // retry backoff of 2 s x attempt between reads.
+  const backoff = (attempts) => Array.from({ length: attempts - 1 }, (_, i) => (i + 1) * 2000).reduce((x, y) => x + y, 0);
+  const postWrite =
+    L.awsPutTimeoutMs +
+    L.publicArtifactAttempts * L.publicArtifactDeadlineMs +
+    backoff(L.publicArtifactAttempts) +
+    2 * (3 * L.feedDeadlineMs + backoff(3));
+  assert.ok(postWrite < L.postWriteReserveMs, `${postWrite} >= ${L.postWriteReserveMs}`);
+  assert.ok(L.postWriteReserveMs < L.totalBudgetMs);
+  const minutes = Number(/timeout-minutes: (\d+)/.exec(read(".github/workflows/publish-afar-mac-artifact.yml"))[1]);
+  assert.ok(minutes * 60_000 > L.totalBudgetMs, `job timeout ${minutes} min is not above the run budget`);
 });
 
 test("an existing identical object is reported, never overwritten", async () => {

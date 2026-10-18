@@ -52,15 +52,29 @@ const VERSION = /^\d+\.\d+\.\d+$/u;
 const ACCOUNT_ID = /^[a-f0-9]{32}$/u;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 
-/** Byte caps and deadlines. Tests shrink the deadlines; production uses these. */
+/**
+ * Byte caps, deadlines and the shared run budget. Tests shrink the deadlines;
+ * production uses these. The write starts only if postWriteReserveMs of the
+ * totalBudgetMs remains, which covers the PUT and every check after it:
+ * put 5 min + 4 public artifact reads of 2 min + 2 feeds x 3 reads of 30 s,
+ * with retry sleeps, is about 16.5 min. The job timeout (45 min) sits above
+ * totalBudgetMs, so the runner never kills the process mid-verification.
+ */
 export const DEFAULT_LIMITS = Object.freeze({
   apiMaxBytes: 8 * 1024 * 1024,
   feedMaxBytes: 1024 * 1024,
   apiDeadlineMs: 30_000,
   feedDeadlineMs: 30_000,
   artifactDeadlineMs: 300_000,
-  idleMs: 30_000
+  publicArtifactDeadlineMs: 120_000,
+  publicArtifactAttempts: 4,
+  idleMs: 30_000,
+  awsProbeTimeoutMs: 60_000,
+  awsPutTimeoutMs: 300_000,
+  totalBudgetMs: 40 * 60_000,
+  postWriteReserveMs: 18 * 60_000
 });
+const ISO_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/u;
 
 export class PublishError extends Error {}
 
@@ -70,6 +84,23 @@ function fail(message) {
 
 function isPlainObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** RFC 3339 UTC (YYYY-MM-DDTHH:MM:SS[.mmm]Z) naming a real instant: no rollover such as 2026-02-31. */
+export function isIsoUtcTimestamp(value) {
+  const match = typeof value === "string" ? ISO_UTC.exec(value) : null;
+  if (!match) return false;
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return false;
+  const date = new Date(time);
+  return (
+    date.getUTCFullYear() === Number(match[1]) &&
+    date.getUTCMonth() + 1 === Number(match[2]) &&
+    date.getUTCDate() === Number(match[3]) &&
+    date.getUTCHours() === Number(match[4]) &&
+    date.getUTCMinutes() === Number(match[5]) &&
+    date.getUTCSeconds() === Number(match[6])
+  );
 }
 
 export function sha256Hex(bytes) {
@@ -109,8 +140,8 @@ export function validateContract(raw, { requireAccepted = false } = {}) {
     if (typeof acceptance.evidenceSha256 !== "string" || !HEX64.test(acceptance.evidenceSha256)) {
       fail("cleanGuiAcceptance.evidenceSha256 must reference the acceptance evidence");
     }
-    if (typeof acceptance.acceptedAt !== "string" || !Number.isFinite(Date.parse(acceptance.acceptedAt))) {
-      fail("cleanGuiAcceptance.acceptedAt must be an ISO date");
+    if (!isIsoUtcTimestamp(acceptance.acceptedAt)) {
+      fail("cleanGuiAcceptance.acceptedAt must be an RFC 3339 UTC timestamp such as 2026-10-19T00:00:00Z");
     }
   }
   return Object.freeze({
@@ -310,7 +341,7 @@ async function publicGet(contract, key, { fetchImpl, limits, sleep, attempts, ar
     maxBytes: artifact ? contract.size : limits.feedMaxBytes,
     exactBytes: artifact ? contract.size : null,
     mediaTypes: artifact ? [DMG_MEDIA_TYPE] : null,
-    deadlineMs: artifact ? limits.artifactDeadlineMs : limits.feedDeadlineMs,
+    deadlineMs: artifact ? limits.publicArtifactDeadlineMs : limits.feedDeadlineMs,
     idleMs: limits.idleMs,
     noCache: true
   };
@@ -357,7 +388,8 @@ export function awsCommands({ contract, endpoint, artifactPath, probePath }) {
 }
 
 /** The full guarded publication. Every external effect goes through injected functions. */
-export async function publish({ contractRaw, repository, token, accountId, fetchImpl, runAws, workDir, sleep, limits = DEFAULT_LIMITS }) {
+export async function publish({ contractRaw, repository, token, accountId, fetchImpl, runAws, workDir, sleep, limits = DEFAULT_LIMITS, now = Date.now }) {
+  const startedAt = now();
   const contract = validateContract(contractRaw, { requireAccepted: true });
   if (!ACCOUNT_ID.test(accountId ?? "")) fail("CLOUDFLARE_ACCOUNT_ID must be 32 lowercase hex characters");
   const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
@@ -376,14 +408,18 @@ export async function publish({ contractRaw, repository, token, accountId, fetch
 
   const probePublic = await publicGet(contract, CONSISTENCY_PROBE_KEY, { ...io, attempts: 3 });
   if (probePublic === null) fail("consistency probe key is not served by the public host; refusing to write");
-  const probe = runAws(commands.probe);
+  const probe = runAws(commands.probe, limits.awsProbeTimeoutMs);
   if (probe.status !== 0) fail("consistency probe could not read the bucket; refusing to write");
   const probeSha = sha256Hex(readFileSync(commands.probe.at(-1)));
   if (probeSha !== sha256Hex(probePublic)) {
     fail("bucket and public host disagree on the consistency probe; refusing to write");
   }
 
-  const put = runAws(commands.put);
+  // Never start a write that could not be verified before the run budget ends.
+  if (now() - startedAt > limits.totalBudgetMs - limits.postWriteReserveMs) {
+    fail("not enough of the run budget remains to verify a write; refusing to write");
+  }
+  const put = runAws(commands.put, limits.awsPutTimeoutMs);
   let result = "published";
   if (put.status !== 0) {
     if (!isPreconditionFailed(put)) fail("conditional PutObject failed; nothing was overwritten");
@@ -392,7 +428,7 @@ export async function publish({ contractRaw, repository, token, accountId, fetch
 
   let published;
   try {
-    published = await publicGet(contract, contract.objectKey, { ...io, attempts: 6, artifact: true });
+    published = await publicGet(contract, contract.objectKey, { ...io, attempts: limits.publicArtifactAttempts, artifact: true });
   } catch (error) {
     if (result === "already-published") fail("the key already exists with different bytes; conflict, not overwritten");
     throw error;
@@ -452,8 +488,8 @@ async function main(argv) {
     AWS_EC2_METADATA_DISABLED: "true",
     AWS_PAGER: ""
   };
-  const runAws = (awsArgs) => {
-    const result = spawnSync(awsBin, awsArgv(awsArgs), { env: awsEnv, encoding: "utf8", timeout: 600_000 });
+  const runAws = (awsArgs, timeoutMs) => {
+    const result = spawnSync(awsBin, awsArgv(awsArgs), { env: awsEnv, encoding: "utf8", timeout: timeoutMs });
     return { status: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
   };
   const workDir = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), "afar-mac-publish-"));
