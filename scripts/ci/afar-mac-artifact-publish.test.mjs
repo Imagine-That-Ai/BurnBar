@@ -109,12 +109,14 @@ function world({
   jobs = [jobRecord()],
   jobsTotal = null,
   jobsDate = SERVER_DATE,
-  jobsStatus = 200
+  jobsStatus = 200,
+  edgeCached404 = false
 } = {}) {
   const c = contract();
   const objects = new Map(Object.entries(FEEDS));
   if (existing) objects.set(c.objectKey, existing);
-  const calls = { aws: [], awsTimeouts: [], fetch: [], authOrigins: new Set() };
+  const calls = { aws: [], awsTimeouts: [], fetch: [], authOrigins: new Set(), artifactReads: [] };
+  let putAttempted = false;
   const fetchImpl = async (url, init = {}) => {
     calls.fetch.push(url);
     if (init.headers?.Authorization) calls.authOrigins.add(new URL(url).origin);
@@ -134,6 +136,11 @@ function world({
     }
     if (parsed.origin === "https://downloads.burnbar.ai") {
       const key = parsed.pathname.slice(1);
+      if (key.endsWith(".dmg")) {
+        calls.artifactReads.push({ url, beforeWrite: !putAttempted, cacheControl: init.headers?.["Cache-Control"] ?? null });
+        // The CDN edge caches a 404 for the canonical URL; a query string misses that cache entry.
+        if (edgeCached404 && parsed.search === "") return response(404);
+      }
       if (!objects.has(key)) return response(404);
       const type = key.endsWith(".dmg") ? publicType : "application/json";
       return response(200, objects.get(key), { headers: { "content-type": type } });
@@ -149,6 +156,7 @@ function world({
       return { status: 0, stdout: "{}", stderr: "" };
     }
     if (args[1] === "put-object") {
+      putAttempted = true;
       const key = value("--key");
       if (objects.has(key)) {
         return { status: 254, stdout: "", stderr: "An error occurred (PreconditionFailed) when calling the PutObject operation" };
@@ -495,6 +503,32 @@ test("one timing budget: GitHub's job record bounds everything, strictly inside 
   // The budget is counted from the job's creation, which no job timeout can
   // precede, so it only has to sit strictly below the whole-job timeout.
   assert.ok(L.totalBudgetMs < job * min, `run budget is not below the ${job}-minute job timeout`);
+});
+
+test("the artifact is verified only at its canonical customer URL, and only after the write", async () => {
+  for (const existing of [null, ARTIFACT]) {
+    const w = world({ existing });
+    await run(w);
+    assert.ok(w.calls.artifactReads.length > 0);
+    for (const read of w.calls.artifactReads) {
+      assert.equal(read.url, committed.publicBaseUrl + "/" + committed.objectKey);
+      assert.equal(read.beforeWrite, false, "the canonical URL must not be probed before publication");
+      assert.equal(read.cacheControl, null, "the customer URL is read without a cache override");
+    }
+  }
+});
+
+test("a cached canonical 404 cannot be masked by a cache-busted read that reaches the bucket", async () => {
+  const purge = new RegExp(`canonical customer URL still serves 404.*the object was written.*purge exactly ${committed.publicBaseUrl}/${committed.objectKey}`);
+  const w = world({ edgeCached404: true });
+  await assert.rejects(run(w), purge);
+  assert.equal(puts(w).length, 1);
+  assert.deepEqual(w.objects.get(w.c.objectKey), ARTIFACT, "the bucket holds the bytes; only the edge is stale");
+  assert.ok(w.calls.artifactReads.every((read) => !read.url.includes("?")));
+
+  // A re-run after the key exists (412) still requires the canonical URL, and is not misreported as a conflict.
+  const again = world({ edgeCached404: true, existing: ARTIFACT });
+  await assert.rejects(run(again), /canonical customer URL still serves 404.*the key already exists.*purge exactly/);
 });
 
 test("an existing identical object is reported, never overwritten", async () => {

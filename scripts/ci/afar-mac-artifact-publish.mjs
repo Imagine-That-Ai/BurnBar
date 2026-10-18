@@ -17,9 +17,11 @@
  *      an x-amz-checksum-sha256 for server-side verification. An existing key
  *      (412) is never overwritten: identical public bytes mean "already
  *      published", anything else is a conflict.
- *   5. Anonymous public re-fetch must match size, SHA-256 and media type, and the
- *      OpenBurnBar feeds (latest-macos.json, appcast.xml) must be byte-identical
- *      to the snapshot taken before the write.
+ *   5. Anonymous re-fetch of the exact canonical customer URL (no query string,
+ *      no cache override, never read before the write, so the run cannot seed a
+ *      cached 404) must match size, SHA-256 and media type, and the OpenBurnBar
+ *      feeds (latest-macos.json, appcast.xml) must be byte-identical to the
+ *      snapshot taken before the write.
  *
  * Before any of steps 2-5, the run budget is bound to GitHub's own record of
  * this job (see resolveJobClock): elapsed time is measured from the job's
@@ -401,7 +403,13 @@ export async function resolveJobClock({ repository, token, job, fetchImpl, limit
   });
 }
 
-/** Anonymous, uncached GET from the public host only, never redirected. */
+/**
+ * Anonymous GET from the public host only, never redirected. Feeds are read
+ * cache-busted (query string plus no-cache) to see the bucket's current bytes.
+ * The artifact is read exactly as a customer requests it: the canonical URL
+ * with no query string and no cache override, so a cached 404 at the edge
+ * cannot be masked by a cache-busted read that reaches the bucket.
+ */
 async function publicGet(contract, key, { fetchImpl, limits, sleep, attempts, artifact = false }) {
   const options = {
     fetchImpl,
@@ -412,12 +420,13 @@ async function publicGet(contract, key, { fetchImpl, limits, sleep, attempts, ar
     mediaTypes: artifact ? [DMG_MEDIA_TYPE] : null,
     deadlineMs: artifact ? limits.publicArtifactDeadlineMs : limits.feedDeadlineMs,
     idleMs: limits.idleMs,
-    noCache: true
+    noCache: !artifact
   };
   let last = null;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const result = await boundedGet(`${contract.publicBaseUrl}/${key}?afar-verify=${Date.now()}-${attempt}`, options);
+      const url = artifact ? contract.publicUrl : `${contract.publicBaseUrl}/${key}?afar-verify=${Date.now()}-${attempt}`;
+      const result = await boundedGet(url, options);
       if (result.status !== 404 || attempt === attempts) return result.bytes;
     } catch (error) {
       last = error;
@@ -505,7 +514,9 @@ export async function publish({ contractRaw, repository, token, accountId, job, 
     if (result === "already-published") fail("the key already exists with different bytes; conflict, not overwritten");
     throw error;
   }
-  if (published === null) fail("published object is not reachable on the public host");
+  if (published === null) {
+    fail(`the canonical customer URL still serves 404 (likely a cached negative response); ${result === "published" ? "the object was written" : "the key already exists"}: ask the custodian to purge exactly ${contract.publicUrl} and re-run to verify`);
+  }
   if (sha256Hex(published) !== contract.sha256) {
     fail(result === "already-published"
       ? "the key already exists with different bytes; conflict, not overwritten"
