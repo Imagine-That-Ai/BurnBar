@@ -54,11 +54,17 @@ const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 
 /**
  * Byte caps, deadlines and the shared run budget. Tests shrink the deadlines;
- * production uses these. The write starts only if postWriteReserveMs of the
- * totalBudgetMs remains, which covers the PUT and every check after it:
- * put 5 min + 4 public artifact reads of 2 min + 2 feeds x 3 reads of 30 s,
- * with retry sleeps, is about 16.5 min. The job timeout (45 min) sits above
- * totalBudgetMs, so the runner never kills the process mid-verification.
+ * production uses these.
+ *
+ * totalBudgetMs is measured from the job's first step (AFAR_JOB_STARTED_AT_MS),
+ * not from this process, so slow checkout, Node setup or AWS CLI install spend
+ * the same budget. The write starts only while postWriteReserveMs of it
+ * remains, which covers the PUT and every check after it: put 5 min + 4 public
+ * artifact reads of 2 min + 2 feeds x 3 reads of 30 s, with retry backoff, is
+ * about 16.4 min. The job timeout sits at least JOB_UNBOUNDED_ALLOWANCE_MS
+ * above the budget, which covers the runner's own "Set up job" before the
+ * first step and the post-job cleanup, so the runner never kills the process
+ * between the write and its verification.
  */
 export const DEFAULT_LIMITS = Object.freeze({
   apiMaxBytes: 8 * 1024 * 1024,
@@ -71,9 +77,11 @@ export const DEFAULT_LIMITS = Object.freeze({
   idleMs: 30_000,
   awsProbeTimeoutMs: 60_000,
   awsPutTimeoutMs: 300_000,
-  totalBudgetMs: 40 * 60_000,
+  totalBudgetMs: 34 * 60_000,
   postWriteReserveMs: 18 * 60_000
 });
+export const JOB_UNBOUNDED_ALLOWANCE_MS = 10 * 60_000;
+const JOB_START_MAX_AGE_MS = 24 * 60 * 60_000;
 const ISO_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/u;
 
 export class PublishError extends Error {}
@@ -101,6 +109,20 @@ export function isIsoUtcTimestamp(value) {
     date.getUTCMinutes() === Number(match[5]) &&
     date.getUTCSeconds() === Number(match[6])
   );
+}
+
+/**
+ * The job-start anchor written by the workflow's first step: epoch milliseconds,
+ * not in the future and not stale. Missing or malformed fails closed.
+ */
+export function parseJobStartedAt(raw, nowMs) {
+  if (typeof raw !== "string" || !/^\d{13}$/u.test(raw)) {
+    fail("AFAR_JOB_STARTED_AT_MS must be the job's first-step time in epoch milliseconds");
+  }
+  const value = Number(raw);
+  if (value > nowMs) fail("AFAR_JOB_STARTED_AT_MS is in the future; refusing to extend the run budget");
+  if (nowMs - value > JOB_START_MAX_AGE_MS) fail("AFAR_JOB_STARTED_AT_MS is stale; refusing to publish");
+  return value;
 }
 
 export function sha256Hex(bytes) {
@@ -388,9 +410,12 @@ export function awsCommands({ contract, endpoint, artifactPath, probePath }) {
 }
 
 /** The full guarded publication. Every external effect goes through injected functions. */
-export async function publish({ contractRaw, repository, token, accountId, fetchImpl, runAws, workDir, sleep, limits = DEFAULT_LIMITS, now = Date.now }) {
-  const startedAt = now();
+export async function publish({ contractRaw, repository, token, accountId, fetchImpl, runAws, workDir, sleep, limits = DEFAULT_LIMITS, now = Date.now, startedAt = now() }) {
   const contract = validateContract(contractRaw, { requireAccepted: true });
+  if (!Number.isSafeInteger(startedAt) || startedAt > now()) fail("the run budget anchor must be a past epoch-millisecond time");
+  // The write window closes once the post-write reserve is no longer left in the budget.
+  const writeWindowOpen = () => now() - startedAt <= limits.totalBudgetMs - limits.postWriteReserveMs;
+  if (!writeWindowOpen()) fail("job setup used the write window; refusing before any network or bucket access");
   if (!ACCOUNT_ID.test(accountId ?? "")) fail("CLOUDFLARE_ACCOUNT_ID must be 32 lowercase hex characters");
   const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
   const io = { fetchImpl, limits, sleep };
@@ -416,9 +441,7 @@ export async function publish({ contractRaw, repository, token, accountId, fetch
   }
 
   // Never start a write that could not be verified before the run budget ends.
-  if (now() - startedAt > limits.totalBudgetMs - limits.postWriteReserveMs) {
-    fail("not enough of the run budget remains to verify a write; refusing to write");
-  }
+  if (!writeWindowOpen()) fail("not enough of the run budget remains to verify a write; refusing to write");
   const put = runAws(commands.put, limits.awsPutTimeoutMs);
   let result = "published";
   if (put.status !== 0) {
@@ -475,6 +498,7 @@ async function main(argv) {
     return;
   }
   if (command !== "publish") fail("usage: afar-mac-artifact-publish.mjs check|publish --contract <path>");
+  const startedAt = parseJobStartedAt(process.env.AFAR_JOB_STARTED_AT_MS, Date.now());
   const awsBin = process.env.AWS_BIN;
   if (!awsBin) fail("AWS_BIN is required");
   if (!process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) fail("R2 credentials are required");
@@ -501,7 +525,8 @@ async function main(argv) {
     fetchImpl: fetch,
     runAws,
     workDir,
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    startedAt
   });
   writeFileSync(join(workDir, "receipt.json"), `${JSON.stringify(receipt, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(receipt)}\n`);

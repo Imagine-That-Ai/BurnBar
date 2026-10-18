@@ -10,6 +10,8 @@ import {
   boundedGet,
   DEFAULT_LIMITS,
   isIsoUtcTimestamp,
+  JOB_UNBOUNDED_ALLOWANCE_MS,
+  parseJobStartedAt,
   publish,
   PublishError,
   sha256Hex,
@@ -138,11 +140,12 @@ async function run(w, overrides = {}) {
     token: "ghs_test",
     accountId: ACCOUNT,
     fetchImpl: w.fetchImpl,
-    runAws: w.runAws,
+    runAws: overrides.runAws ?? w.runAws,
     workDir: mkdtempSync(join(tmpdir(), "afar-publish-test-")),
     sleep: async () => {},
     limits: overrides.limits ?? FAST,
-    ...(overrides.now ? { now: overrides.now } : {})
+    ...(overrides.now ? { now: overrides.now } : {}),
+    ...("startedAt" in overrides ? { startedAt: overrides.startedAt } : {})
   });
 }
 
@@ -325,18 +328,79 @@ test("refuses to write when the bucket and the public host disagree", async () =
   assert.equal(puts(w).length, 0);
 });
 
-test("refuses to start a write that the run budget could not verify", async () => {
+// The write window: how long after the job's first step a write may still start.
+const WINDOW = FAST.totalBudgetMs - FAST.postWriteReserveMs;
+
+test("a setup that ends exactly at the write-window boundary still publishes", async () => {
   const w = world();
-  let clock = 0;
-  // Each clock read advances it; the pre-write phase alone exceeds the write window.
-  const now = () => (clock += FAST.totalBudgetMs - FAST.postWriteReserveMs + 1);
-  await assert.rejects(run(w, { now }), /not enough of the run budget remains/);
+  const receipt = await run(w, { startedAt: 1_000, now: () => 1_000 + WINDOW });
+  assert.equal(receipt.result, "published");
+  assert.equal(puts(w).length, 1);
+});
+
+test("slow setup that used the write window refuses before any network or bucket access", async () => {
+  const w = world();
+  await assert.rejects(run(w, { startedAt: 1_000, now: () => 1_000 + WINDOW + 1 }), /job setup used the write window/);
+  assert.equal(w.calls.fetch.length, 0);
+  assert.equal(w.calls.aws.length, 0);
+});
+
+test("a pre-write phase that runs past the write window refuses the PUT", async () => {
+  const w = world();
+  let clock = 1_000;
+  // The bucket probe is the last step before the write; let it end one millisecond late.
+  const runAws = (args, timeoutMs) => {
+    const result = w.runAws(args, timeoutMs);
+    if (args[1] === "get-object") clock = 1_000 + WINDOW + 1;
+    return result;
+  };
+  await assert.rejects(run(w, { startedAt: 1_000, now: () => clock, runAws }), /not enough of the run budget remains/);
   assert.equal(puts(w).length, 0);
   assert.equal(w.calls.aws.length, 1);
 });
 
-test("the run budget leaves the post-write reserve and fits inside the job timeout", () => {
+test("a future or non-integer budget anchor fails closed", async () => {
+  for (const startedAt of [2_001, 1_000.5, Number.NaN]) {
+    const w = world();
+    await assert.rejects(run(w, { startedAt, now: () => 2_000 }), /run budget anchor/);
+    assert.equal(w.calls.fetch.length + w.calls.aws.length, 0);
+  }
+});
+
+test("the job-start anchor is epoch milliseconds, past and recent", () => {
+  const nowMs = Date.parse("2026-10-19T00:10:00Z");
+  assert.equal(parseJobStartedAt(String(nowMs - 60_000), nowMs), nowMs - 60_000);
+  assert.equal(parseJobStartedAt(String(nowMs), nowMs), nowMs);
+  for (const raw of [undefined, "", "0", "1792368000", "1792368000000.5", "+179236800000", " 1792368000000", "1e12"]) {
+    assert.throws(() => parseJobStartedAt(raw, nowMs), PublishError, String(raw));
+  }
+  assert.throws(() => parseJobStartedAt(String(nowMs + 1), nowMs), /in the future/);
+  assert.throws(() => parseJobStartedAt(String(nowMs - 25 * 60 * 60_000), nowMs), /stale/);
+});
+
+/** Job-level and per-step timeout-minutes of the publish workflow, in order. */
+function workflowTiming() {
+  const wf = read(".github/workflows/publish-afar-mac-artifact.yml");
+  const job = Number(/^    timeout-minutes: (\d+)$/m.exec(wf)[1]);
+  const steps = wf.split(/^      - name: /m).slice(1).map((block) => ({
+    name: block.split("\n")[0],
+    block,
+    minutes: Number(/^        timeout-minutes: (\d+)$/m.exec(block)?.[1] ?? Number.NaN)
+  }));
+  return { wf, job, steps };
+}
+
+test("one timing budget: bounded steps, the job-start anchor and the helper fit strictly inside the job timeout", () => {
   const L = DEFAULT_LIMITS;
+  const { job, steps } = workflowTiming();
+  const min = 60_000;
+  for (const step of steps) assert.ok(Number.isInteger(step.minutes) && step.minutes > 0, `step "${step.name}" has no timeout-minutes`);
+
+  // The anchor is the first step, and the helper reads it.
+  assert.match(steps[0].block, /run: echo "AFAR_JOB_STARTED_AT_MS=\$\(date \+%s%3N\)" >> "\$GITHUB_ENV"\n/);
+  assert.equal(steps.filter((step) => step.block.includes("AFAR_JOB_STARTED_AT_MS")).length, 1, "only the first step may set the anchor");
+  assert.match(read("scripts/ci/afar-mac-artifact-publish.mjs"), /parseJobStartedAt\(process\.env\.AFAR_JOB_STARTED_AT_MS, Date\.now\(\)\)/);
+
   // Worst case after the write starts: the PUT, every public artifact read and
   // the feed re-reads (3 attempts each), all at their full deadlines, plus the
   // retry backoff of 2 s x attempt between reads.
@@ -346,10 +410,20 @@ test("the run budget leaves the post-write reserve and fits inside the job timeo
     L.publicArtifactAttempts * L.publicArtifactDeadlineMs +
     backoff(L.publicArtifactAttempts) +
     2 * (3 * L.feedDeadlineMs + backoff(3));
-  assert.ok(postWrite < L.postWriteReserveMs, `${postWrite} >= ${L.postWriteReserveMs}`);
-  assert.ok(L.postWriteReserveMs < L.totalBudgetMs);
-  const minutes = Number(/timeout-minutes: (\d+)/.exec(read(".github/workflows/publish-afar-mac-artifact.yml"))[1]);
-  assert.ok(minutes * 60_000 > L.totalBudgetMs, `job timeout ${minutes} min is not above the run budget`);
+  assert.ok(postWrite < L.postWriteReserveMs, `post-write ${postWrite} >= reserve ${L.postWriteReserveMs}`);
+
+  // Setup steps at their full bounds still leave a write window.
+  const publishStep = steps.at(-1);
+  assert.match(publishStep.block, /afar-mac-artifact-publish\.mjs publish/);
+  const setup = steps.slice(0, -1).reduce((sum, step) => sum + step.minutes * min, 0);
+  assert.ok(setup < L.totalBudgetMs - L.postWriteReserveMs, `bounded setup ${setup} closes the write window`);
+
+  // The publish step's own bound cannot cut the helper short: it starts after the anchor.
+  assert.ok(publishStep.minutes * min > L.totalBudgetMs, "publish step timeout is not above the run budget");
+
+  // Budget (measured from the first step) plus the runner's unbounded "Set up job" and
+  // post-job cleanup allowance sits strictly below the whole-job timeout.
+  assert.ok(L.totalBudgetMs + JOB_UNBOUNDED_ALLOWANCE_MS < job * min, `budget + allowance is not below the ${job}-minute job timeout`);
 });
 
 test("an existing identical object is reported, never overwritten", async () => {

@@ -26,8 +26,12 @@ jobs:
     name: Publish one Afar Mac artifact
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    # Above the helper's 40-minute run budget, so the runner never kills it
-    # between the write and its verification.
+    # One timing budget for the whole job. The first step records the job start;
+    # the helper spends its 34-minute budget from that moment, so slow setup
+    # steps eat into it, and it refuses to write once too little is left to
+    # verify the write. Every step is also bounded on its own. The 11 minutes
+    # above the budget cover the runner's "Set up job" and post-job cleanup.
+    # scripts/ci/afar-mac-artifact-publish.test.mjs pins these numbers.
     timeout-minutes: 45
     environment: release
     permissions:
@@ -36,7 +40,12 @@ jobs:
       # access, so read-only contents permission cannot see the staging asset.
       contents: write
     steps:
+      - name: Record the job start for the run budget
+        timeout-minutes: 1
+        run: echo "AFAR_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Check out the contract and helper only
+        timeout-minutes: 2
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24-native)
         with:
           persist-credentials: false
@@ -48,16 +57,19 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Set up Node
+        timeout-minutes: 3
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 (node24-native)
         with:
           node-version-file: .nvmrc
 
       - name: Refuse unless clean-GUI acceptance is recorded
+        timeout-minutes: 1
         env:
           CONTRACT: ${{ inputs.contract }}
         run: node scripts/ci/afar-mac-artifact-publish.mjs check --contract "$CONTRACT" --require-accepted
 
       - name: Install the hash-pinned AWS CLI
+        timeout-minutes: 4
         run: |
           python3 -m venv "$RUNNER_TEMP/awscli"
           "$RUNNER_TEMP/awscli/bin/pip" install --require-hashes --only-binary=:all: --no-deps \
@@ -65,6 +77,9 @@ jobs:
           "$RUNNER_TEMP/awscli/bin/aws" --version
 
       - name: Publish and verify one object
+        # Above the helper's budget; this step starts after the anchor, so it
+        # cannot end before the helper's own budget does.
+        timeout-minutes: 35
         env:
           CONTRACT: ${{ inputs.contract }}
           GH_TOKEN: ${{ github.token }}
