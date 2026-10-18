@@ -10,9 +10,8 @@ import {
   boundedGet,
   DEFAULT_LIMITS,
   isIsoUtcTimestamp,
-  JOB_UNBOUNDED_ALLOWANCE_MS,
-  parseJobStartedAt,
   publish,
+  PUBLISH_JOB_NAME,
   PublishError,
   sha256Hex,
   validateContract
@@ -29,6 +28,27 @@ const API_ASSET_URL = `https://api.github.com/repos/${REPO}/releases/assets/1`;
 const STORAGE_URL = "https://release-assets.githubusercontent.com/blob";
 const FEEDS = { "latest-macos.json": Buffer.from('{"version":"1.0.0"}'), "appcast.xml": Buffer.from("<rss/>") };
 const FAST = { ...DEFAULT_LIMITS, apiDeadlineMs: 500, feedDeadlineMs: 500, artifactDeadlineMs: 500, idleMs: 100 };
+// This job, as the runner's environment names it, and GitHub's clock when it answers.
+const JOB = { runId: "39149426512", runAttempt: "1", runnerName: "GitHub Actions 1000001", headSha: "a".repeat(40) };
+const JOBS_URL = `https://api.github.com/repos/${REPO}/actions/runs/${JOB.runId}/attempts/${JOB.runAttempt}/jobs?per_page=100`;
+const SERVER_DATE = "Mon, 19 Oct 2026 00:30:00 GMT";
+const iso = (ms) => new Date(ms).toISOString().replace(/\.000Z$/u, "Z");
+/** GitHub's job record for this job, created `ageMs` before SERVER_DATE. */
+function jobRecord(ageMs = 60_000, overrides = {}) {
+  return {
+    id: 117739838531,
+    run_id: Number(JOB.runId),
+    run_attempt: Number(JOB.runAttempt),
+    head_sha: JOB.headSha,
+    name: PUBLISH_JOB_NAME,
+    status: "in_progress",
+    runner_name: JOB.runnerName,
+    created_at: iso(Date.parse(SERVER_DATE) - ageMs),
+    // The runner picked the job up five minutes later; the budget must not start here.
+    started_at: iso(Date.parse(SERVER_DATE) - ageMs + 5 * 60_000),
+    ...overrides
+  };
+}
 
 function contract(overrides = {}) {
   const sha = sha256Hex(ARTIFACT);
@@ -85,7 +105,11 @@ function world({
   publicType = "application/x-apple-diskimage",
   bucketProbe = FEEDS["latest-macos.json"],
   existing = null,
-  changeFeedOnPut = false
+  changeFeedOnPut = false,
+  jobs = [jobRecord()],
+  jobsTotal = null,
+  jobsDate = SERVER_DATE,
+  jobsStatus = 200
 } = {}) {
   const c = contract();
   const objects = new Map(Object.entries(FEEDS));
@@ -95,6 +119,11 @@ function world({
     calls.fetch.push(url);
     if (init.headers?.Authorization) calls.authOrigins.add(new URL(url).origin);
     const parsed = new URL(url);
+    if (url === JOBS_URL) {
+      const headers = { "content-type": "application/json; charset=utf-8", ...(jobsDate === null ? {} : { date: jobsDate }) };
+      const body = Buffer.from(JSON.stringify({ total_count: jobsTotal ?? jobs.length, jobs }));
+      return response(jobsStatus, jobsStatus === 200 ? body : Buffer.alloc(0), { headers });
+    }
     if (parsed.origin === "https://api.github.com" && parsed.pathname === `/repos/${REPO}/releases`) {
       const release = { tag_name: c.draftReleaseTag, draft, assets: [{ name: c.artifact.fileName, size: c.artifact.size, url: API_ASSET_URL }] };
       return response(200, Buffer.from(JSON.stringify([release])), { headers: { "content-type": "application/json; charset=utf-8" } });
@@ -139,13 +168,13 @@ async function run(w, overrides = {}) {
     repository: REPO,
     token: "ghs_test",
     accountId: ACCOUNT,
+    job: overrides.job ?? JOB,
     fetchImpl: w.fetchImpl,
     runAws: overrides.runAws ?? w.runAws,
     workDir: mkdtempSync(join(tmpdir(), "afar-publish-test-")),
     sleep: async () => {},
     limits: overrides.limits ?? FAST,
-    ...(overrides.now ? { now: overrides.now } : {}),
-    ...("startedAt" in overrides ? { startedAt: overrides.startedAt } : {})
+    now: overrides.now ?? (() => 0)
   });
 }
 
@@ -328,54 +357,89 @@ test("refuses to write when the bucket and the public host disagree", async () =
   assert.equal(puts(w).length, 0);
 });
 
-// The write window: how long after the job's first step a write may still start.
+// The write window: how long after GitHub created the job a write may still start.
 const WINDOW = FAST.totalBudgetMs - FAST.postWriteReserveMs;
+// Job age that puts it exactly at the window boundary: elapsed is the age plus
+// one second for the Date header's resolution.
+const AT_BOUNDARY = WINDOW - 1000;
+/** A monotonic clock that reads 0 when the job listing is requested and `later` afterwards. */
+const tickAfterFirst = (later) => {
+  let reads = 0;
+  return () => (reads++ === 0 ? 0 : later);
+};
+/** True when nothing but the job listing was fetched and the bucket was never touched. */
+const onlyJobLookup = (w) => w.calls.fetch.every((url) => url === JOBS_URL) && w.calls.aws.length === 0;
 
-test("a setup that ends exactly at the write-window boundary still publishes", async () => {
+test("the run budget counts from GitHub's job created_at, in GitHub's clock", async () => {
   const w = world();
-  const receipt = await run(w, { startedAt: 1_000, now: () => 1_000 + WINDOW });
+  const receipt = await run(w);
+  assert.equal(receipt.result, "published");
+  assert.equal(w.calls.fetch[0], JOBS_URL);
+  assert.equal(receipt.jobId, 117739838531);
+  assert.equal(receipt.jobCreatedAt, "2026-10-19T00:29:00Z");
+});
+
+test("a pre-first-step delay that ends exactly at the write-window boundary still publishes", async () => {
+  const w = world({ jobs: [jobRecord(AT_BOUNDARY)] });
+  const receipt = await run(w);
   assert.equal(receipt.result, "published");
   assert.equal(puts(w).length, 1);
 });
 
-test("slow setup that used the write window refuses before any network or bucket access", async () => {
-  const w = world();
-  await assert.rejects(run(w, { startedAt: 1_000, now: () => 1_000 + WINDOW + 1 }), /job setup used the write window/);
-  assert.equal(w.calls.fetch.length, 0);
-  assert.equal(w.calls.aws.length, 0);
+test("a pre-first-step delay past the write window refuses before the draft download or any bucket access", async () => {
+  // Queueing, environment approval or runner initialization ("Set up job") before
+  // any step ran: GitHub created the job long before this process started.
+  for (const [ageMs, now] of [
+    [AT_BOUNDARY, tickAfterFirst(1)],
+    [AT_BOUNDARY + 1000, () => 0],
+    [20 * 60 * 60_000, () => 0]
+  ]) {
+    const w = world({ jobs: [jobRecord(ageMs)] });
+    await assert.rejects(run(w, { now }), /already closed the write window/);
+    assert.ok(onlyJobLookup(w), JSON.stringify(w.calls.fetch));
+  }
 });
 
 test("a pre-write phase that runs past the write window refuses the PUT", async () => {
   const w = world();
-  let clock = 1_000;
+  let clock = 0;
   // The bucket probe is the last step before the write; let it end one millisecond late.
   const runAws = (args, timeoutMs) => {
     const result = w.runAws(args, timeoutMs);
-    if (args[1] === "get-object") clock = 1_000 + WINDOW + 1;
+    if (args[1] === "get-object") clock = WINDOW - 61_000 + 1;
     return result;
   };
-  await assert.rejects(run(w, { startedAt: 1_000, now: () => clock, runAws }), /not enough of the run budget remains/);
+  await assert.rejects(run(w, { now: () => clock, runAws }), /not enough of the run budget remains/);
   assert.equal(puts(w).length, 0);
   assert.equal(w.calls.aws.length, 1);
 });
 
-test("a future or non-integer budget anchor fails closed", async () => {
-  for (const startedAt of [2_001, 1_000.5, Number.NaN]) {
-    const w = world();
-    await assert.rejects(run(w, { startedAt, now: () => 2_000 }), /run budget anchor/);
-    assert.equal(w.calls.fetch.length + w.calls.aws.length, 0);
+test("missing, ambiguous or inconsistent job metadata fails closed before the draft download", async () => {
+  const other = { ...JOB };
+  for (const [label, worldOptions, runOptions] of [
+    ["listing 404", { jobsStatus: 404 }, {}],
+    ["no Date header", { jobsDate: null }, {}],
+    ["non-HTTP Date header", { jobsDate: "2026-10-19T00:30:00Z" }, {}],
+    ["no job on this runner", { jobs: [jobRecord(60_000, { runner_name: "GitHub Actions 2" })] }, {}],
+    ["job not in progress", { jobs: [jobRecord(60_000, { status: "queued" })] }, {}],
+    ["two jobs on this runner", { jobs: [jobRecord(), jobRecord(60_000, { id: 2 })] }, {}],
+    ["paginated listing", { jobsTotal: 101 }, {}],
+    ["another attempt", { jobs: [jobRecord(60_000, { run_attempt: 2 })] }, {}],
+    ["another run", { jobs: [jobRecord(60_000, { run_id: 1 })] }, {}],
+    ["another commit", { jobs: [jobRecord(60_000, { head_sha: "b".repeat(40) })] }, {}],
+    ["another job", { jobs: [jobRecord(60_000, { name: "build" })] }, {}],
+    ["no created_at", { jobs: [jobRecord(60_000, { created_at: null })] }, {}],
+    ["loose created_at", { jobs: [jobRecord(60_000, { created_at: "2026-10-19" })] }, {}],
+    ["created after GitHub's now", { jobs: [jobRecord(-2000)] }, {}],
+    ["no run id", {}, { job: { ...other, runId: undefined } }],
+    ["attempt 0", {}, { job: { ...other, runAttempt: "0" } }],
+    ["no runner name", {}, { job: { ...other, runnerName: "" } }],
+    ["short SHA", {}, { job: { ...other, headSha: "abc" } }]
+  ]) {
+    const w = world(worldOptions);
+    await assert.rejects(run(w, runOptions), PublishError, label);
+    assert.ok(onlyJobLookup(w), `${label}: ${JSON.stringify(w.calls.fetch)}`);
   }
-});
-
-test("the job-start anchor is epoch milliseconds, past and recent", () => {
-  const nowMs = Date.parse("2026-10-19T00:10:00Z");
-  assert.equal(parseJobStartedAt(String(nowMs - 60_000), nowMs), nowMs - 60_000);
-  assert.equal(parseJobStartedAt(String(nowMs), nowMs), nowMs);
-  for (const raw of [undefined, "", "0", "1792368000", "1792368000000.5", "+179236800000", " 1792368000000", "1e12"]) {
-    assert.throws(() => parseJobStartedAt(raw, nowMs), PublishError, String(raw));
-  }
-  assert.throws(() => parseJobStartedAt(String(nowMs + 1), nowMs), /in the future/);
-  assert.throws(() => parseJobStartedAt(String(nowMs - 25 * 60 * 60_000), nowMs), /stale/);
 });
 
 /** Job-level and per-step timeout-minutes of the publish workflow, in order. */
@@ -390,16 +454,22 @@ function workflowTiming() {
   return { wf, job, steps };
 }
 
-test("one timing budget: bounded steps, the job-start anchor and the helper fit strictly inside the job timeout", () => {
+test("one timing budget: GitHub's job record bounds everything, strictly inside the job timeout", () => {
   const L = DEFAULT_LIMITS;
-  const { job, steps } = workflowTiming();
+  const { wf, job, steps } = workflowTiming();
   const min = 60_000;
   for (const step of steps) assert.ok(Number.isInteger(step.minutes) && step.minutes > 0, `step "${step.name}" has no timeout-minutes`);
 
-  // The anchor is the first step, and the helper reads it.
-  assert.match(steps[0].block, /run: echo "AFAR_JOB_STARTED_AT_MS=\$\(date \+%s%3N\)" >> "\$GITHUB_ENV"\n/);
-  assert.equal(steps.filter((step) => step.block.includes("AFAR_JOB_STARTED_AT_MS")).length, 1, "only the first step may set the anchor");
-  assert.match(read("scripts/ci/afar-mac-artifact-publish.mjs"), /parseJobStartedAt\(process\.env\.AFAR_JOB_STARTED_AT_MS, Date\.now\(\)\)/);
+  // The job can read its own record, read-only, and the helper binds to the runner's identity.
+  assert.match(wf, /^      actions: read$/m);
+  assert.match(wf, /^    name: Publish one Afar Mac artifact$/m);
+  assert.equal(PUBLISH_JOB_NAME, "Publish one Afar Mac artifact");
+  const helper = read("scripts/ci/afar-mac-artifact-publish.mjs");
+  for (const name of ["GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "RUNNER_NAME", "GITHUB_SHA"]) {
+    assert.match(helper, new RegExp(`process\\.env\\.${name}\\b`));
+    assert.doesNotMatch(wf, new RegExp(`^\\s+${name}:`, "m"), `${name} must come from the runner, not the workflow`);
+  }
+  assert.doesNotMatch(wf, /AFAR_JOB_STARTED_AT_MS|GITHUB_ENV/);
 
   // Worst case after the write starts: the PUT, every public artifact read and
   // the feed re-reads (3 attempts each), all at their full deadlines, plus the
@@ -418,12 +488,13 @@ test("one timing budget: bounded steps, the job-start anchor and the helper fit 
   const setup = steps.slice(0, -1).reduce((sum, step) => sum + step.minutes * min, 0);
   assert.ok(setup < L.totalBudgetMs - L.postWriteReserveMs, `bounded setup ${setup} closes the write window`);
 
-  // The publish step's own bound cannot cut the helper short: it starts after the anchor.
-  assert.ok(publishStep.minutes * min > L.totalBudgetMs, "publish step timeout is not above the run budget");
+  // The publish step starts after the job was created, so a bound at least the
+  // budget cannot cut the helper short.
+  assert.ok(publishStep.minutes * min >= L.totalBudgetMs, "publish step timeout is below the run budget");
 
-  // Budget (measured from the first step) plus the runner's unbounded "Set up job" and
-  // post-job cleanup allowance sits strictly below the whole-job timeout.
-  assert.ok(L.totalBudgetMs + JOB_UNBOUNDED_ALLOWANCE_MS < job * min, `budget + allowance is not below the ${job}-minute job timeout`);
+  // The budget is counted from the job's creation, which no job timeout can
+  // precede, so it only has to sit strictly below the whole-job timeout.
+  assert.ok(L.totalBudgetMs < job * min, `run budget is not below the ${job}-minute job timeout`);
 });
 
 test("an existing identical object is reported, never overwritten", async () => {
@@ -482,6 +553,7 @@ test("the workflow is dispatch-only, main-only, pinned and scoped to the release
   assert.match(wf, /environment: release$/m);
   assert.equal((wf.match(/contents: write/g) ?? []).length, 1);
   assert.doesNotMatch(wf, /(actions|id-token|packages|pull-requests|deployments): write/);
+  assert.deepEqual([...wf.matchAll(/^      ([a-z-]+): (read|write)$/gm)].map((m) => `${m[1]}: ${m[2]}`), ["contents: write", "actions: read"]);
   for (const [, ref] of wf.matchAll(/uses:\s*[^@\s]+@(\S+)/g)) assert.match(ref, /^[0-9a-f]{40}$/);
   assert.match(wf, /persist-credentials: false/);
   assert.match(wf, /options:\n\s+- config\/afar-mac-release\.json\n/);

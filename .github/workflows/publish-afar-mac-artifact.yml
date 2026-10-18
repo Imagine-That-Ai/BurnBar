@@ -26,11 +26,14 @@ jobs:
     name: Publish one Afar Mac artifact
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    # One timing budget for the whole job. The first step records the job start;
-    # the helper spends its 34-minute budget from that moment, so slow setup
-    # steps eat into it, and it refuses to write once too little is left to
-    # verify the write. Every step is also bounded on its own. The 11 minutes
-    # above the budget cover the runner's "Set up job" and post-job cleanup.
+    # One timing budget for the whole job, bound to GitHub's own record of it.
+    # The helper reads this job's created_at from the jobs API and spends its
+    # 44-minute budget from that moment in GitHub's clock, so queueing, the
+    # environment approval, "Set up job" and every setup step count against it.
+    # It refuses to write once too little is left to verify the write, and the
+    # budget sits strictly below this timeout. Approve the release environment
+    # promptly: if the write window has closed, the run refuses with zero
+    # writes and can simply be re-run. Every step is also bounded on its own.
     # scripts/ci/afar-mac-artifact-publish.test.mjs pins these numbers.
     timeout-minutes: 45
     environment: release
@@ -39,11 +42,10 @@ jobs:
       # repository. GitHub lists draft releases only for tokens with push
       # access, so read-only contents permission cannot see the staging asset.
       contents: write
+      # Read this run attempt's job listing, to bind the run budget to the
+      # job's created_at. Read-only; no other actions data is used.
+      actions: read
     steps:
-      - name: Record the job start for the run budget
-        timeout-minutes: 1
-        run: echo "AFAR_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
-
       - name: Check out the contract and helper only
         timeout-minutes: 2
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24-native)
@@ -77,9 +79,9 @@ jobs:
           "$RUNNER_TEMP/awscli/bin/aws" --version
 
       - name: Publish and verify one object
-        # Above the helper's budget; this step starts after the anchor, so it
-        # cannot end before the helper's own budget does.
-        timeout-minutes: 35
+        # Not below the helper's budget; this step starts after the job was
+        # created, so it cannot end before the helper's own budget does.
+        timeout-minutes: 44
         env:
           CONTRACT: ${{ inputs.contract }}
           GH_TOKEN: ${{ github.token }}

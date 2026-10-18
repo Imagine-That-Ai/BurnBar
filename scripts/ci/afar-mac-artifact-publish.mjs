@@ -21,6 +21,11 @@
  *      OpenBurnBar feeds (latest-macos.json, appcast.xml) must be byte-identical
  *      to the snapshot taken before the write.
  *
+ * Before any of steps 2-5, the run budget is bound to GitHub's own record of
+ * this job (see resolveJobClock): elapsed time is measured from the job's
+ * created_at in GitHub's clock, so queueing, environment approval, runner
+ * initialization ("Set up job") and setup steps all spend the same budget.
+ *
  * Every HTTP read goes through boundedGet(): HTTPS only, no userinfo or port,
  * per-hop origin allow-lists, the GitHub token only on api.github.com, a byte
  * cap enforced while streaming, and both overall and idle deadlines.
@@ -34,6 +39,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { performance } from "node:perf_hooks";
 
 export const EXPECTED_BUCKET = "openburnbar-downloads";
 export const EXPECTED_PUBLIC_BASE_URL = "https://downloads.burnbar.ai";
@@ -56,15 +62,13 @@ const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
  * Byte caps, deadlines and the shared run budget. Tests shrink the deadlines;
  * production uses these.
  *
- * totalBudgetMs is measured from the job's first step (AFAR_JOB_STARTED_AT_MS),
- * not from this process, so slow checkout, Node setup or AWS CLI install spend
- * the same budget. The write starts only while postWriteReserveMs of it
- * remains, which covers the PUT and every check after it: put 5 min + 4 public
- * artifact reads of 2 min + 2 feeds x 3 reads of 30 s, with retry backoff, is
- * about 16.4 min. The job timeout sits at least JOB_UNBOUNDED_ALLOWANCE_MS
- * above the budget, which covers the runner's own "Set up job" before the
- * first step and the post-job cleanup, so the runner never kills the process
- * between the write and its verification.
+ * totalBudgetMs is measured from the moment GitHub created this job's record
+ * (resolveJobClock), which no job timeout can precede. The write starts only
+ * while postWriteReserveMs of it remains, which covers the PUT and every check
+ * after it: put 5 min + 4 public artifact reads of 2 min + 2 feeds x 3 reads of
+ * 30 s, with retry backoff, is about 16.4 min. The workflow's job timeout is
+ * strictly above totalBudgetMs, so GitHub cannot cancel the job between the
+ * write and its verification, whatever happened before the first step.
  */
 export const DEFAULT_LIMITS = Object.freeze({
   apiMaxBytes: 8 * 1024 * 1024,
@@ -77,11 +81,15 @@ export const DEFAULT_LIMITS = Object.freeze({
   idleMs: 30_000,
   awsProbeTimeoutMs: 60_000,
   awsPutTimeoutMs: 300_000,
-  totalBudgetMs: 34 * 60_000,
+  totalBudgetMs: 44 * 60_000,
   postWriteReserveMs: 18 * 60_000
 });
-export const JOB_UNBOUNDED_ALLOWANCE_MS = 10 * 60_000;
-const JOB_START_MAX_AGE_MS = 24 * 60 * 60_000;
+/** The workflow job's display name; the job lookup must find exactly this job. */
+export const PUBLISH_JOB_NAME = "Publish one Afar Mac artifact";
+const RUN_ID = /^[1-9]\d{0,19}$/u;
+const RUN_ATTEMPT = /^[1-9]\d{0,3}$/u;
+const GIT_SHA = /^[0-9a-f]{40}$/u;
+const HTTP_DATE = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/u;
 const ISO_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/u;
 
 export class PublishError extends Error {}
@@ -109,20 +117,6 @@ export function isIsoUtcTimestamp(value) {
     date.getUTCMinutes() === Number(match[5]) &&
     date.getUTCSeconds() === Number(match[6])
   );
-}
-
-/**
- * The job-start anchor written by the workflow's first step: epoch milliseconds,
- * not in the future and not stale. Missing or malformed fails closed.
- */
-export function parseJobStartedAt(raw, nowMs) {
-  if (typeof raw !== "string" || !/^\d{13}$/u.test(raw)) {
-    fail("AFAR_JOB_STARTED_AT_MS must be the job's first-step time in epoch milliseconds");
-  }
-  const value = Number(raw);
-  if (value > nowMs) fail("AFAR_JOB_STARTED_AT_MS is in the future; refusing to extend the run budget");
-  if (nowMs - value > JOB_START_MAX_AGE_MS) fail("AFAR_JOB_STARTED_AT_MS is stale; refusing to publish");
-  return value;
 }
 
 export function sha256Hex(bytes) {
@@ -295,7 +289,7 @@ export async function boundedGet(rawUrl, {
       if (exactBytes !== null && bytes.length !== exactBytes) {
         fail(`expected exactly ${exactBytes} bytes, received ${bytes.length}`);
       }
-      return { status: response.status, bytes, mediaType: mediaType(response) };
+      return { status: response.status, bytes, mediaType: mediaType(response), date: response.headers.get("date") };
     }
   } catch (error) {
     if (error instanceof PublishError) throw error;
@@ -354,6 +348,59 @@ export async function downloadDraftAsset({ contract, repository, token, fetchImp
   return bytes;
 }
 
+/**
+ * Bind the run budget to GitHub's own record of this job. Lists the jobs of
+ * this exact run attempt and requires exactly one in-progress job on this
+ * runner, with this run id, attempt, head SHA and job name. Elapsed time is
+ * GitHub's Date header minus the job's created_at, plus one second for the
+ * header's resolution, plus the local monotonic time since the request was
+ * sent; every rounding errs toward more elapsed time. No job timeout can start
+ * before the job's record exists, so the result never under-counts it. Any
+ * missing, ambiguous or inconsistent metadata fails closed.
+ */
+export async function resolveJobClock({ repository, token, job, fetchImpl, limits = DEFAULT_LIMITS, now }) {
+  if (!REPOSITORY.test(repository ?? "")) fail("GITHUB_REPOSITORY is malformed");
+  if (!token) fail("GH_TOKEN is required to read this job's metadata");
+  const { runId, runAttempt, runnerName, headSha } = job ?? {};
+  if (!RUN_ID.test(runId ?? "")) fail("GITHUB_RUN_ID is missing or malformed");
+  if (!RUN_ATTEMPT.test(runAttempt ?? "")) fail("GITHUB_RUN_ATTEMPT is missing or malformed");
+  if (typeof runnerName !== "string" || runnerName.length === 0 || runnerName.length > 255) fail("RUNNER_NAME is missing");
+  if (!GIT_SHA.test(headSha ?? "")) fail("GITHUB_SHA is missing or malformed");
+
+  const sent = now();
+  const { bytes, date } = await boundedGet(`${GITHUB_API_ORIGIN}/repos/${repository}/actions/runs/${runId}/attempts/${runAttempt}/jobs?per_page=100`, {
+    fetchImpl,
+    origins: [GITHUB_API_ORIGIN],
+    token,
+    accept: "application/vnd.github+json",
+    maxBytes: limits.apiMaxBytes,
+    mediaTypes: ["application/json"],
+    deadlineMs: limits.apiDeadlineMs,
+    idleMs: limits.idleMs
+  });
+  if (bytes === null) fail("this run attempt's job listing returned 404");
+  if (typeof date !== "string" || !HTTP_DATE.test(date)) fail("the job listing has no valid Date header; cannot read GitHub's clock");
+  const serverNow = Date.parse(date);
+  const listing = JSON.parse(bytes.toString("utf8"));
+  const jobs = listing?.jobs;
+  if (!Array.isArray(jobs) || listing.total_count !== jobs.length) fail("the job listing is incomplete or malformed");
+  const mine = jobs.filter((entry) => entry?.status === "in_progress" && entry?.runner_name === runnerName);
+  if (mine.length !== 1) fail(`expected exactly one in-progress job on runner ${runnerName}, found ${mine.length}`);
+  const [record] = mine;
+  if (String(record.run_id) !== runId || String(record.run_attempt) !== runAttempt) fail("the job record names another run or attempt");
+  if (record.head_sha !== headSha) fail("the job record names another commit");
+  if (record.name !== PUBLISH_JOB_NAME) fail("the job record names another job");
+  if (!isIsoUtcTimestamp(record.created_at)) fail("the job record has no valid created_at");
+  const createdAt = Date.parse(record.created_at);
+  if (createdAt > serverNow + 1000) fail("the job record was created after GitHub's current time");
+  const elapsedAtSend = serverNow + 1000 - createdAt;
+  return Object.freeze({
+    jobId: record.id,
+    createdAt: record.created_at,
+    elapsedMs: () => elapsedAtSend + (now() - sent)
+  });
+}
+
 /** Anonymous, uncached GET from the public host only, never redirected. */
 async function publicGet(contract, key, { fetchImpl, limits, sleep, attempts, artifact = false }) {
   const options = {
@@ -410,13 +457,15 @@ export function awsCommands({ contract, endpoint, artifactPath, probePath }) {
 }
 
 /** The full guarded publication. Every external effect goes through injected functions. */
-export async function publish({ contractRaw, repository, token, accountId, fetchImpl, runAws, workDir, sleep, limits = DEFAULT_LIMITS, now = Date.now, startedAt = now() }) {
+export async function publish({ contractRaw, repository, token, accountId, job, fetchImpl, runAws, workDir, sleep, limits = DEFAULT_LIMITS, now = () => performance.now() }) {
   const contract = validateContract(contractRaw, { requireAccepted: true });
-  if (!Number.isSafeInteger(startedAt) || startedAt > now()) fail("the run budget anchor must be a past epoch-millisecond time");
-  // The write window closes once the post-write reserve is no longer left in the budget.
-  const writeWindowOpen = () => now() - startedAt <= limits.totalBudgetMs - limits.postWriteReserveMs;
-  if (!writeWindowOpen()) fail("job setup used the write window; refusing before any network or bucket access");
   if (!ACCOUNT_ID.test(accountId ?? "")) fail("CLOUDFLARE_ACCOUNT_ID must be 32 lowercase hex characters");
+  const clock = await resolveJobClock({ repository, token, job, fetchImpl, limits, now });
+  // The write window closes once the post-write reserve is no longer left in the budget.
+  const writeWindowOpen = () => clock.elapsedMs() <= limits.totalBudgetMs - limits.postWriteReserveMs;
+  if (!writeWindowOpen()) {
+    fail("the job's time since GitHub created it already closed the write window; refusing before the draft download or any bucket access");
+  }
   const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
   const io = { fetchImpl, limits, sleep };
 
@@ -477,6 +526,8 @@ export async function publish({ contractRaw, repository, token, accountId, fetch
     objectKey: contract.objectKey,
     sha256: contract.sha256,
     size: contract.size,
+    jobId: clock.jobId,
+    jobCreatedAt: clock.createdAt,
     consistencyProbeSha256: probeSha,
     feedsUnchanged: feedsBefore
   };
@@ -498,7 +549,6 @@ async function main(argv) {
     return;
   }
   if (command !== "publish") fail("usage: afar-mac-artifact-publish.mjs check|publish --contract <path>");
-  const startedAt = parseJobStartedAt(process.env.AFAR_JOB_STARTED_AT_MS, Date.now());
   const awsBin = process.env.AWS_BIN;
   if (!awsBin) fail("AWS_BIN is required");
   if (!process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) fail("R2 credentials are required");
@@ -522,11 +572,16 @@ async function main(argv) {
     repository: process.env.GITHUB_REPOSITORY,
     token: process.env.GH_TOKEN,
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    job: {
+      runId: process.env.GITHUB_RUN_ID,
+      runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+      runnerName: process.env.RUNNER_NAME,
+      headSha: process.env.GITHUB_SHA
+    },
     fetchImpl: fetch,
     runAws,
     workDir,
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    startedAt
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   });
   writeFileSync(join(workDir, "receipt.json"), `${JSON.stringify(receipt, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
