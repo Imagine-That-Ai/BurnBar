@@ -91,7 +91,8 @@ function world({
   const fetchImpl = async (url, init = {}) => {
     calls.fetch.push(url);
     if (init.headers?.Authorization) calls.authOrigins.add(new URL(url).origin);
-    if (url.startsWith(`https://api.github.com/repos/${REPO}/releases?`)) {
+    const parsed = new URL(url);
+    if (parsed.origin === "https://api.github.com" && parsed.pathname === `/repos/${REPO}/releases`) {
       const release = { tag_name: c.draftReleaseTag, draft, assets: [{ name: c.artifact.fileName, size: c.artifact.size, url: API_ASSET_URL }] };
       return response(200, Buffer.from(JSON.stringify([release])), { headers: { "content-type": "application/json; charset=utf-8" } });
     }
@@ -99,8 +100,8 @@ function world({
     if (url === assetRedirect) {
       return assetResponse ?? response(200, assetBytes, { headers: { "content-type": assetType } });
     }
-    if (url.startsWith("https://downloads.burnbar.ai/")) {
-      const key = url.slice("https://downloads.burnbar.ai/".length).split("?")[0];
+    if (parsed.origin === "https://downloads.burnbar.ai") {
+      const key = parsed.pathname.slice(1);
       if (!objects.has(key)) return response(404);
       const type = key.endsWith(".dmg") ? publicType : "application/json";
       return response(200, objects.get(key), { headers: { "content-type": type } });
@@ -268,7 +269,7 @@ test("never sends the GitHub token outside api.github.com", async () => {
   const seen = [];
   const fetchImpl = async (url, init) => {
     seen.push([new URL(url).origin, Boolean(init.headers.Authorization)]);
-    return url.startsWith("https://api.github.com")
+    return new URL(url).origin === "https://api.github.com"
       ? response(302, Buffer.alloc(0), { headers: { location: STORAGE_URL } })
       : response(200, Buffer.from("ok"), { headers: { "content-type": "application/octet-stream" } });
   };
