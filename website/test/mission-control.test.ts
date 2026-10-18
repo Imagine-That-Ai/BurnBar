@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
+  AFAR_ANDROID_INTERNAL_TEST,
+  androidInternalTest,
   contrastRatio,
   deepen,
   describeArchitectures,
   isPublicRelease,
   MISSION_CONTROL_DEEP,
+  MISSION_CONTROL_DOWNLOAD_READY,
   MISSION_CONTROL_RELEASE,
   MISSION_CONTROL_STYLE,
   parseRelease,
   releaseEvidence
 } from "../src/data/mission-control";
 import tokens from "../src/data/mission-control-tokens.json";
+import androidManifest from "../public/mission-control/android.json";
+import releaseManifest from "../public/mission-control/release.json";
 import type { MissionControlRelease } from "../src/data/mission-control";
 
 const artifact = {
@@ -170,5 +176,101 @@ describe("Mission Control release gate with malformed manifests", () => {
     expect(MISSION_CONTROL_RELEASE.state).toBe("preparing");
     expect(MISSION_CONTROL_RELEASE.artifact).toBeNull();
     expect(releaseEvidence(MISSION_CONTROL_RELEASE).filter((check) => check.done)).toEqual([]);
+  });
+});
+
+describe("Afar Android internal test", () => {
+  const optInUrl = "https://play.google.com/apps/internaltest/4701516252282422888";
+  const internalTest: Record<string, unknown> = {
+    schemaVersion: 1,
+    state: "internal-test",
+    product: "Afar",
+    packageName: "app.fleetmissioncontrol.android",
+    versionName: "0.1.5",
+    versionCode: 105,
+    track: "internal",
+    audience: "invited-testers",
+    optInUrl,
+    production: false
+  };
+
+  it("shows the committed internal test with its version and Play opt-in link", () => {
+    expect(AFAR_ANDROID_INTERNAL_TEST).toEqual({
+      versionName: "0.1.5",
+      versionCode: 105,
+      optInUrl
+    });
+    expect(androidInternalTest(androidManifest)).toEqual(AFAR_ANDROID_INTERNAL_TEST);
+  });
+
+  it("stays independent of the Mac download gate", () => {
+    expect(MISSION_CONTROL_DOWNLOAD_READY).toBe(false);
+    expect(isPublicRelease(releaseManifest)).toBe(false);
+    expect(isPublicRelease({ ...releaseManifest, ...androidManifest })).toBe(false);
+    expect(releaseManifest).toMatchObject({ state: "preparing", artifact: null });
+  });
+
+  it("publishes no signing, account or local details", () => {
+    expect(Object.keys(androidManifest).sort()).toEqual(Object.keys(internalTest).sort());
+    expect(JSON.stringify(androidManifest)).not.toMatch(/sha256|cert|@|\/Users\/|\/Volumes\//i);
+  });
+
+  it.each([
+    ["schemaVersion as the string '1'", { schemaVersion: "1" }],
+    ["a published state", { state: "published" }],
+    ["the production track", { track: "production" }],
+    ["an open-testing track", { track: "beta" }],
+    ["a public audience", { audience: "public" }],
+    ["production true", { production: true }],
+    ["production as the string 'false'", { production: "false" }],
+    ["production missing", { production: undefined }],
+    ["versionName as whitespace", { versionName: " " }],
+    ["versionCode as a string", { versionCode: "105" }],
+    ["versionCode as a fraction", { versionCode: 105.5 }],
+    ["versionCode zero", { versionCode: 0 }],
+    ["optInUrl over http", { optInUrl: optInUrl.replace("https:", "http:") }],
+    [
+      "optInUrl on another host",
+      { optInUrl: "https://play.google.com.example.com/apps/internaltest/1" }
+    ],
+    [
+      "optInUrl as a store listing",
+      { optInUrl: "https://play.google.com/store/apps/details?id=app.fleetmissioncontrol.android" }
+    ],
+    [
+      "optInUrl with credentials",
+      { optInUrl: "https://user:pass@play.google.com/apps/internaltest/1" }
+    ],
+    ["optInUrl with a query", { optInUrl: `${optInUrl}?ref=x` }],
+    [
+      "optInUrl with a non-numeric id",
+      { optInUrl: "https://play.google.com/apps/internaltest/abc" }
+    ],
+    ["optInUrl missing", { optInUrl: undefined }]
+  ])("hides the link when %s", (_label, change) => {
+    expect(androidInternalTest(internalTest)).not.toBeNull();
+    expect(androidInternalTest({ ...internalTest, ...change })).toBeNull();
+  });
+
+  it.each([null, undefined, "internal-test", 42, [], true])(
+    "hides the link for a non-object manifest: %j",
+    (manifest) => {
+      expect(androidInternalTest(manifest)).toBeNull();
+    }
+  );
+
+  it("renders the Android section from the parsed manifest, outside the Mac gate", () => {
+    const page = readFileSync(
+      new URL("../src/pages/mission-control.astro", import.meta.url),
+      "utf8"
+    );
+    const start = page.indexOf("{android && (");
+    const section = page.slice(start, page.indexOf('id="release"')).replace(/\s+/g, " ");
+    expect(start).toBeGreaterThan(-1);
+    expect(section).toContain("href={android.optInUrl}");
+    expect(section).toContain(
+      "Invited testers only. Open with the Google account already enrolled in the test; this link does not grant tester access. This is not a public Play Store release."
+    );
+    expect(section).not.toMatch(/downloadReady|release\.artifact/);
   });
 });

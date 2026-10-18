@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "state": "internal-test",
+  "product": "Afar",
+  "packageName": "app.fleetmissioncontrol.android",
+  "versionName": "0.1.5",
+  "versionCode": 105,
+  "track": "internal",
+  "audience": "invited-testers",
+  "optInUrl": "https://play.google.com/apps/internaltest/4701516252282422888",
+  "production": false
+}

@@ -1,4 +1,5 @@
 import manifest from "../../public/mission-control/release.json";
+import androidManifest from "../../public/mission-control/android.json";
 import tokens from "./mission-control-tokens.json";
 
 export interface MissionControlRelease {
@@ -162,10 +163,71 @@ export function describeArchitectures(architectures: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+// ─── Android internal test ──────────────────────────────────────────────────
+// A separate manifest from the Mac release. Nothing here feeds the Mac gate,
+// and an internal-test link is not a download: Play only admits accounts
+// already enrolled in the test.
+
+export interface AfarAndroidInternalTest {
+  versionName: string;
+  versionCode: number;
+  optInUrl: string;
+}
+
+/** Play's internal-test opt-in page: https://play.google.com/apps/internaltest/<digits>. */
+function isPlayInternalTestUrl(value: string | null): boolean {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "play.google.com" &&
+      !url.username &&
+      !url.password &&
+      !url.port &&
+      !url.search &&
+      !url.hash &&
+      /^\/apps\/internaltest\/\d+$/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The internal test to show, or null. Fails closed: the link appears only for
+ * a schema-1 manifest in the internal-test state on Play's internal track,
+ * limited to invited testers, explicitly not production, with a positive
+ * integer version code and a Play internal-test opt-in URL.
+ */
+export function androidInternalTest(raw: unknown): AfarAndroidInternalTest | null {
+  const record = asRecord(raw);
+  const versionName = text(record.versionName);
+  const optInUrl = text(record.optInUrl);
+  const versionCode = record.versionCode;
+  if (
+    record.schemaVersion !== 1 ||
+    record.state !== "internal-test" ||
+    record.track !== "internal" ||
+    record.audience !== "invited-testers" ||
+    record.production !== false ||
+    versionName === null ||
+    typeof versionCode !== "number" ||
+    !Number.isInteger(versionCode) ||
+    versionCode < 1 ||
+    optInUrl === null ||
+    !isPlayInternalTestUrl(optInUrl)
+  ) {
+    return null;
+  }
+  return { versionName, versionCode, optInUrl };
+}
+
 // The page renders only the parsed shape; the gate evaluates the raw manifest.
 export const MISSION_CONTROL_RELEASE: MissionControlRelease = parseRelease(manifest);
 export const MISSION_CONTROL_DOWNLOAD_READY = isPublicRelease(manifest);
 export const MISSION_CONTROL_EVIDENCE = releaseEvidence(manifest);
+export const AFAR_ANDROID_INTERNAL_TEST = androidInternalTest(androidManifest);
 export const MISSION_CONTROL_VOICE = tokens.voice;
 export const MISSION_CONTROL_META = tokens.meta;
 
