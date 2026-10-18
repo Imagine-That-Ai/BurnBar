@@ -1,0 +1,73 @@
+name: Publish Afar Mac artifact
+
+# Publishes exactly one Afar (Mission Control) Mac DMG to the existing downloads
+# R2 bucket, after the clean-GUI acceptance recorded in the reviewed contract.
+# It never touches OpenBurnBar feeds, metadata, GitHub releases or signing.
+# See scripts/ci/afar-mac-artifact-publish.mjs for the fail-closed sequence.
+
+on:
+  workflow_dispatch:
+    inputs:
+      contract:
+        description: "Reviewed Afar release contract"
+        required: true
+        type: choice
+        options:
+          - config/afar-mac-release.json
+
+permissions: {}
+
+concurrency:
+  group: publish-afar-mac-artifact
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish one Afar Mac artifact
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      # The DMG is staged on a DRAFT release so it stays private in this public
+      # repository. GitHub lists draft releases only for tokens with push
+      # access, so read-only contents permission cannot see the staging asset.
+      contents: write
+    steps:
+      - name: Check out the contract and helper only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24-native)
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .nvmrc
+            config/afar-mac-release.json
+            scripts/ci/afar-mac-artifact-publish.mjs
+            scripts/ci/afar-mac-awscli-requirements.txt
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 (node24-native)
+        with:
+          node-version-file: .nvmrc
+
+      - name: Refuse unless clean-GUI acceptance is recorded
+        env:
+          CONTRACT: ${{ inputs.contract }}
+        run: node scripts/ci/afar-mac-artifact-publish.mjs check --contract "$CONTRACT" --require-accepted
+
+      - name: Install the hash-pinned AWS CLI
+        run: |
+          python3 -m venv "$RUNNER_TEMP/awscli"
+          "$RUNNER_TEMP/awscli/bin/pip" install --require-hashes --only-binary=:all: --no-deps \
+            -r scripts/ci/afar-mac-awscli-requirements.txt
+          "$RUNNER_TEMP/awscli/bin/aws" --version
+
+      - name: Publish and verify one object
+        env:
+          CONTRACT: ${{ inputs.contract }}
+          GH_TOKEN: ${{ github.token }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_BIN: ${{ runner.temp }}/awscli/bin/aws
+        run: node scripts/ci/afar-mac-artifact-publish.mjs publish --contract "$CONTRACT"

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "product": "Afar",
+  "version": "0.1.12",
+  "artifact": {
+    "fileName": "MissionControl-blank-0.1.12-universal-release.dmg",
+    "sha256": "9e46f299de73cb6510ed8b49f9a32cb7758b98e593fe51b8e568b06bd68aa272",
+    "size": 40624316
+  },
+  "draftReleaseTag": "afar-mac-0.1.12",
+  "bucket": "openburnbar-downloads",
+  "publicBaseUrl": "https://downloads.burnbar.ai",
+  "objectKey": "mission-control/0.1.12/MissionControl-blank-0.1.12-universal-release.dmg",
+  "bindingProbeKey": "latest-macos.json",
+  "cleanGuiAcceptance": {
+    "accepted": false,
+    "installedArtifactSha256": null,
+    "evidenceSha256": null,
+    "acceptedAt": null
+  }
+}
