@@ -105,6 +105,18 @@ export const ADVISORY_ALLOWLIST = {
       "csv-parse prototype replacement via duplicated __proto__ header: dev-only transitive of firebase-tools over developer-selected local CSV files; the only fix (7.0.2) is a major firebase-tools has not adopted",
     expires: "2026-12-09",
   },
+  "GHSA-vfj7-8cjw-p6xm": {
+    // reason: braces 3.0.3 stack-exhaustion DoS on deeply nested brace
+    // patterns. Only chokidar 3.6.0 depends on it, pulled in by firebase-tools
+    // (a functions/ devDependency that never reaches a deployed bundle) to
+    // watch developer-configured local paths. No fixed release exists (3.0.3
+    // is last_affected and latest), and firebase-tools 15.34.0 still requires
+    // chokidar ^3.6.0. Covers the chokidar and firebase-tools findings, whose
+    // via-chain is only this advisory. Paired with the osv-scanner.toml entry.
+    reason:
+      "braces nested-pattern DoS: dev-only transitive of firebase-tools via chokidar 3 over developer-configured local watch paths; no fixed release published",
+    expires: "2026-12-09",
+  },
 };
 
 function isObject(value) {
