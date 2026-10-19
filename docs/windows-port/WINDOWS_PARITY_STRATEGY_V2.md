@@ -442,7 +442,7 @@ No other “unknown unknowns” are claimed closed; U8 is the process for discov
 | Doc | Role after v2 |
 |---|---|
 | `WINDOWS_PARITY_LEDGER.yml` | Still only status SoT |
-| `WINDOWS_MACOS_PARITY_SCAN_2026-07-09.md` | Inventory useful; **§6–7 phases superseded by this file** |
+| [`WINDOWS_MACOS_PARITY_SCAN_2026-07-09.md`](WINDOWS_MACOS_PARITY_SCAN_2026-07-09.md) | Inventory useful; **§6–7 phases superseded by this file** |
 | `PARITY_100_REMEDIATION_PLAN.md` | Historical; waves remapped to H0–H10 |
 | `decisions/0006` | F1 architecture; F2 = fire revisit triggers intentionally |
 | `ALBERTO_PARITY_CHECKLIST.md` | Still human gates; add F1/F2 decision |

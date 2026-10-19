@@ -187,8 +187,8 @@ Each is a Droid one-liner (Swift/.NET/sqlcipher already installed there). The fl
 
 ## 9. Artifact index
 - Spec: `docs/WINDOWS_PORT_MASTER_PLAN.md` (v2.1) · Brief: `docs/WINDOWS_PORT_MISSION_BRIEF.md`
-- Plans: `docs/windows-port/PHASE1_CORE_SPLIT_PLAN.md` · `PHASE3_UI_PARITY_PLAN.md` ·
-  `CORE_ENGINE_SPLIT_FEASIBILITY.md` · `PARSER_OUTPUT_CONTRACT.md` · `STREAM_JSON_MAC_GOLDEN.md`
+- Plans: [`docs/windows-port/PHASE1_CORE_SPLIT_PLAN.md`](PHASE1_CORE_SPLIT_PLAN.md) · `PHASE3_UI_PARITY_PLAN.md` ·
+  [`CORE_ENGINE_SPLIT_FEASIBILITY.md`](CORE_ENGINE_SPLIT_FEASIBILITY.md) · `PARSER_OUTPUT_CONTRACT.md` · `STREAM_JSON_MAC_GOLDEN.md`
 - Zenith bucket: `~/.zenith/projects/20260703T010700Z-windows-port-zenith-mission-brief/.zenith/` (mission.md,
   contract/, pending-contract/, decisions/G0-stack-bind-OPTION-A-2026-07-03.md +
   dev-host-windows-evidence-2026-07-03.md, AGENTS.md, MEMORY.md)
