@@ -27,10 +27,12 @@ export interface ReleaseCheck {
 
 type UnknownRecord = Record<string, unknown>;
 
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function asRecord(value: unknown): UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : {};
+  return isRecord(value) ? value : {};
 }
 
 /** A trimmed, non-empty string, or null for anything else. */
