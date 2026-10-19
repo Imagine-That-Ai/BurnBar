@@ -73,12 +73,18 @@ const GALLERY_FAMILIES = [
       </ul>
 
       <div class="bb-hero__ctas">
-        <a class="btn btn--ember" href="/bench/arena/vote">
-          Cast a blind vote{" "}
-          <span class="btn-arrow" aria-hidden="true">
-            →
+        {votingOpen ? (
+          <a class="btn btn--ember" href="/bench/arena/vote">
+            Cast a blind vote{" "}
+            <span class="btn-arrow" aria-hidden="true">
+              →
+            </span>
+          </a>
+        ) : (
+          <span class="btn btn--ghost bb-cta--closed" aria-disabled="true">
+            Voting opens soon
           </span>
-        </a>
+        )}
         <a class="btn btn--ghost" href="/bench">
           Back to the leaderboard
         </a>
@@ -241,20 +247,32 @@ const GALLERY_FAMILIES = [
           one — identities reveal only after you vote. Every ballot feeds the Bradley–Terry ratings
           published above.
         </p>
-        <a class="btn btn--ember" href="/bench/arena/vote">
-          Open the ballot{" "}
-          <span class="btn-arrow" aria-hidden="true">
-            →
+        {votingOpen ? (
+          <>
+            <a class="btn btn--ember" href="/bench/arena/vote">
+              Open the ballot{" "}
+              <span class="btn-arrow" aria-hidden="true">
+                →
+              </span>
+            </a>
+            <span class="bb-console__url">
+              blind until you vote · reveal-after-write · no sign-in needed
+            </span>
+          </>
+        ) : (
+          <span class="btn btn--ghost bb-cta--closed" aria-disabled="true">
+            Voting opens soon
           </span>
-        </a>
-        <span class="bb-console__url">
-          blind until you vote · reveal-after-write · no sign-in needed
-        </span>
+        )}
       </div>
     </div>
   </section>
 
-  {/* ──────────────── 5 · ARTIFACT GALLERY ──────────────── */}
+  {/* ──────────────── 5 · ARTIFACT GALLERY ────────────────
+     BB-18: hidden until real thumbnails exist — the six "ARTIFACT PENDING"
+     frames read as a broken page, not a promise. Re-enable when the first
+     Arena round ships thumbnails. */}
+  {false && (
   <section class="bb-section" aria-labelledby="gal-h">
     <div class="container container--wide">
       <header class="bb-sec-head">
@@ -281,4 +299,5 @@ const GALLERY_FAMILIES = [
       </div>
     </div>
   </section>
+  )}
 </BaseLayout>

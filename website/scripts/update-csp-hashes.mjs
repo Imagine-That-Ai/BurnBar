@@ -167,6 +167,9 @@ function expectedMarketingCsps(hashes, { includeCollector = false, env = process
       "https://www.gstatic.com/recaptcha/"
     ],
     frameSrc: [
+      // 'self' covers the same-origin auth helper iframe the CLI link flow
+      // embeds (BB-06) — without it /link breaks on both themes.
+      "'self'",
       "https://*.firebaseapp.com",
       "https://accounts.google.com",
       "https://appleid.apple.com",

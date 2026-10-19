@@ -97,11 +97,13 @@ async function initPretextShrinkwrap() {
             });
           }
         } else {
-          // Sibling inline nodes (strong, em, spans) - extract text content to preserve
-          currentText += " " + node.textContent;
+          // Sibling inline nodes (strong, em, spans) - extract text content to preserve.
+          // Concatenate verbatim: joining with a space breaks "<strong>macOS</strong>,"
+          // into "macOS ," (BB-23) — the text nodes already carry the real whitespace.
+          currentText += node.textContent;
         }
       } else if (node.nodeType === Node.TEXT_NODE) {
-        currentText += " " + node.textContent;
+        currentText += node.textContent;
       }
     });
 

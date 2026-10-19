@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -14,7 +14,15 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(ROOT, "dist");
 const STAGING_FIREBASE_PUBLIC_CONFIG = loadStagingFirebasePublicConfig();
-const env = { ...process.env, ...STAGING_FIREBASE_PUBLIC_CONFIG };
+const env = {
+  ...process.env,
+  ...STAGING_FIREBASE_PUBLIC_CONFIG,
+  // Flags the bundle as non-production: firebaseClient.ts then treats any
+  // production fallback as a build failure instead of a convenience (BB-01).
+  // Preview-channel builds reuse this same lane — a preview on burnbar-staging
+  // must carry exactly these staging identifiers.
+  PUBLIC_BURNBAR_ENV: "staging"
+};
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -39,6 +47,15 @@ function walk(directory, out = []) {
   }
   return out;
 }
+
+// Staging and preview deployments are never indexable (BB-22): the CI hosting
+// config adds X-Robots-Tag to every route, and the artifact itself ships a
+// deny-all robots.txt so the rule survives any header slip.
+writeFileSync(
+  join(DIST, "robots.txt"),
+  "User-agent: *\nDisallow: /\n",
+  "utf8"
+);
 
 const builtAssets = walk(DIST).filter((file) => /\.(?:html|js|mjs)$/u.test(file));
 for (const file of builtAssets) {

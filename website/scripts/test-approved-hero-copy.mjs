@@ -34,8 +34,8 @@ assert.match(
 );
 assert.match(
   index,
-  /Download for Mac — \{SITE\.macReleaseLatest\}/,
-  "homepage CTA must use Download for Mac with shipping version from SITE"
+  /Download for Mac — \{SITE\.macReleaseDisplay\}/,
+  "homepage CTA must use Download for Mac with display version from SITE (BB-09)"
 );
 
 assert.match(site, /tagline: "Watch your agents\. Before the bill\."/);

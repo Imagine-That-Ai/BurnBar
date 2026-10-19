@@ -551,7 +551,7 @@ export const DUTIES: DutyLane[] = [
         note: "Runs with the daemon and watches ~/.claude/projects — and stops immediately without a signed-in vault key. When it does run it writes one sentinel file per settled session: a path, an mtime, a schema version. It reads no transcript, extracts nothing, and never writes to this store."
       }
     ],
-    source: "server.py `_memory_write_enabled()`; PensieveKnowledgeWatcher.swift"
+    source: "tools/openburnbar-mcp/server.py · Pensieve knowledge watcher (daemon)"
   },
   {
     id: "install",

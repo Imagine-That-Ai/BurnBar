@@ -8,6 +8,10 @@ permissions:
   contents: read
 
 on:
+  # BB-12/pipeline: every push to main auto-builds + deploys the staging
+  # site (and the staging console bundle) through the same trusted lane.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       candidate_sha:
@@ -49,7 +53,31 @@ jobs:
       contents: read
     outputs:
       candidate_sha: ${{ steps.resolve.outputs.candidate_sha }}
+      deploy_hosting: ${{ steps.flags.outputs.deploy_hosting }}
+      deploy_functions: ${{ steps.flags.outputs.deploy_functions }}
+      dry_run: ${{ steps.flags.outputs.dry_run }}
     steps:
+      - name: Resolve deploy flags for this event
+        id: flags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_DEPLOY_HOSTING: ${{ inputs.deploy_hosting }}
+          INPUT_DEPLOY_FUNCTIONS: ${{ inputs.deploy_functions }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          # On push to main: deploy hosting (site + console), skip Functions
+          # (their own lane owns them), never dry-run.
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            echo "deploy_hosting=true"  >> "$GITHUB_OUTPUT"
+            echo "deploy_functions=false" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy_hosting=${INPUT_DEPLOY_HOSTING:-false}" >> "$GITHUB_OUTPUT"
+            echo "deploy_functions=${INPUT_DEPLOY_FUNCTIONS:-false}" >> "$GITHUB_OUTPUT"
+            echo "dry_run=${INPUT_DRY_RUN:-true}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Authorize exact candidate selection
         id: resolve
         env:
@@ -133,7 +161,7 @@ jobs:
   build-hosting-candidate:
     name: Build and test staging Hosting candidate
     needs: resolve-candidate
-    if: ${{ inputs.deploy_hosting }}
+    if: ${{ needs.resolve-candidate.outputs.deploy_hosting == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -165,6 +193,30 @@ jobs:
           # dark in PR verify; this write is artifact-only and is not committed.
           npm run csp:update --prefix website
           node scripts/ci/write-firebase-hosting-ci-config.test.mjs
+          # BB-01 gate on the packaged site: no production identifiers in dist.
+          node website/scripts/verify-no-prod-config.mjs website/dist
+
+      - name: Build isolated staging console (when configured)
+        env:
+          STAGING_CONSOLE_PUBLIC_CONFIG_JSON: ${{ vars.STAGING_CONSOLE_PUBLIC_CONFIG_JSON }}
+        run: |
+          set -euo pipefail
+          # BB-12: the console target is optional — when the repo variable is
+          # absent the artifact ships the marketing site only.
+          test -f apps/console/package.json || { echo "no console app; skipping"; exit 0; }
+          if [ -z "$STAGING_CONSOLE_PUBLIC_CONFIG_JSON" ]; then
+            echo "::notice::STAGING_CONSOLE_PUBLIC_CONFIG_JSON unset; console not packaged."
+            exit 0
+          fi
+          node -e '
+            const cfg = JSON.parse(process.env.STAGING_CONSOLE_PUBLIC_CONFIG_JSON);
+            const fs = require("fs");
+            const env = Object.entries(cfg).map(([k,v])=>`NEXT_PUBLIC_FIREBASE_${k.toUpperCase()}=${v}`).join("\n");
+            fs.writeFileSync("apps/console/.env.production.local", env + "\nNEXT_PUBLIC_BURNBAR_ENV=staging\n");
+          '
+          npm ci --prefix apps/console
+          npm run build --prefix apps/console
+          node website/scripts/verify-no-prod-config.mjs apps/console/out
 
       - name: Package bounded Hosting data
         env:
@@ -174,10 +226,15 @@ jobs:
           destination="$RUNNER_TEMP/staging-hosting/website/dist"
           mkdir -p "$destination"
           cp -R website/dist/. "$destination/"
+          # BB-12: carry the console build when the step above produced one.
+          if [[ -d apps/console/out ]]; then
+            mkdir -p "$RUNNER_TEMP/staging-hosting/apps/console"
+            cp -R apps/console/out "$RUNNER_TEMP/staging-hosting/apps/console/out"
+          fi
           cp firebase.json "$RUNNER_TEMP/staging-hosting/firebase.json"
           (
             cd "$RUNNER_TEMP/staging-hosting"
-            find website firebase.json -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+            find website apps firebase.json -type f -print0 2>/dev/null | sort -z | xargs -0 sha256sum > SHA256SUMS
             printf '%s\n' "$CANDIDATE_SHA" > CANDIDATE_SHA
           )
 
@@ -192,7 +249,7 @@ jobs:
   build-functions-candidate:
     name: Build and test staging Functions candidate
     needs: resolve-candidate
-    if: ${{ inputs.deploy_functions }}
+    if: ${{ needs.resolve-candidate.outputs.deploy_functions == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -284,7 +341,7 @@ jobs:
 
   deploy-through-trusted-main:
     name: Deploy candidate through trusted main workflow
-    if: ${{ !inputs.dry_run && always() && needs.resolve-candidate.result == 'success' && needs.build-rules-candidate.result == 'success' && (!inputs.deploy_hosting || needs.build-hosting-candidate.result == 'success') && (!inputs.deploy_functions || needs.build-functions-candidate.result == 'success') }}
+    if: ${{ needs.resolve-candidate.outputs.dry_run != 'true' && always() && needs.resolve-candidate.result == 'success' && needs.build-rules-candidate.result == 'success' && (needs.resolve-candidate.outputs.deploy_hosting != 'true' || needs.build-hosting-candidate.result == 'success') && (needs.resolve-candidate.outputs.deploy_functions != 'true' || needs.build-functions-candidate.result == 'success') }}
     needs:
       - resolve-candidate
       - build-rules-candidate
@@ -298,9 +355,9 @@ jobs:
     with:
       candidate_sha: ${{ needs.resolve-candidate.outputs.candidate_sha }}
       rules_artifact: staging-rules-${{ needs.resolve-candidate.outputs.candidate_sha }}
-      deploy_hosting: ${{ inputs.deploy_hosting }}
+      deploy_hosting: ${{ needs.resolve-candidate.outputs.deploy_hosting }}
       hosting_artifact: staging-hosting-${{ needs.resolve-candidate.outputs.candidate_sha }}
-      deploy_functions: ${{ inputs.deploy_functions }}
+      deploy_functions: ${{ needs.resolve-candidate.outputs.deploy_functions }}
       functions_artifact: staging-functions-${{ needs.resolve-candidate.outputs.candidate_sha }}
       # The candidate build resolves a blank input to the reviewed staging
       # manifest, so the trusted deploy always receives explicit selectors and

@@ -331,6 +331,14 @@ active migration; generated bindings or feature-branch merges do not by
 themselves mean a domain is production-promoted or that legacy code can be
 deleted.
 
+### Environments & smoke tests
+
+The marketing site (`website/`) ships to three Firebase environments:
+prod (`burnbar` → burnbar.ai), staging (`burnbar-staging`), and per-PR
+preview channels on staging. The environment matrix, required vars/secrets,
+deploy flow, and how to run the Playwright smoke suite locally live in
+[docs/ops/STAGING.md — Environments & smoke tests](docs/ops/STAGING.md#environments--smoke-tests).
+
 ---
 
 ## Requirements

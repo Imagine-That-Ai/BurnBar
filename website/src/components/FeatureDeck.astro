@@ -114,7 +114,9 @@ const {
   .frow__ghost {
     position: absolute;
     top: -0.62em;
-    left: -0.12em;
+    /* BB-17: keep the oversized index inside the visual's grid cell — the
+       negative offset painted/ clipped against the viewport edges. */
+    left: 0.04em;
     font-size: clamp(5rem, 12vw, 9rem);
     line-height: 1;
     font-weight: var(--wght-bold);
@@ -127,7 +129,7 @@ const {
   }
   .frow--flip .frow__ghost {
     left: auto;
-    right: -0.12em;
+    right: 0.04em;
   }
 
   /* —— copy side —— */

@@ -77,7 +77,7 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
     source: "cursor.com/api/usage-summary",
     cost: "exact",
     quota: "yes",
-    cred: "Workos session token (auto-extracted)",
+    cred: "WorkOS session token (auto-extracted)",
     notes:
       "Unofficial endpoint. Enterprise plans fall back to per-line breakdown when plan-limit is 0.",
     category: "editor",

@@ -1055,6 +1055,12 @@ table.bb-standings {
   overflow-wrap: anywhere;
 }
 
+/* BB-18: closed-state ballot CTA — same look as a disabled action. */
+.bb-cta--closed {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .bb-gallery {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

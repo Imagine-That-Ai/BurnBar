@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // its name (or any character a URL percent-encodes) resolves to "…%20…" through
 // `.pathname`, and every fs call against it fails with "dist/ does not exist".
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
@@ -127,6 +128,20 @@ export function runLinkCheck() {
         } catch {
           broken++;
           issues.push(`${fileRel}: malformed URL ${h}`);
+          continue;
+        }
+        // BB-07: links into this repo on GitHub must point at files that
+        // actually exist — a blob/main/<path> href to a renamed or missing
+        // file 404s on the live site. Check the path against the checkout.
+        const repoBlob = href.match(
+          /^https:\/\/github\.com\/Imagine-That-Ai\/BurnBar\/blob\/main\/([^#?]+)/i
+        );
+        if (repoBlob) {
+          const relPath = decodeURIComponent(repoBlob[1]);
+          if (!existsSync(join(REPO_ROOT, relPath))) {
+            broken++;
+            issues.push(`${fileRel}: repo link to missing file ${relPath}`);
+          }
         }
         continue;
       }

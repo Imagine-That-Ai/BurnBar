@@ -41,7 +41,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
         <a class="platcard platcard--live" href="#macos">
           <DownloadPlatformIcon platform="macos" />
           <span class="sr-only">macOS</span>
-          <span class="platcard__ver mono">v{SITE.macReleaseLatest}</span>
+          <span class="platcard__ver mono">v{SITE.macReleaseDisplay}</span>
           <span class="platcard__status">Available now</span>
           <span class="platcard__cta">Download DMG →</span>
         </a>
@@ -82,35 +82,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
         </a>
       </div>
 
-      <nav class="jump" aria-label="Jump to platform">
-        <a class="jump--live" href="#macos" aria-label="Jump to macOS" title="macOS">
-          <DownloadPlatformIcon platform="macos" compact />
-        </a>
-        <a class="jump--live" href="#linux" aria-label="Jump to Linux" title="Linux">
-          <DownloadPlatformIcon platform="linux" compact />
-        </a>
-        <a
-          class="jump--live"
-          href="#ios"
-          aria-label="Jump to iPhone and iPad"
-          title="iPhone and iPad"
-        >
-          <DownloadPlatformIcon platform="ios" compact />
-        </a>
-        <a href="#editor" aria-label="Jump to Cursor and VS Code" title="Cursor and VS Code">
-          <DownloadPlatformIcon platform="editor" compact />
-        </a>
-        <a
-          href="#cursor-plugin"
-          aria-label="Jump to the Cursor Marketplace plugin"
-          title="Cursor Marketplace plugin"
-        >
-          <DownloadPlatformIcon platform="cursor-plugin" compact />
-        </a>
-        <a href="#android" aria-label="Jump to Android" title="Android">
-          <DownloadPlatformIcon platform="android" compact />
-        </a>
-      </nav>
+
     </div>
   </section>
 
@@ -119,7 +91,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
     <div class="container dlsec__shell">
       <div class="dlsec__head">
         <div class="dlsec__intro">
-          <span class="tag tag--exact tag--plain mono">Release · {SITE.macReleaseLatest}</span>
+          <span class="tag tag--exact tag--plain mono">Release · {SITE.macReleaseDisplay}</span>
           <h2>macOS app</h2>
           <p class="lead">
             Native Swift app. Runs as a menu-bar utility. Requires {SITE.macMin} or later on an
@@ -134,7 +106,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
             data-analytics-prop-placement="hero"
             data-analytics-prop-target-platform="macos"
           >
-            Download DMG · {SITE.macReleaseLatest}
+            Download DMG · {SITE.macReleaseDisplay}
             <span class="btn-arrow" aria-hidden="true">
               ↓
             </span>
@@ -157,7 +129,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
             <h3>Download &amp; open the DMG</h3>
             <p>
               The macOS DMG is served from the signed GitHub Release for this cut. This link targets
-              the signed, notarized, smoke-tested {SITE.macReleaseLatest} release whose checksum
+              the signed, notarized, smoke-tested {SITE.macReleaseDisplay} release whose checksum
               matches the immutable GitHub Release asset.
             </p>
             {hasMacUpdateFeed && (
@@ -206,7 +178,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
       <details class="alt">
         <summary>Build from source instead</summary>
         <div class="alt__body">
-          <pre><code class="mono">git clone {SITE.github}.git
+          <pre tabindex="0"><code class="mono">git clone {SITE.github}.git
 cd BurnBar
 make install</code></pre>
           <p class="muted small">Requires Xcode 16+, Swift 5.10+, XcodeGen optional.</p>
@@ -409,7 +381,7 @@ make install</code></pre>
           <span class="step__num mono">2</span>
           <div class="step__card">
             <h3>Build the extension</h3>
-            <pre><code class="mono">cd extensions/openburnbar
+            <pre tabindex="0"><code class="mono">cd extensions/openburnbar
 npm ci
 npm run build</code></pre>
           </div>
@@ -468,7 +440,7 @@ npm run build</code></pre>
               <code>Imagine-That-Ai/openburnbar-cursor-plugin</code> is the marketplace git URL).
               Until then, symlink the package locally:
             </p>
-            <pre><code class="mono">git clone https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin.git
+            <pre tabindex="0"><code class="mono">git clone https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin.git
 mkdir -p "$HOME/.cursor/plugins/local"
 ln -sfn "$(pwd)/openburnbar-cursor-plugin" "$HOME/.cursor/plugins/local/openburnbar"</code></pre>
             <p>
@@ -513,7 +485,7 @@ ln -sfn "$(pwd)/openburnbar-cursor-plugin" "$HOME/.cursor/plugins/local/openburn
       <div class="dlsec__head">
         <div class="dlsec__intro">
           <span class="tag tag--beta tag--plain mono">
-            Remediation in progress · Play Store pending
+            In development
           </span>
           <h2>Android companion</h2>
           <p class="lead">
@@ -716,33 +688,6 @@ ln -sfn "$(pwd)/openburnbar-cursor-plugin" "$HOME/.cursor/plugins/local/openburn
     color: var(--ember-bright, var(--ember-core));
   }
 
-  /* platform jump links */
-  .jump {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: var(--s-2);
-    margin-top: var(--s-5);
-  }
-  .jump a {
-    display: grid;
-    place-items: center;
-    padding: 0;
-    border-radius: 0.85rem;
-    border: 0;
-    background: transparent;
-    transition:
-      transform var(--dur-base) var(--ease),
-      filter var(--dur-base) var(--ease);
-  }
-  .jump a:hover,
-  .jump a.jump--live:hover {
-    transform: translateY(-3px);
-    filter: saturate(1.15);
-  }
-  .jump a.jump--live {
-    opacity: 1;
-  }
 
   @media (min-width: 64rem) {
     .pagehead__inner {

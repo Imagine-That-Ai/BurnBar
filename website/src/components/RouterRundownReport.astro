@@ -29,6 +29,23 @@ interface Props {
 const { rundown, variant = "full", archiveDates = [], livePath = "latest" } = Astro.props;
 const isPreview = variant === "preview";
 
+/* BB-34: history JSON cites raw API endpoints (some 401 to browsers). Map
+   them to the public human page for the same source before rendering — the
+   JSON records themselves are frozen, so the mapping lives at the seam. */
+const API_TO_PUBLIC_URL: [RegExp, string][] = [
+  [/^https:\/\/artificialanalysis\.ai\/api\//, "https://artificialanalysis.ai/"],
+  [/^https:\/\/huggingface\.co\/api\//, "https://huggingface.co/"],
+  [/^https:\/\/([^/]+)\/api\/v\d+\//, "https://$1/"]
+];
+function publicSourceURL(url: string | undefined): string | undefined {
+  if (!url) return url;
+  for (const [re, pub] of API_TO_PUBLIC_URL) {
+    const m = url.match(re);
+    if (m) return pub.replace("$1", m[1] ?? "");
+  }
+  return url;
+}
+
 const generatedLabel = (() => {
   try {
     const date = new Date(rundown.generatedAt);
@@ -199,7 +216,7 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
                       <li class={`cite cite--${freshnessTone(cite.freshness)}`}>
                         <img class="cite__logo" src={cite.logo} alt="" width="22" height="22" loading="lazy" />
                         <div class="cite__body">
-                          <a class="cite__name" href={cite.sourceURL ?? "/router#sources"} target="_blank" rel="noopener noreferrer">{cite.attribution}</a>
+                          <a class="cite__name" href={publicSourceURL(cite.sourceURL) ?? "/router#sources"} target="_blank" rel="noopener noreferrer">{cite.attribution}</a>
                           <div class="cite__meta mono">
                             {cite.rank != null && <span>rank {cite.rank}</span>}
                             {cite.score != null && <span>score {pct(cite.score)}</span>}
@@ -261,12 +278,12 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     </div>
 
     {rundown.notes.length > 0 && (
-      <div class="rundown__notes">
-        <h3 class="rundown__lh mono">Operator notes</h3>
+      <details class="rundown__notes">
+        <summary class="rundown__lh mono">Methodology</summary>
         <ul>
           {rundown.notes.map((line) => <li>{line}</li>)}
         </ul>
-      </div>
+      </details>
     )}
 
     {archive.length > 0 && (

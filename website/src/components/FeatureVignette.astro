@@ -485,6 +485,12 @@ const { id, class: className = "" } = Astro.props;
     content-visibility: auto;
     contain-intrinsic-size: 320px 150px;
   }
+  :global(:root[data-theme="light"]) .fv {
+    /* BB-17: the white→charcoal fade was a dirty band on the cream page. */
+    background:
+      radial-gradient(70% 80% at 12% 0%, rgba(250, 107, 6, 0.08), transparent 62%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(22, 19, 14, 0.06));
+  }
   .fv__glow {
     position: absolute;
     inset: -30% 40% 50% -20%;

@@ -645,8 +645,8 @@
     <!-- Right: High-Fidelity Interactive Sidebar Legend -->
     <aside class="lcsm__legend" aria-label="Interactive Lifecycle Legend">
       <h3 class="lcsm__legendh mono">eight states</h3>
-      <ul class="lcsm__list">
-        <li
+      <div class="lcsm__list">
+        <div
           class="legend-card is-active"
           data-card="healthy"
           role="button"
@@ -661,9 +661,9 @@
             </div>
             <p class="legend-card__desc">Eligible to serve · ranked first on primary queue.</p>
           </div>
-        </li>
+        </div>
 
-        <li
+        <div
           class="legend-card"
           data-card="pressure"
           role="button"
@@ -678,9 +678,9 @@
             </div>
             <p class="legend-card__desc">&lt; 20% quota remaining · ranked lower on fallbacks.</p>
           </div>
-        </li>
+        </div>
 
-        <li
+        <div
           class="legend-card"
           data-card="cooling-down"
           role="button"
@@ -695,9 +695,9 @@
             </div>
             <p class="legend-card__desc">Transient failure · automatically re-probed in 5 min.</p>
           </div>
-        </li>
+        </div>
 
-        <li
+        <div
           class="legend-card"
           data-card="rate-limited"
           role="button"
@@ -712,9 +712,9 @@
             </div>
             <p class="legend-card__desc">429 limit from provider · cool-down ticking down.</p>
           </div>
-        </li>
+        </div>
 
-        <li
+        <div
           class="legend-card"
           data-card="exhausted"
           role="button"
@@ -729,9 +729,9 @@
             </div>
             <p class="legend-card__desc">Monthly token cap hit · waits for window rollover.</p>
           </div>
-        </li>
+        </div>
 
-        <li
+        <div
           class="legend-card"
           data-card="auth-failed"
           role="button"
@@ -746,9 +746,9 @@
             </div>
             <p class="legend-card__desc">Token expired or billing error · surfaces a UI flag.</p>
           </div>
-        </li>
+        </div>
 
-        <li
+        <div
           class="legend-card"
           data-card="disabled"
           role="button"
@@ -765,9 +765,9 @@
               Routing turned off by user · tracked but never selected.
             </p>
           </div>
-        </li>
+        </div>
 
-        <li class="legend-card" data-card="unknown" role="button" tabindex="0" aria-pressed="false">
+        <div class="legend-card" data-card="unknown" role="button" tabindex="0" aria-pressed="false">
           <span class="legend-card__indicator unknown"></span>
           <div class="legend-card__body">
             <div class="legend-card__header">
@@ -776,8 +776,8 @@
             </div>
             <p class="legend-card__desc">Quota probe stale · eligible but serves at lowest rank.</p>
           </div>
-        </li>
-      </ul>
+        </div>
+      </div>
     </aside>
   </div>
 

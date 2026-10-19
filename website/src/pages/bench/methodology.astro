@@ -493,7 +493,7 @@ const AMENDMENTS: [string, string, string][] = [
                   `${coverage.commonCount} tasks are common to all ${coverage.models.length} models — the like-for-like comparison scope.`}
                 Harness gaps list tasks the model ran on other harnesses but not that one.
               </p>
-              <div class="bb-cov__wrap">
+              <div class="bb-cov__wrap" tabindex="0" role="region" aria-label="Coverage breakdown">
                 <table class="bb-data bb-cov__table">
                   <thead>
                     <tr>
@@ -537,7 +537,7 @@ const AMENDMENTS: [string, string, string][] = [
             {coverage.excluded.length > 0 && (
               <article class="bb-methcard">
                 <h3>Excluded tasks.</h3>
-                <div class="bb-cov__wrap">
+                <div class="bb-cov__wrap" tabindex="0" role="region" aria-label="Coverage breakdown">
                   <table class="bb-data bb-cov__table bb-cov__table--excl">
                     <thead>
                       <tr>

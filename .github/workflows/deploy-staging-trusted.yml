@@ -146,7 +146,13 @@ jobs:
             test "$(du -sk "$hosting" | cut -f1)" -le 131072
             test "$(find "$hosting" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = "3"
             test "$(find "$hosting" -mindepth 1 -maxdepth 1 -type d -name website | wc -l | tr -d ' ')" = "1"
-            test "$(find "$hosting" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "4"
+            # BB-12: the artifact may also carry apps/console/out for the
+            # burnbar-staging-console target; website stays mandatory.
+            test "$(find "$hosting" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" -le "5"
+            test "$(find "$hosting" -mindepth 1 -maxdepth 1 -type d ! -name website ! -name apps | wc -l | tr -d ' ')" = "0"
+            if [[ -d "$hosting/apps/console" ]]; then
+              test -f "$hosting/apps/console/out/index.html"
+            fi
             test -f "$hosting/firebase.json"
             test -f "$hosting/website/dist/index.html"
             test -f "$hosting/website/dist/subscribe/index.html"
@@ -185,6 +191,12 @@ jobs:
             "$deploy_root/firestore.rules"
           if [[ "$DEPLOY_HOSTING" == "true" ]]; then
             cp -R "$RUNNER_TEMP/candidate-hosting/website" "$deploy_root/website"
+            # BB-12: stage the console build next to the site when present so
+            # the generated config's console target has a public dir.
+            if [[ -d "$RUNNER_TEMP/candidate-hosting/apps/console/out" ]]; then
+              mkdir -p "$deploy_root/apps/console"
+              cp -R "$RUNNER_TEMP/candidate-hosting/apps/console/out" "$deploy_root/apps/console/out"
+            fi
             node scripts/ci/write-firebase-hosting-ci-config.mjs \
               --mode staging-hosting \
               --source "$RUNNER_TEMP/candidate-hosting/firebase.json" \
@@ -345,6 +357,7 @@ jobs:
             [latestRouterRundown]=us-central1
             [startCliLink]=us-central1
             [pollCliLink]=us-central1
+            [benchAssistant]=us-central1
           )
           rewrite_count=0
           while IFS=$'\t' read -r function_id region; do
@@ -386,8 +399,8 @@ jobs:
               | @tsv
             ' "$FIREBASE_CONFIG_PATH"
           )
-          [[ "$rewrite_count" -eq 4 && "${#reviewed_rewrites[@]}" -eq 0 ]] || {
-            echo "::error::Staging marketing Hosting must contain exactly the four reviewed public rewrites."
+          [[ "$rewrite_count" -eq 5 && "${#reviewed_rewrites[@]}" -eq 0 ]] || {
+            echo "::error::Staging marketing Hosting must contain exactly the five reviewed public rewrites."
             exit 1
           }
 
@@ -412,7 +425,32 @@ jobs:
           set -euo pipefail
           node website/scripts/verify-staging-deployment.mjs \
             --base-url "https://${FIREBASE_PROJECT}.web.app" \
+            --prod-base-url "https://burnbar.web.app" \
             --dist "$RUNNER_TEMP/staging-deploy/website/dist"
+
+      - name: Playwright smoke on deployed staging
+        if: ${{ inputs.deploy_hosting }}
+        working-directory: trusted
+        env:
+          BASE_URL: "https://${FIREBASE_PROJECT}.web.app"
+          BURNBAR_STAGING_TEST_EMAIL: ${{ secrets.BURNBAR_STAGING_TEST_EMAIL }}
+          BURNBAR_STAGING_TEST_PASSWORD: ${{ secrets.BURNBAR_STAGING_TEST_PASSWORD }}
+        run: |
+          set -euo pipefail
+          npm ci --prefix website
+          npx --yes playwright install --with-deps chromium
+          npm run test:smoke --prefix website
+
+      - name: Upload staging smoke artifacts
+        if: ${{ inputs.deploy_hosting && always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-staging-${{ github.run_id }}
+          path: |
+            trusted/website/test-results/smoke/
+            trusted/website/playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Record trusted staging receipt
         if: always()

@@ -22,6 +22,44 @@ import {
 // (Firestore rules + App Check), not by hiding these.
 // Exported so public, anonymous surfaces (e.g. the Arena vote page) can build
 // a dedicated app instance without App Check — see bench-arena.ts.
+//
+// Environment isolation (BB-01): the production fallback above is legal ONLY
+// for production builds. A build flagged PUBLIC_BURNBAR_ENV=staging|preview
+// must never ship the "burnbar" project — so missing PUBLIC_FIREBASE_* env is
+// a hard error, and so is an override that re-selects production. Vite replaces
+// each import.meta.env.PUBLIC_* access at build time, so these checks are
+// decided by the values baked into this bundle, not by whatever runs it later.
+const burnbarEnvironment = import.meta.env.PUBLIC_BURNBAR_ENV || "production";
+if (burnbarEnvironment === "staging" || burnbarEnvironment === "preview") {
+  const missingEnv = [
+    ["PUBLIC_FIREBASE_API_KEY", import.meta.env.PUBLIC_FIREBASE_API_KEY],
+    ["PUBLIC_FIREBASE_AUTH_DOMAIN", import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN],
+    ["PUBLIC_FIREBASE_PROJECT_ID", import.meta.env.PUBLIC_FIREBASE_PROJECT_ID],
+    ["PUBLIC_FIREBASE_STORAGE_BUCKET", import.meta.env.PUBLIC_FIREBASE_STORAGE_BUCKET],
+    [
+      "PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+      import.meta.env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    ],
+    ["PUBLIC_FIREBASE_APP_ID", import.meta.env.PUBLIC_FIREBASE_APP_ID],
+    ["PUBLIC_RECAPTCHA_ENTERPRISE_KEY", import.meta.env.PUBLIC_RECAPTCHA_ENTERPRISE_KEY]
+  ]
+    .filter(([, value]) => typeof value !== "string" || value.length === 0)
+    .map(([name]) => name);
+  if (missingEnv.length > 0) {
+    throw new Error(
+      `${burnbarEnvironment} build is missing ${missingEnv.join(", ")}. ` +
+        'A non-production site must never fall back to the production "burnbar" Firebase project; ' +
+        "build through website/scripts/build-staging.mjs."
+    );
+  }
+  if (import.meta.env.PUBLIC_FIREBASE_PROJECT_ID === projectId) {
+    throw new Error(
+      `${burnbarEnvironment} build resolved PUBLIC_FIREBASE_PROJECT_ID="${projectId}" — ` +
+        "the production project. Staging and preview must target burnbar-staging."
+    );
+  }
+}
+
 export const firebaseConfig = {
   apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY || apiKey,
   authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN || website.authDomain,
