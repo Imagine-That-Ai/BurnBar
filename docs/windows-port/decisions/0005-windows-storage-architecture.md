@@ -138,7 +138,7 @@ Carried from WPD-0004 and commit `5c4fd006f8`
   permanent architecture citing this WPD (no more "later-phase work" phrasing).
 - Docs keyed off the waiver (`PARITY_CERTIFICATION_BUNDLE.md`,
   `PARITY_100_REMEDIATION_PLAN.md`, `HANDOFF.md` §0,
-  `runbooks/WINDOWS_ENGINE_REQUIRED_CHECK.md` §5) now point here.
+  [`runbooks/WINDOWS_ENGINE_REQUIRED_CHECK.md`](../runbooks/WINDOWS_ENGINE_REQUIRED_CHECK.md) §5) now point here.
 
 ## Revisit triggers
 

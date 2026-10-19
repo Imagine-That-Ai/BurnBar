@@ -63,3 +63,18 @@ ignoreUntil = 2026-12-09T00:00:00Z
 # has not adopted; forcing it through an override is untested against
 # auth:import. Re-evaluate when firebase-tools bumps csv-parse.
 reason = "csv-parse prototype replacement via duplicated __proto__ header: dev-only transitive of firebase-tools over developer-selected local CSV files; the only fix (7.0.2) is a major firebase-tools has not adopted; re-evaluate by 2026-12-09"
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2026-12-09T00:00:00Z
+# reason: braces 3.0.3 stack-exhaustion DoS on deeply nested brace patterns.
+# The only depender is chokidar 3.6.0, which firebase-tools (a functions/
+# devDependency, never a deployed bundle) pulls in to watch developer-configured
+# local paths in the emulator. OSV and the GitHub advisory list no fixed
+# version (last_affected 3.0.3, which is also the latest release), and the
+# latest firebase-tools (15.34.0) still declares `chokidar: ^3.6.0`, so there is
+# nothing to bump to. Forcing chokidar 4 through an override drops glob support
+# that firebase-tools relies on and is untested. Re-evaluate when braces
+# publishes a fix or firebase-tools moves off chokidar 3.
+reason = "braces nested-pattern DoS: dev-only transitive of firebase-tools via chokidar 3 over developer-configured local watch paths; no fixed release published and firebase-tools 15.34.0 still requires chokidar ^3.6.0; re-evaluate by 2026-12-09"
+

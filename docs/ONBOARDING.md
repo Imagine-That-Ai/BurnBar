@@ -65,7 +65,7 @@ and green ratchets — see `budgets/` + `scripts/debt/` + `scripts/ci/`.
 | Modules | `crates/` (domain core, parsers), `OpenBurnBarCore/Sources/OpenBurnBarDomainCore*` (FFI) |
 | Decision 4 | Legacy never loads Wasm; pricing runs through Rust with the legacy twin deleted where cut over |
 | Canonical tests | `cargo test` in `crates/`; `HermesDomainCoreMigrationTests` (native-gated: `OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE=1`) |
-| Threat models | `docs/security/BurnBar-threat-model.md`, `docs/security/SHARED_RUST_CRYPTO_ADVERSARIAL_REVIEW_2026-07-13.md` |
+| Threat models | `docs/security/BurnBar-threat-model.md`, [`docs/security/SHARED_RUST_CRYPTO_ADVERSARIAL_REVIEW_2026-07-13.md`](security/SHARED_RUST_CRYPTO_ADVERSARIAL_REVIEW_2026-07-13.md) |
 
 ### 7. Hermes relay / realtime transport
 
