@@ -10,3 +10,8 @@ crates/openburnbar-domain-core/Cargo.lock text eol=lf
 
 # Physical certification receipts bind this policy by SHA-256 across hosts.
 scripts/windows-port/release-performance-budgets.json text eol=lf
+
+# Afar card fallback: imported byte for byte and pinned by sha256 and git blob in
+# website/card-host/import-receipt.json. Never normalise line endings.
+website/public/c/v1.html -text
+website/card-host/headers.json -text

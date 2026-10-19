@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Afar Messages card fallback at `burnbar.ai/c/v1` (source only, not
+  activated)** — the canonical card page is imported byte for byte from
+  `Ajnunezg/alberto-cloud-mission-control@84cb19b4` and pinned by size,
+  SHA-256 and git blob in `website/card-host/import-receipt.json`. It is served
+  from `public/`, so it has no site shell or analytics, and card fields stay
+  in the URL fragment, which never reaches the server. `firebase.json` gives
+  `/c/v1` its own CSP, `no-store` and `no-referrer`; the card's hashes stay
+  out of the site-wide CSP. `/c/v1` is served without a redirect;
+  `/c/v1.html` and `/c/v1/` 301 to it. `npm run test:card-host` (in `verify`)
+  checks the bytes, headers, routing and sitemap and rejects 31 mutations;
+  `npm run test:card-host:emulator` proves the served headers against the
+  Firebase Hosting emulator, including that the route rule overrides `**`.
+  Universal links stay off: no `apple-app-site-association` ships.
+
 ### Changed
 - **Official libsignal pin moved from v0.94.4 to v0.103.0 on every consumer** —
   the `Vendor/libsignal` fork (rebased onto the official v0.103.0 tag; its

@@ -316,6 +316,27 @@
           ]
         },
         {
+          "source": "/c/v1",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "no-referrer"
+            },
+            {
+              "key": "X-Robots-Tag",
+              "value": "noindex, nofollow"
+            },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'none'; script-src 'sha256-7pvWBAN4b/f1BrKHfOsVLJxyf62XUDl5PcSLp3cqc1E='; style-src 'sha256-pmti3sq534Bp5OAhsR3afbZDB27x3cn61sSYJbKEhvY='; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+            }
+          ]
+        },
+        {
           "source": "**/_assets/**",
           "headers": [
             {
