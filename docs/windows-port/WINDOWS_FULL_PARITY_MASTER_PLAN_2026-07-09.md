@@ -21,7 +21,7 @@ decisions.
 Inputs used:
 
 - `docs/windows-port/WINDOWS_PARITY_SCAN_AND_PLAN.md` - first broad scan and phased plan.
-- `docs/windows-port/WINDOWS_FULL_PARITY_SCAN_2026-07-09.md` - expanded inventory and loophole fixes.
+- [`docs/windows-port/WINDOWS_FULL_PARITY_SCAN_2026-07-09.md`](WINDOWS_FULL_PARITY_SCAN_2026-07-09.md) - expanded inventory and loophole fixes.
 - `docs/windows-port/WINDOWS_PARITY_STRATEGY_V2.md` - adversarially hardened ordering.
 - `docs/windows-port/decisions/0003-defer-project-code-static-parser-windows.md` - Projects depth boundary.
 - `docs/windows-port/decisions/0006-windows-daemon-strategy.md` - daemon capability boundary.

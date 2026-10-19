@@ -3911,14 +3911,14 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
             VALUES
                 ('doc-fact', 'member-1', 'mem_aaaa', '{"text":"a fact"}',
-                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                 '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL),
                 ('doc-receipt', 'member-1', 'aabbcc', '{"entryKind":"memory_forget_receipt","reason":"user_delete"}',
-                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                 '2026-09-04T00:00:02.000Z', \(parkedRecently), NULL),
                 ('doc-garbled', 'member-1', 'mem_cccc', 'not json at all',
-                 '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                 '2026-09-04T00:00:03.000Z', \(parkedRecently), NULL),
                 ('doc-team', 'member-1', 'mem_dddd',
                  '{"teamID":"team_0123456789abcdef","authorUID":"uid_alice"}',
-                 '2026-09-04T00:00:04.000Z', '2026-09-04T00:00:09.000Z', NULL);
+                 '2026-09-04T00:00:04.000Z', \(parkedRecently), NULL);
             """
         )
 
@@ -3957,9 +3957,9 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             INSERT INTO agent_memory_inbox
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
             VALUES
-                ('doc-b', 'member-1', 'mem_bbbb', '{"text":"second"}', '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
-                ('doc-a', 'member-1', 'mem_aaaa', '{"text":"first"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
-                ('doc-done', 'member-1', 'mem_cccc', '{"text":"merged"}', '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', '2026-09-04T00:00:10.000Z');
+                ('doc-b', 'member-1', 'mem_bbbb', '{"text":"second"}', '2026-09-04T00:00:02.000Z', \(parkedRecently), NULL),
+                ('doc-a', 'member-1', 'mem_aaaa', '{"text":"first"}', '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL),
+                ('doc-done', 'member-1', 'mem_cccc', '{"text":"merged"}', '2026-09-04T00:00:03.000Z', \(parkedRecently), \(parkedRecently));
             """
         )
 
@@ -4023,9 +4023,9 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             INSERT INTO agent_memory_inbox
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
             VALUES
-                ('doc-open-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
-                ('doc-open-2', 'member-1', 'mem_2', '{}', '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
-                ('doc-merged', 'member-1', 'mem_3', '{}', '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', \(sqlLiteral(stale)));
+                ('doc-open-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL),
+                ('doc-open-2', 'member-1', 'mem_2', '{}', '2026-09-04T00:00:02.000Z', \(parkedRecently), NULL),
+                ('doc-merged', 'member-1', 'mem_3', '{}', '2026-09-04T00:00:03.000Z', \(parkedRecently), \(sqlLiteral(stale)));
             """
         )
 
@@ -4090,7 +4090,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
         try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
         let values = (1...5).map { index in
-            "('doc-\(index)', 'member-1', 'mem_\(index)', '{}', '2026-09-04T00:00:0\(index).000Z', '2026-09-04T00:00:09.000Z', NULL)"
+            "('doc-\(index)', 'member-1', 'mem_\(index)', '{}', '2026-09-04T00:00:0\(index).000Z', \(parkedRecently), NULL)"
         }.joined(separator: ",\n")
         try sqliteExecute(
             database: fixture.database,
@@ -4122,8 +4122,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             INSERT INTO agent_memory_inbox
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
             VALUES
-                ('doc-a1', 'member-a', 'mem_a1', '{"text":"A private fact"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
-                ('doc-a2', 'member-a', 'mem_a2', '{"text":"A second private fact"}', '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL);
+                ('doc-a1', 'member-a', 'mem_a1', '{"text":"A private fact"}', '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL),
+                ('doc-a2', 'member-a', 'mem_a2', '{"text":"A second private fact"}', '2026-09-04T00:00:02.000Z', \(parkedRecently), NULL);
             """
         )
 
@@ -4162,7 +4162,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             sql: """
             INSERT INTO agent_memory_inbox
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
-            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL);
             """
         )
         XCTAssertEqual(
@@ -4209,9 +4209,9 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
             VALUES
                 ('doc-forgotten', 'member-1', \(sqlLiteral(engineID)), '{"text":"The release branch is cut on Fridays."}',
-                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                 '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL),
                 ('doc-other', 'member-1', 'mem_ffffffffffffffffffffffffffffff02', '{"text":"unrelated"}',
-                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL);
+                 '2026-09-04T00:00:02.000Z', \(parkedRecently), NULL);
             """
         )
 
@@ -4255,7 +4255,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             VALUES
                 ('doc-abandoned', 'member-1', 'mem_1', '{}', '2026-01-01T00:00:00.000Z', \(sqlLiteral(ancient)), NULL),
                 ('doc-waiting', 'member-1', 'mem_2', '{}', '2026-01-01T00:00:00.000Z', \(sqlLiteral(middling)), NULL),
-                ('doc-live', 'member-1', 'mem_3', '{}', '2026-01-01T00:00:00.000Z', '2026-09-04T00:00:09.000Z', NULL);
+                ('doc-live', 'member-1', 'mem_3', '{}', '2026-01-01T00:00:00.000Z', \(parkedRecently), NULL);
             """
         )
 
@@ -4285,7 +4285,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             sql: """
             INSERT INTO agent_memory_inbox
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
-            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL);
             """
         )
 
@@ -4349,7 +4349,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             sql: """
             INSERT INTO agent_memory_inbox
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
-            VALUES ('doc-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            VALUES ('doc-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL);
             """
         )
         try seedDeviceSyncConsentMarker(
@@ -4378,7 +4378,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             WHERE collectionKind = \(sqlLiteral(BurnBarMemoryDeviceSyncMarker.collectionKind));
             INSERT INTO agent_memory_inbox
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
-            VALUES ('doc-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            VALUES ('doc-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL);
             """
         )
         XCTAssertTrue(try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.isEmpty)
@@ -4449,9 +4449,9 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
             VALUES
                 ('doc-mine', 'member-1', \(sqlLiteral(engineID)), '{"text":"Deploys are frozen in December."}',
-                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                 '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL),
                 ('doc-theirs', 'member-other', \(sqlLiteral(engineID)), '{"text":"someone else''s parked copy"}',
-                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL);
+                 '2026-09-04T00:00:02.000Z', \(parkedRecently), NULL);
             """
         )
 
@@ -4524,12 +4524,12 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             VALUES
                 ('team:\(teamID):member-1:doc-team-1', 'member-1', \(sqlLiteral(sealedID)),
                  \(sqlLiteral(teamPayload)),
-                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                 '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL),
                 ('team:\(teamID):member-1:doc-team-2', 'member-1', \(sqlLiteral(sealedID)),
                  '{"teamID":"\(teamID)","projectID":"\(teamProjectID)","engineScope":"project","bodyHash":"ff00","text":"a different team fact"}',
-                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                 '2026-09-04T00:00:02.000Z', \(parkedRecently), NULL),
                 ('doc-personal', 'member-1', 'mem_ffffffffffffffffffffffffffffff03', '{"text":"unrelated"}',
-                 '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', NULL);
+                 '2026-09-04T00:00:03.000Z', \(parkedRecently), NULL);
             """
         )
 
@@ -4587,7 +4587,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             INSERT INTO agent_memory_inbox
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
             VALUES ('doc-forgotten', 'member-1', \(sqlLiteral(engineID)), '{"text":"The on-call rota rolls over on Mondays."}',
-                    '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+                    '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL);
             """
         )
 
@@ -4614,7 +4614,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             sql: """
             INSERT INTO agent_memory_inbox
                 (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
-            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', \(parkedRecently), NULL);
             """
         )
 
@@ -4786,6 +4786,13 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
 
     private func sqlLiteral(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "''"))'"
+    }
+
+    /// An hour ago in the inbox's one format, quoted for SQL. Rows parked or
+    /// merged at a fixed date expire out from under the drain's 30/90-day sweep
+    /// as the calendar moves, so fixtures that must survive it are relative.
+    private var parkedRecently: String {
+        sqlLiteral(BurnBarProjectCodeMemoryStore.syncInboxTimestamp(Date().addingTimeInterval(-3_600)))
     }
 
     private func runGit(_ arguments: [String], cwd: URL) throws {
