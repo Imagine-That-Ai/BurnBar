@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "product": "Afar",
+  "platform": "windows-preview",
+  "version": "0.1.1",
+  "architecture": "win-x64",
+  "sourceCommit": "7e05544f49eca4df76ec08f5897c48356fbd83d1",
+  "artifact": {
+    "fileName": "Afar-Windows-0.1.1-preview-https-7e05544-win-x64-unsigned.zip",
+    "sha256": "b150e2a336edfe0cf79b78aba8e7b588b93a273136da6e24c81a6e471fc7604c",
+    "size": 63223503
+  },
+  "draftReleaseTag": "afar-windows-preview-0.1.1",
+  "bucket": "openburnbar-downloads",
+  "publicBaseUrl": "https://downloads.burnbar.ai",
+  "objectKey": "mission-control/preview/windows/0.1.1/Afar-Windows-0.1.1-preview-https-7e05544-win-x64-unsigned.zip",
+  "consistencyProbeKey": "latest-macos.json",
+  "previewQualification": {
+    "accepted": false,
+    "qualifiedArtifactSha256": null,
+    "evidenceSha256": null,
+    "acceptedAt": null,
+    "signed": false,
+    "notQualified": [
+      "Native Iroh connectivity",
+      "Live-host use",
+      "Account sign-in"
+    ]
+  }
+}

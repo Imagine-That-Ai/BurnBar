@@ -1,0 +1,93 @@
+name: Publish Afar desktop preview artifact
+
+# Publishes exactly one unsigned Afar desktop preview (the Linux DEB or the
+# Windows portable ZIP) to the existing downloads R2 bucket, under its exact
+# qualified file name at mission-control/preview/<os>/<version>/, after the
+# preview qualification recorded in the reviewed contract. It never touches
+# OpenBurnBar feeds, metadata, GitHub releases or signing, and it never links
+# anything on the site. Same fail-closed sequence as the Mac lane; see
+# scripts/ci/afar-mac-artifact-publish.mjs (LANES).
+
+on:
+  workflow_dispatch:
+    inputs:
+      contract:
+        description: "Reviewed Afar desktop preview contract"
+        required: true
+        type: choice
+        options:
+          - config/afar-linux-preview.json
+          - config/afar-windows-preview.json
+
+permissions: {}
+
+concurrency:
+  group: publish-afar-desktop-preview
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish one Afar desktop preview artifact
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # One timing budget for the whole job, bound to GitHub's own record of it,
+    # exactly as in publish-afar-mac-artifact.yml. Preview lanes re-read four
+    # OpenBurnBar feeds after the write, so the helper keeps a larger post-write
+    # reserve (postWriteReserveMs): approve the release environment promptly.
+    # scripts/ci/afar-mac-artifact-publish.test.mjs pins these numbers.
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      # The preview is staged on a DRAFT release so it stays private in this
+      # public repository. GitHub lists draft releases only for tokens with push
+      # access, so read-only contents permission cannot see the staging asset.
+      contents: write
+      # Read this run attempt's job listing, to bind the run budget to the
+      # job's created_at. Read-only; no other actions data is used.
+      actions: read
+    steps:
+      - name: Check out the contracts and helper only
+        timeout-minutes: 2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24-native)
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .nvmrc
+            config/afar-linux-preview.json
+            config/afar-windows-preview.json
+            scripts/ci/afar-mac-artifact-publish.mjs
+            scripts/ci/afar-mac-awscli-requirements.txt
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node
+        timeout-minutes: 3
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 (node24-native)
+        with:
+          node-version-file: .nvmrc
+
+      - name: Refuse unless the preview qualification is recorded
+        timeout-minutes: 1
+        env:
+          CONTRACT: ${{ inputs.contract }}
+        run: node scripts/ci/afar-mac-artifact-publish.mjs check --contract "$CONTRACT" --require-accepted
+
+      - name: Install the hash-pinned AWS CLI
+        timeout-minutes: 4
+        run: |
+          python3 -m venv "$RUNNER_TEMP/awscli"
+          "$RUNNER_TEMP/awscli/bin/pip" install --require-hashes --only-binary=:all: --no-deps \
+            -r scripts/ci/afar-mac-awscli-requirements.txt
+          "$RUNNER_TEMP/awscli/bin/aws" --version
+
+      - name: Publish and verify one object
+        # Not below the helper's budget; this step starts after the job was
+        # created, so it cannot end before the helper's own budget does.
+        timeout-minutes: 44
+        env:
+          CONTRACT: ${{ inputs.contract }}
+          GH_TOKEN: ${{ github.token }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_BIN: ${{ runner.temp }}/awscli/bin/aws
+        run: node scripts/ci/afar-mac-artifact-publish.mjs publish --contract "$CONTRACT"
