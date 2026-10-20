@@ -114,7 +114,7 @@ dependencies {
     // every API level from 26 up. The JDK's java.security.Signature
     // Ed25519 algorithm only landed in API 31+, so Tink is the portable
     // primitive across our minSdk range.
-    implementation("com.google.crypto.tink:tink-android:1.23.0")
+    implementation("com.google.crypto.tink:tink-android:1.24.0")
 
     // JNA 5.19.1 ships 16 KB page-size aligned native libjnidispatch slices.
     // UniFFI's generated Kotlin bindings use JNA to load the Rust AAR.
