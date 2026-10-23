@@ -110,7 +110,7 @@
     "@hono/node-server": "2.0.10",
     "fast-uri": "3.1.8",
     "hono": "4.13.11",
-    "qs": "6.16.0",
+    "qs": "6.16.1",
     "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
     "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3",
