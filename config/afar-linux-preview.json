@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "product": "Afar",
+  "platform": "linux-preview",
+  "version": "0.1.0",
+  "architecture": "all",
+  "sourceCommit": "eb8ef4a2ab201e91670babdd8c74e80408956c1e",
+  "artifact": {
+    "fileName": "afar-linux_0.1.0-terminal-corrected_all.deb",
+    "sha256": "6fcb5cc7cf488365dda7aea5a345c27484609ce11749cafb8497b6fcddfe897f",
+    "size": 33986
+  },
+  "draftReleaseTag": "afar-linux-preview-0.1.0",
+  "bucket": "openburnbar-downloads",
+  "publicBaseUrl": "https://downloads.burnbar.ai",
+  "objectKey": "mission-control/preview/linux/0.1.0/afar-linux_0.1.0-terminal-corrected_all.deb",
+  "consistencyProbeKey": "latest-macos.json",
+  "previewQualification": {
+    "accepted": false,
+    "qualifiedArtifactSha256": null,
+    "evidenceSha256": null,
+    "acceptedAt": null,
+    "signed": false,
+    "notQualified": [
+      "Real-host use",
+      "System keyring",
+      "Wayland sessions",
+      "Iroh connectivity",
+      "Account sign-in"
+    ]
+  }
+}

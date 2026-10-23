@@ -5,11 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  ALL_OPENBURNBAR_FEED_KEYS,
   awsArgv,
   awsCommands,
   boundedGet,
   DEFAULT_LIMITS,
+  FEED_KEYS,
   isIsoUtcTimestamp,
+  LANES,
+  postWriteReserveMs,
+  PREVIEW_PUBLISH_JOB_NAME,
   publish,
   PUBLISH_JOB_NAME,
   PublishError,
@@ -110,10 +115,12 @@ function world({
   jobsTotal = null,
   jobsDate = SERVER_DATE,
   jobsStatus = 200,
-  edgeCached404 = false
+  edgeCached404 = false,
+  c = contract(),
+  feeds = FEEDS,
+  changeFeedKey = "appcast.xml"
 } = {}) {
-  const c = contract();
-  const objects = new Map(Object.entries(FEEDS));
+  const objects = new Map(Object.entries(feeds));
   if (existing) objects.set(c.objectKey, existing);
   const calls = { aws: [], awsTimeouts: [], fetch: [], authOrigins: new Set(), artifactReads: [] };
   let putAttempted = false;
@@ -136,13 +143,13 @@ function world({
     }
     if (parsed.origin === "https://downloads.burnbar.ai") {
       const key = parsed.pathname.slice(1);
-      if (key.endsWith(".dmg")) {
+      if (key === c.objectKey) {
         calls.artifactReads.push({ url, beforeWrite: !putAttempted, cacheControl: init.headers?.["Cache-Control"] ?? null });
         // The CDN edge caches a 404 for the canonical URL; a query string misses that cache entry.
         if (edgeCached404 && parsed.search === "") return response(404);
       }
       if (!objects.has(key)) return response(404);
-      const type = key.endsWith(".dmg") ? publicType : "application/json";
+      const type = key === c.objectKey ? publicType : "application/json";
       return response(200, objects.get(key), { headers: { "content-type": type } });
     }
     throw new Error(`unexpected fetch ${url}`);
@@ -162,7 +169,7 @@ function world({
         return { status: 254, stdout: "", stderr: "An error occurred (PreconditionFailed) when calling the PutObject operation" };
       }
       objects.set(key, readFileSync(value("--body")));
-      if (changeFeedOnPut) objects.set("appcast.xml", Buffer.from("<rss changed/>"));
+      if (changeFeedOnPut) objects.set(changeFeedKey, Buffer.from("<rss changed/>"));
       return { status: 0, stdout: "{}", stderr: "" };
     }
     return { status: 1, stdout: "", stderr: "unexpected" };
@@ -630,6 +637,248 @@ test("the workflow is dispatch-only, main-only, pinned and scoped to the release
   assert.equal((wf.match(/GH_TOKEN:/g) ?? []).length, 1);
   assert.doesNotMatch(wf, /CLOUDFLARE_API_TOKEN|upload-macos-downloads-r2|setup-macos-downloads-r2|appcast|latest-macos|gh release (create|upload|edit|delete)/);
   // Inputs and secrets reach shell steps only through env, never interpolated into run.
+  assert.doesNotMatch(wf, /run:.*\$\{\{/);
+});
+
+// ---- Desktop preview lanes (Linux DEB, Windows portable ZIP) ----
+
+const linuxCommitted = JSON.parse(read("config/afar-linux-preview.json"));
+const windowsCommitted = JSON.parse(read("config/afar-windows-preview.json"));
+// latest-windows.json is absent from the bucket here (404), which must still be proven unchanged.
+const PREVIEW_FEEDS = { ...FEEDS, "latest-linux.json": Buffer.from('{"version":"2.0.0"}') };
+const PREVIEW_JOBS = [jobRecord(60_000, { name: PREVIEW_PUBLISH_JOB_NAME })];
+// The independent review records of the two qualified artifacts (Root, 2026-10-19).
+const LINUX_ACCEPTANCE = {
+  qualifiedArtifactSha256: "6fcb5cc7cf488365dda7aea5a345c27484609ce11749cafb8497b6fcddfe897f",
+  evidenceSha256: "e7d9f9ab6d2500b9316d00d3b5345b7f8e022248a150acbb6c647e4df3febb0f",
+  acceptedAt: "2026-10-19T20:21:51Z"
+};
+const WINDOWS_ACCEPTANCE = {
+  qualifiedArtifactSha256: "b150e2a336edfe0cf79b78aba8e7b588b93a273136da6e24c81a6e471fc7604c",
+  evidenceSha256: "b51c3bf1de3b97184817b0d84e6896eb40d9e2b035b5e82006dde4e133e55cae",
+  acceptedAt: "2026-10-19T20:38:25.8838031Z"
+};
+
+/** A committed preview contract re-pinned to the test bytes and accepted. */
+function previewContract(base, overrides = {}) {
+  const sha = sha256Hex(ARTIFACT);
+  return {
+    ...base,
+    artifact: { ...base.artifact, sha256: sha, size: ARTIFACT.length },
+    previewQualification: {
+      ...base.previewQualification,
+      accepted: true,
+      qualifiedArtifactSha256: sha,
+      evidenceSha256: "e".repeat(64),
+      acceptedAt: "2026-10-19T20:38:25.8838031Z"
+    },
+    ...overrides
+  };
+}
+
+function previewWorld(base, options = {}) {
+  return world({ c: previewContract(base), feeds: PREVIEW_FEEDS, publicType: LANES[base.platform].mediaType, jobs: PREVIEW_JOBS, ...options });
+}
+
+test("the committed preview contracts pin the exact qualified artifacts and stay unaccepted", () => {
+  const linux = validateContract(linuxCommitted);
+  assert.equal(linux.lane, "linux-preview");
+  assert.equal(linux.fileName, "afar-linux_0.1.0-terminal-corrected_all.deb");
+  assert.equal(linux.sha256, LINUX_ACCEPTANCE.qualifiedArtifactSha256);
+  assert.equal(linux.size, 33986);
+  assert.equal(linux.draftReleaseTag, "afar-linux-preview-0.1.0");
+  assert.equal(linux.publicUrl, "https://downloads.burnbar.ai/mission-control/preview/linux/0.1.0/afar-linux_0.1.0-terminal-corrected_all.deb");
+  assert.equal(linuxCommitted.sourceCommit, "eb8ef4a2ab201e91670babdd8c74e80408956c1e");
+  assert.equal(linuxCommitted.architecture, "all");
+
+  const windows = validateContract(windowsCommitted);
+  assert.equal(windows.lane, "windows-preview");
+  assert.equal(windows.fileName, "Afar-Windows-0.1.1-preview-https-7e05544-win-x64-unsigned.zip");
+  assert.equal(windows.sha256, WINDOWS_ACCEPTANCE.qualifiedArtifactSha256);
+  assert.equal(windows.size, 63223503);
+  assert.equal(windows.draftReleaseTag, "afar-windows-preview-0.1.1");
+  assert.equal(windows.publicUrl, "https://downloads.burnbar.ai/mission-control/preview/windows/0.1.1/Afar-Windows-0.1.1-preview-https-7e05544-win-x64-unsigned.zip");
+  assert.equal(windowsCommitted.sourceCommit, "7e05544f49eca4df76ec08f5897c48356fbd83d1");
+
+  for (const raw of [linuxCommitted, windowsCommitted]) {
+    assert.equal(raw.previewQualification.accepted, false);
+    assert.equal(raw.previewQualification.signed, false);
+    assert.ok(raw.previewQualification.notQualified.includes("Account sign-in"));
+    assert.throws(() => validateContract(raw, { requireAccepted: true }), /preview qualification is not recorded/);
+  }
+  // The Mac contract keeps its own lane and checks.
+  assert.equal(validateContract(committed).lane, "mac");
+});
+
+test("the recorded review evidence for both previews passes once folded into a contract", () => {
+  for (const [base, acceptance] of [[linuxCommitted, LINUX_ACCEPTANCE], [windowsCommitted, WINDOWS_ACCEPTANCE]]) {
+    const accepted = { ...base, previewQualification: { ...base.previewQualification, accepted: true, ...acceptance } };
+    assert.equal(validateContract(accepted, { requireAccepted: true }).sha256, acceptance.qualifiedArtifactSha256);
+  }
+});
+
+test("a preview qualification must name the exact bytes, its evidence and a real instant", () => {
+  const base = previewContract(windowsCommitted);
+  for (const change of [
+    { accepted: "true" },
+    { accepted: false },
+    { qualifiedArtifactSha256: "f".repeat(64) },
+    { evidenceSha256: null },
+    { evidenceSha256: "E".repeat(64) },
+    { acceptedAt: "2026-10-19" },
+    { acceptedAt: "2026-02-31T00:00:00Z" },
+    { acceptedAt: "2026-10-19T20:38:25.8838031234Z" },
+    { acceptedAt: "2026-10-19T20:38:25+00:00" }
+  ]) {
+    const raw = { ...base, previewQualification: { ...base.previewQualification, ...change } };
+    assert.throws(() => validateContract(raw, { requireAccepted: true }), PublishError, JSON.stringify(change));
+  }
+  // Fine precision is preview-only; the Mac lane's acceptedAt rule is unchanged.
+  assert.ok(isIsoUtcTimestamp("2026-10-19T20:38:25.8838031Z", { fine: true }));
+  assert.equal(isIsoUtcTimestamp("2026-10-19T20:38:25.8838031Z"), false);
+  assert.equal(isIsoUtcTimestamp("2026-02-31T00:00:00.1234567Z", { fine: true }), false);
+});
+
+test("every preview field is pinned, and a preview can never borrow the Mac lane", () => {
+  const sha = sha256Hex(ARTIFACT);
+  const linux = previewContract(linuxCommitted);
+  const windows = previewContract(windowsCommitted);
+  const cases = [
+    [linux, { platform: "mac" }],
+    [linux, { platform: "android-preview" }],
+    [linux, { platform: "__proto__" }],
+    [linux, { unexpected: true }],
+    [linux, { cleanGuiAcceptance: { accepted: true, installedArtifactSha256: sha, evidenceSha256: "e".repeat(64), acceptedAt: "2026-10-19T00:00:00Z" } }],
+    [linux, { schemaVersion: 2 }],
+    [linux, { product: "OpenBurnBar" }],
+    [linux, { version: "0.1" }],
+    [linux, { architecture: "amd64" }],
+    [linux, { architecture: "win-x64" }],
+    [linux, { sourceCommit: "eb8ef4a2" }],
+    [linux, { artifact: { ...linux.artifact, fileName: "afar-linux_0.1.0_all.deb" } }],
+    [linux, { artifact: { ...linux.artifact, fileName: "afar-linux_0.2.0-terminal-corrected_all.deb" } }],
+    [linux, { artifact: { ...linux.artifact, fileName: "../afar-linux_0.1.0-terminal-corrected_all.deb" } }],
+    [linux, { artifact: { ...linux.artifact, extra: 1 } }],
+    [linux, { artifact: { ...linux.artifact, size: 0 } }],
+    [linux, { draftReleaseTag: "afar-mac-0.1.0" }],
+    [linux, { bucket: "another-bucket" }],
+    [linux, { publicBaseUrl: "https://example.com" }],
+    [linux, { objectKey: "mission-control/0.1.0/afar-linux_0.1.0-terminal-corrected_all.deb" }],
+    [linux, { objectKey: "latest-linux.json" }],
+    [linux, { consistencyProbeKey: "latest-linux.json" }],
+    [linux, { previewQualification: { ...linux.previewQualification, signed: true } }],
+    [linux, { previewQualification: { ...linux.previewQualification, signed: undefined } }],
+    [linux, { previewQualification: { ...linux.previewQualification, notQualified: [] } }],
+    [linux, { previewQualification: { ...linux.previewQualification, notQualified: ["  "] } }],
+    [linux, { previewQualification: { ...linux.previewQualification, notQualified: "Account sign-in" } }],
+    [linux, { previewQualification: { ...linux.previewQualification, extra: true } }],
+    [windows, { architecture: "x64" }],
+    [windows, { sourceCommit: "f".repeat(40) }],
+    [windows, { artifact: { ...windows.artifact, fileName: "Afar-Windows-0.1.1-preview-https-7e05544-win-x64-signed.zip" } }],
+    [windows, { draftReleaseTag: "afar-linux-preview-0.1.1" }],
+    [windows, { objectKey: "mission-control/preview/linux/0.1.1/Afar-Windows-0.1.1-preview-https-7e05544-win-x64-unsigned.zip" }]
+  ];
+  for (const [base, change] of cases) {
+    assert.throws(() => validateContract({ ...base, ...change }, { requireAccepted: true }), PublishError, JSON.stringify(change));
+  }
+  // A Mac contract that claims a platform is not a Mac contract.
+  assert.throws(() => validateContract({ ...committed, platform: "mac" }), /platform must be/);
+});
+
+test("a preview publishes one conditional object with its own media type and key, all feeds unchanged", async () => {
+  for (const base of [linuxCommitted, windowsCommitted]) {
+    const w = previewWorld(base);
+    const receipt = await run(w);
+    assert.equal(receipt.result, "published");
+    assert.equal(receipt.lane, base.platform);
+    assert.equal(puts(w).length, 1);
+    const args = puts(w)[0];
+    assert.equal(args[args.indexOf("--key") + 1], base.objectKey);
+    assert.ok(base.objectKey.startsWith(`mission-control/preview/${LANES[base.platform].os}/`));
+    assert.equal(args[args.indexOf("--content-type") + 1], LANES[base.platform].mediaType);
+    assert.equal(args[args.indexOf("--if-none-match") + 1], "*");
+    assert.deepEqual(Object.keys(receipt.feedsUnchanged), ALL_OPENBURNBAR_FEED_KEYS);
+    assert.equal(receipt.feedsUnchanged["latest-windows.json"], null);
+    for (const key of ALL_OPENBURNBAR_FEED_KEYS) {
+      assert.ok(w.calls.fetch.some((url) => url.startsWith(`https://downloads.burnbar.ai/${key}?`)), `${key} was not snapshotted`);
+    }
+    for (const read of w.calls.artifactReads) {
+      assert.equal(read.url, `https://downloads.burnbar.ai/${base.objectKey}`);
+      assert.equal(read.beforeWrite, false);
+    }
+  }
+  assert.equal(LANES["linux-preview"].mediaType, "application/vnd.debian.binary-package");
+  assert.equal(LANES["windows-preview"].mediaType, "application/zip");
+});
+
+test("a preview fails closed on the wrong public media type or any OpenBurnBar feed change", async () => {
+  const wrongType = previewWorld(windowsCommitted, { publicType: "application/x-apple-diskimage" });
+  await assert.rejects(run(wrongType), PublishError);
+  for (const key of ["latest-linux.json", "latest-windows.json", "appcast.xml"]) {
+    const w = previewWorld(linuxCommitted, { changeFeedOnPut: true, changeFeedKey: key });
+    await assert.rejects(run(w), new RegExp(`feed ${key.replace(".", "\\.")} changed`));
+  }
+});
+
+test("the job clock binds each lane to its own workflow job", async () => {
+  // A preview contract under the Mac job, and the Mac contract under the preview job.
+  await assert.rejects(run(previewWorld(linuxCommitted, { jobs: [jobRecord()] })), /names another job/);
+  await assert.rejects(run(world({ jobs: PREVIEW_JOBS })), /names another job/);
+  // Unaccepted previews stop before any network or bucket access.
+  const w = previewWorld(windowsCommitted);
+  await assert.rejects(run(w, { contractRaw: windowsCommitted }), /preview qualification is not recorded/);
+  assert.equal(w.calls.fetch.length, 0);
+  assert.equal(w.calls.aws.length, 0);
+});
+
+test("each lane's post-write reserve covers its worst case, and the Mac reserve is unchanged", () => {
+  const L = DEFAULT_LIMITS;
+  const backoff = (attempts) => Array.from({ length: attempts - 1 }, (_, i) => (i + 1) * 2000).reduce((x, y) => x + y, 0);
+  assert.equal(postWriteReserveMs(LANES.mac), L.postWriteReserveMs);
+  assert.equal(LANES.mac.feedKeys, FEED_KEYS);
+  for (const lane of Object.values(LANES)) {
+    const postWrite =
+      L.awsPutTimeoutMs +
+      L.publicArtifactAttempts * L.publicArtifactDeadlineMs +
+      backoff(L.publicArtifactAttempts) +
+      lane.feedKeys.length * (3 * L.feedDeadlineMs + backoff(3));
+    assert.ok(postWrite < postWriteReserveMs(lane), `post-write ${postWrite} >= reserve ${postWriteReserveMs(lane)}`);
+  }
+  // The preview workflow's bounded setup still leaves a write window under the larger reserve.
+  const wf = read(".github/workflows/publish-afar-desktop-preview.yml");
+  const job = Number(/^    timeout-minutes: (\d+)$/m.exec(wf)[1]);
+  const steps = wf.split(/^      - name: /m).slice(1).map((block) => Number(/^        timeout-minutes: (\d+)$/m.exec(block)?.[1] ?? Number.NaN));
+  for (const minutes of steps) assert.ok(Number.isInteger(minutes) && minutes > 0);
+  const setup = steps.slice(0, -1).reduce((sum, minutes) => sum + minutes * 60_000, 0);
+  assert.ok(setup < L.totalBudgetMs - postWriteReserveMs(LANES["linux-preview"]), "bounded setup closes the preview write window");
+  assert.ok(steps.at(-1) * 60_000 >= L.totalBudgetMs);
+  assert.ok(L.totalBudgetMs < job * 60_000);
+});
+
+test("the preview workflow is dispatch-only, main-only, pinned and limited to the two preview contracts", () => {
+  const wf = read(".github/workflows/publish-afar-desktop-preview.yml");
+  assert.match(wf, /^on:\n  workflow_dispatch:\n/m);
+  assert.doesNotMatch(wf, /^\s+(push|pull_request|pull_request_target|schedule|release|workflow_run):/m);
+  assert.match(wf, /^permissions: \{\}$/m);
+  assert.match(wf, /if: github\.ref == 'refs\/heads\/main'/);
+  assert.match(wf, /environment: release$/m);
+  assert.match(wf, /^    name: Publish one Afar desktop preview artifact$/m);
+  assert.equal(PREVIEW_PUBLISH_JOB_NAME, "Publish one Afar desktop preview artifact");
+  assert.match(wf, /^  group: publish-afar-desktop-preview\n  cancel-in-progress: false$/m);
+  assert.deepEqual([...wf.matchAll(/^      ([a-z-]+): (read|write)$/gm)].map((m) => `${m[1]}: ${m[2]}`), ["contents: write", "actions: read"]);
+  assert.doesNotMatch(wf, /(actions|id-token|packages|pull-requests|deployments): write/);
+  for (const [, ref] of wf.matchAll(/uses:\s*[^@\s]+@(\S+)/g)) assert.match(ref, /^[0-9a-f]{40}$/);
+  // Same pinned actions as the accepted Mac workflow.
+  const mac = read(".github/workflows/publish-afar-mac-artifact.yml");
+  assert.deepEqual([...wf.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]), [...mac.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]));
+  assert.match(wf, /persist-credentials: false/);
+  assert.match(wf, /options:\n\s+- config\/afar-linux-preview\.json\n\s+- config\/afar-windows-preview\.json\n\n/);
+  assert.doesNotMatch(wf, /afar-mac-release\.json/);
+  assert.match(wf, /sparse-checkout: \|\n\s+\.nvmrc\n\s+config\/afar-linux-preview\.json\n\s+config\/afar-windows-preview\.json\n\s+scripts\/ci\/afar-mac-artifact-publish\.mjs\n\s+scripts\/ci\/afar-mac-awscli-requirements\.txt\n/);
+  assert.match(wf, /--require-hashes --only-binary=:all: --no-deps/);
+  assert.match(wf, /afar-mac-artifact-publish\.mjs check --contract "\$CONTRACT" --require-accepted/);
+  assert.equal((wf.match(/GH_TOKEN:/g) ?? []).length, 1);
+  assert.doesNotMatch(wf, /CLOUDFLARE_API_TOKEN|upload-macos-downloads-r2|setup-macos-downloads-r2|appcast|latest-(macos|linux|windows)|gh release (create|upload|edit|delete)/);
   assert.doesNotMatch(wf, /run:.*\$\{\{/);
 });
 

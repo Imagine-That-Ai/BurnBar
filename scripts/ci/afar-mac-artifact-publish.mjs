@@ -34,6 +34,13 @@
  *
  * It never writes any key other than the contract's, never touches OpenBurnBar
  * feeds, metadata or GitHub releases, and never reads release.json.
+ *
+ * Desktop previews (config/afar-linux-preview.json, config/afar-windows-preview.json,
+ * published by .github/workflows/publish-afar-desktop-preview.yml) run the same
+ * sequence on their own lane: an unsigned build under its exact qualified file
+ * name at mission-control/preview/<os>/<version>/, gated on a recorded preview
+ * qualification of those bytes instead of clean-GUI acceptance, and with all
+ * four OpenBurnBar feeds proven unchanged. See LANES.
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -48,6 +55,8 @@ export const EXPECTED_PUBLIC_BASE_URL = "https://downloads.burnbar.ai";
 export const CONSISTENCY_PROBE_KEY = "latest-macos.json";
 export const FEED_KEYS = Object.freeze(["latest-macos.json", "appcast.xml"]);
 export const DMG_MEDIA_TYPE = "application/x-apple-diskimage";
+/** Every OpenBurnBar feed in the shared bucket; desktop previews must leave all of them byte-identical. */
+export const ALL_OPENBURNBAR_FEED_KEYS = Object.freeze(["latest-macos.json", "appcast.xml", "latest-linux.json", "latest-windows.json"]);
 const GITHUB_API_ORIGIN = "https://api.github.com";
 // GitHub release-asset downloads redirect to one of these storage hosts.
 const GITHUB_ASSET_STORAGE_ORIGINS = Object.freeze([
@@ -88,11 +97,54 @@ export const DEFAULT_LIMITS = Object.freeze({
 });
 /** The workflow job's display name; the job lookup must find exactly this job. */
 export const PUBLISH_JOB_NAME = "Publish one Afar Mac artifact";
+/** The desktop preview workflow's job name (.github/workflows/publish-afar-desktop-preview.yml). */
+export const PREVIEW_PUBLISH_JOB_NAME = "Publish one Afar desktop preview artifact";
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+/**
+ * Publication lanes. The Mac lane is the accepted contract, unchanged (it has no
+ * platform field). Desktop previews are unsigned development builds published
+ * under their exact qualified file names: their own key prefix, draft tag, media
+ * type and job, a preview qualification in place of clean-GUI acceptance, and
+ * every OpenBurnBar feed proven unchanged.
+ */
+export const LANES = Object.freeze({
+  mac: Object.freeze({
+    mediaType: DMG_MEDIA_TYPE,
+    feedKeys: FEED_KEYS,
+    jobName: PUBLISH_JOB_NAME
+  }),
+  "linux-preview": Object.freeze({
+    mediaType: "application/vnd.debian.binary-package",
+    feedKeys: ALL_OPENBURNBAR_FEED_KEYS,
+    jobName: PREVIEW_PUBLISH_JOB_NAME,
+    os: "linux",
+    architectures: Object.freeze(["all", "amd64", "arm64"]),
+    fileNameRule: "afar-linux_<version>-<label>_<architecture>.deb",
+    fileNameMatches: (fileName, { version, architecture }) =>
+      new RegExp(`^afar-linux_${escapeRegExp(version)}-[a-z0-9]+(?:-[a-z0-9]+)*_${escapeRegExp(architecture)}\\.deb$`, "u").test(fileName)
+  }),
+  "windows-preview": Object.freeze({
+    mediaType: "application/zip",
+    feedKeys: ALL_OPENBURNBAR_FEED_KEYS,
+    jobName: PREVIEW_PUBLISH_JOB_NAME,
+    os: "windows",
+    architectures: Object.freeze(["win-x64", "win-arm64"]),
+    fileNameRule: "Afar-Windows-<version>-preview-https-<sourceCommit[0:7]>-<architecture>-unsigned.zip",
+    fileNameMatches: (fileName, { version, architecture, sourceCommit }) =>
+      fileName === `Afar-Windows-${version}-preview-https-${sourceCommit.slice(0, 7)}-${architecture}-unsigned.zip`
+  })
+});
 const RUN_ID = /^[1-9]\d{0,19}$/u;
 const RUN_ATTEMPT = /^[1-9]\d{0,3}$/u;
 const GIT_SHA = /^[0-9a-f]{40}$/u;
 const HTTP_DATE = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/u;
 const ISO_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/u;
+// Preview qualifications keep the recorder's precision (e.g. .8838031Z) verbatim.
+const ISO_UTC_FINE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/u;
 
 export class PublishError extends Error {}
 
@@ -105,10 +157,11 @@ function isPlainObject(value) {
 }
 
 /** RFC 3339 UTC (YYYY-MM-DDTHH:MM:SS[.mmm]Z) naming a real instant: no rollover such as 2026-02-31. */
-export function isIsoUtcTimestamp(value) {
-  const match = typeof value === "string" ? ISO_UTC.exec(value) : null;
+export function isIsoUtcTimestamp(value, { fine = false } = {}) {
+  const match = typeof value === "string" ? (fine ? ISO_UTC_FINE : ISO_UTC).exec(value) : null;
   if (!match) return false;
-  const time = Date.parse(value);
+  // Date.parse keeps milliseconds only; finer digits cannot change the calendar fields checked below.
+  const time = Date.parse(fine ? value.replace(/(\.\d{3})\d+Z$/u, "$1Z") : value);
   if (!Number.isFinite(time)) return false;
   const date = new Date(time);
   return (
@@ -128,6 +181,7 @@ export function sha256Hex(bytes) {
 /** Validate the reviewed contract. Every field is pinned; nothing is defaulted. */
 export function validateContract(raw, { requireAccepted = false } = {}) {
   if (!isPlainObject(raw)) fail("contract must be a JSON object");
+  if (Object.hasOwn(raw, "platform")) return validatePreviewContract(raw, { requireAccepted });
   if (raw.schemaVersion !== 1) fail("contract schemaVersion must be 1");
   if (raw.product !== "Afar") fail("contract product must be Afar");
   const { version, artifact } = raw;
@@ -171,7 +225,94 @@ export function validateContract(raw, { requireAccepted = false } = {}) {
     bucket: raw.bucket,
     publicBaseUrl: raw.publicBaseUrl,
     objectKey: raw.objectKey,
-    publicUrl: `${raw.publicBaseUrl}/${raw.objectKey}`
+    publicUrl: `${raw.publicBaseUrl}/${raw.objectKey}`,
+    lane: "mac"
+  });
+}
+
+const PREVIEW_FIELDS = Object.freeze([
+  "schemaVersion", "product", "platform", "version", "architecture", "sourceCommit", "artifact",
+  "draftReleaseTag", "bucket", "publicBaseUrl", "objectKey", "consistencyProbeKey", "previewQualification"
+]);
+const PREVIEW_ARTIFACT_FIELDS = Object.freeze(["fileName", "sha256", "size"]);
+const PREVIEW_QUALIFICATION_FIELDS = Object.freeze([
+  "accepted", "qualifiedArtifactSha256", "evidenceSha256", "acceptedAt", "signed", "notQualified"
+]);
+
+function onlyFields(value, allowed, label) {
+  for (const key of Object.keys(value)) if (!allowed.includes(key)) fail(`unexpected ${label} field ${key}`);
+}
+
+/**
+ * An unsigned desktop preview (platform linux-preview or windows-preview).
+ * Pinned like the Mac lane, plus: no unknown fields, the full source commit,
+ * the exact qualified file name, an explicit unsigned flag, and the list of
+ * what is NOT qualified, which the site must show next to any link. Publication
+ * needs a recorded qualification of these exact bytes; a clean-GUI claim is
+ * never accepted for a preview.
+ */
+function validatePreviewContract(raw, { requireAccepted }) {
+  const lane = raw.platform === "mac" ? undefined : LANES[raw.platform];
+  if (!lane || !Object.hasOwn(LANES, raw.platform)) fail("platform must be linux-preview or windows-preview");
+  onlyFields(raw, PREVIEW_FIELDS, "contract");
+  if (raw.schemaVersion !== 1) fail("contract schemaVersion must be 1");
+  if (raw.product !== "Afar") fail("contract product must be Afar");
+  const { version, architecture, sourceCommit, artifact } = raw;
+  if (typeof version !== "string" || !VERSION.test(version)) fail("version must be MAJOR.MINOR.PATCH");
+  if (!lane.architectures.includes(architecture)) fail(`architecture must be one of ${lane.architectures.join(", ")}`);
+  if (typeof sourceCommit !== "string" || !GIT_SHA.test(sourceCommit)) fail("sourceCommit must be a full 40-character commit SHA");
+  if (!isPlainObject(artifact)) fail("artifact must be an object");
+  onlyFields(artifact, PREVIEW_ARTIFACT_FIELDS, "artifact");
+  const { fileName } = artifact;
+  if (typeof fileName !== "string" || !lane.fileNameMatches(fileName, { version, architecture, sourceCommit })) {
+    fail(`artifact.fileName must follow ${lane.fileNameRule} for this version, architecture and commit`);
+  }
+  if (typeof artifact.sha256 !== "string" || !HEX64.test(artifact.sha256)) {
+    fail("artifact.sha256 must be 64 lowercase hex characters");
+  }
+  if (!Number.isInteger(artifact.size) || artifact.size < 1 || artifact.size > MAX_SINGLE_PUT_BYTES) {
+    fail("artifact.size must be a positive integer within a single PUT");
+  }
+  const tag = `afar-${lane.os}-preview-${version}`;
+  if (raw.draftReleaseTag !== tag) fail(`draftReleaseTag must be ${tag}`);
+  if (raw.bucket !== EXPECTED_BUCKET) fail(`bucket must be ${EXPECTED_BUCKET}`);
+  if (raw.publicBaseUrl !== EXPECTED_PUBLIC_BASE_URL) fail(`publicBaseUrl must be ${EXPECTED_PUBLIC_BASE_URL}`);
+  const objectKey = `mission-control/preview/${lane.os}/${version}/${fileName}`;
+  if (raw.objectKey !== objectKey) fail(`objectKey must be ${objectKey}`);
+  if (raw.consistencyProbeKey !== CONSISTENCY_PROBE_KEY) fail(`consistencyProbeKey must be ${CONSISTENCY_PROBE_KEY}`);
+  const qualification = raw.previewQualification;
+  if (!isPlainObject(qualification)) fail("previewQualification must be an object");
+  onlyFields(qualification, PREVIEW_QUALIFICATION_FIELDS, "previewQualification");
+  if (qualification.signed !== false) fail("previewQualification.signed must be false: this lane publishes unsigned previews only");
+  const { notQualified } = qualification;
+  if (!Array.isArray(notQualified) || notQualified.length === 0 ||
+      !notQualified.every((item) => typeof item === "string" && item.trim().length > 0 && item.length <= 120)) {
+    fail("previewQualification.notQualified must list what is not qualified");
+  }
+  if (typeof qualification.accepted !== "boolean") fail("previewQualification.accepted must be true or false");
+  if (requireAccepted) {
+    if (qualification.accepted !== true) fail("preview qualification is not recorded; refusing to publish");
+    if (qualification.qualifiedArtifactSha256 !== artifact.sha256) {
+      fail("preview qualification was not recorded for this exact artifact SHA-256");
+    }
+    if (typeof qualification.evidenceSha256 !== "string" || !HEX64.test(qualification.evidenceSha256)) {
+      fail("previewQualification.evidenceSha256 must reference the qualification evidence");
+    }
+    if (!isIsoUtcTimestamp(qualification.acceptedAt, { fine: true })) {
+      fail("previewQualification.acceptedAt must be an RFC 3339 UTC timestamp such as 2026-10-19T00:00:00Z");
+    }
+  }
+  return Object.freeze({
+    version,
+    fileName,
+    sha256: artifact.sha256,
+    size: artifact.size,
+    draftReleaseTag: raw.draftReleaseTag,
+    bucket: raw.bucket,
+    publicBaseUrl: raw.publicBaseUrl,
+    objectKey,
+    publicUrl: `${raw.publicBaseUrl}/${objectKey}`,
+    lane: raw.platform
   });
 }
 
@@ -341,7 +482,7 @@ export async function downloadDraftAsset({ contract, repository, token, fetchImp
     accept: "application/octet-stream",
     maxBytes: contract.size,
     exactBytes: contract.size,
-    mediaTypes: ["application/octet-stream", DMG_MEDIA_TYPE],
+    mediaTypes: ["application/octet-stream", LANES[contract.lane].mediaType],
     deadlineMs: limits.artifactDeadlineMs,
     idleMs: limits.idleMs
   });
@@ -360,7 +501,7 @@ export async function downloadDraftAsset({ contract, repository, token, fetchImp
  * before the job's record exists, so the result never under-counts it. Any
  * missing, ambiguous or inconsistent metadata fails closed.
  */
-export async function resolveJobClock({ repository, token, job, fetchImpl, limits = DEFAULT_LIMITS, now }) {
+export async function resolveJobClock({ repository, token, job, fetchImpl, limits = DEFAULT_LIMITS, now, jobName = PUBLISH_JOB_NAME }) {
   if (!REPOSITORY.test(repository ?? "")) fail("GITHUB_REPOSITORY is malformed");
   if (!token) fail("GH_TOKEN is required to read this job's metadata");
   const { runId, runAttempt, runnerName, headSha } = job ?? {};
@@ -391,7 +532,7 @@ export async function resolveJobClock({ repository, token, job, fetchImpl, limit
   const [record] = mine;
   if (String(record.run_id) !== runId || String(record.run_attempt) !== runAttempt) fail("the job record names another run or attempt");
   if (record.head_sha !== headSha) fail("the job record names another commit");
-  if (record.name !== PUBLISH_JOB_NAME) fail("the job record names another job");
+  if (record.name !== jobName) fail("the job record names another job");
   if (!isIsoUtcTimestamp(record.created_at)) fail("the job record has no valid created_at");
   const createdAt = Date.parse(record.created_at);
   if (createdAt > serverNow + 1000) fail("the job record was created after GitHub's current time");
@@ -414,10 +555,10 @@ async function publicGet(contract, key, { fetchImpl, limits, sleep, attempts, ar
   const options = {
     fetchImpl,
     origins: [contract.publicBaseUrl],
-    accept: artifact ? DMG_MEDIA_TYPE : "*/*",
+    accept: artifact ? LANES[contract.lane].mediaType : "*/*",
     maxBytes: artifact ? contract.size : limits.feedMaxBytes,
     exactBytes: artifact ? contract.size : null,
-    mediaTypes: artifact ? [DMG_MEDIA_TYPE] : null,
+    mediaTypes: artifact ? [LANES[contract.lane].mediaType] : null,
     deadlineMs: artifact ? limits.publicArtifactDeadlineMs : limits.feedDeadlineMs,
     idleMs: limits.idleMs,
     noCache: !artifact
@@ -459,19 +600,31 @@ export function awsCommands({ contract, endpoint, artifactPath, probePath }) {
       "--bucket", contract.bucket, "--key", contract.objectKey, "--body", artifactPath,
       "--if-none-match", "*",
       "--checksum-sha256", Buffer.from(contract.sha256, "hex").toString("base64"),
-      "--content-type", DMG_MEDIA_TYPE,
+      "--content-type", LANES[contract.lane].mediaType,
       "--cache-control", "public, max-age=31536000, immutable"
     ]
   };
+}
+
+/**
+ * The post-write reserve for a lane. postWriteReserveMs covers the Mac lane's two
+ * feeds; each further feed adds its worst-case re-read (3 attempts at the feed
+ * deadline plus 2 s + 4 s of backoff), so the Mac reserve is unchanged.
+ */
+export function postWriteReserveMs(lane, limits = DEFAULT_LIMITS) {
+  const extraFeeds = lane.feedKeys.length - FEED_KEYS.length;
+  return limits.postWriteReserveMs + extraFeeds * (3 * limits.feedDeadlineMs + 6000);
 }
 
 /** The full guarded publication. Every external effect goes through injected functions. */
 export async function publish({ contractRaw, repository, token, accountId, job, fetchImpl, runAws, workDir, sleep, limits = DEFAULT_LIMITS, now = () => performance.now() }) {
   const contract = validateContract(contractRaw, { requireAccepted: true });
   if (!ACCOUNT_ID.test(accountId ?? "")) fail("CLOUDFLARE_ACCOUNT_ID must be 32 lowercase hex characters");
-  const clock = await resolveJobClock({ repository, token, job, fetchImpl, limits, now });
+  const lane = LANES[contract.lane];
+  const clock = await resolveJobClock({ repository, token, job, fetchImpl, limits, now, jobName: lane.jobName });
   // The write window closes once the post-write reserve is no longer left in the budget.
-  const writeWindowOpen = () => clock.elapsedMs() <= limits.totalBudgetMs - limits.postWriteReserveMs;
+  const reserveMs = postWriteReserveMs(lane, limits);
+  const writeWindowOpen = () => clock.elapsedMs() <= limits.totalBudgetMs - reserveMs;
   if (!writeWindowOpen()) {
     fail("the job's time since GitHub created it already closed the write window; refusing before the draft download or any bucket access");
   }
@@ -484,7 +637,7 @@ export async function publish({ contractRaw, repository, token, accountId, job, 
   const commands = awsCommands({ contract, endpoint, artifactPath, probePath: join(workDir, "consistency-probe") });
 
   const feedsBefore = {};
-  for (const key of FEED_KEYS) {
+  for (const key of lane.feedKeys) {
     const body = await publicGet(contract, key, { ...io, attempts: 3 });
     feedsBefore[key] = body === null ? null : sha256Hex(body);
   }
@@ -523,7 +676,7 @@ export async function publish({ contractRaw, repository, token, accountId, job, 
       : "public bytes do not match the contract");
   }
 
-  for (const key of FEED_KEYS) {
+  for (const key of lane.feedKeys) {
     const body = await publicGet(contract, key, { ...io, attempts: 3 });
     const after = body === null ? null : sha256Hex(body);
     if (after !== feedsBefore[key]) fail(`OpenBurnBar feed ${key} changed during publication`);
@@ -532,6 +685,7 @@ export async function publish({ contractRaw, repository, token, accountId, job, 
   return {
     result,
     product: "Afar",
+    lane: contract.lane,
     version: contract.version,
     url: contract.publicUrl,
     objectKey: contract.objectKey,
