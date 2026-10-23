@@ -8,6 +8,7 @@
     "size": 41118073
   },
   "draftReleaseTag": "afar-mac-0.1.14",
+  "accountId": "095eddce7b747dab5ebc806e353e92a6",
   "bucket": "openburnbar-downloads",
   "publicBaseUrl": "https://downloads.burnbar.ai",
   "objectKey": "mission-control/0.1.14/MissionControl-blank-0.1.14-universal-release.dmg",

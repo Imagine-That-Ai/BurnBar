@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   awsArgv,
   awsCommands,
@@ -22,7 +23,7 @@ const read = (path) => readFileSync(new URL(path, root), "utf8");
 const committed = JSON.parse(read("config/afar-mac-release.json"));
 
 const ARTIFACT = Buffer.from("afar blank dmg bytes, streamed in several chunks for the test");
-const ACCOUNT = "0123456789abcdef0123456789abcdef";
+const ACCOUNT = "095eddce7b747dab5ebc806e353e92a6";
 const REPO = "Imagine-That-Ai/BurnBar";
 const API_ASSET_URL = `https://api.github.com/repos/${REPO}/releases/assets/1`;
 const STORAGE_URL = "https://release-assets.githubusercontent.com/blob";
@@ -175,11 +176,11 @@ async function run(w, overrides = {}) {
     contractRaw: overrides.contractRaw ?? w.c,
     repository: REPO,
     token: "ghs_test",
-    accountId: ACCOUNT,
+    accountId: Object.hasOwn(overrides, "accountId") ? overrides.accountId : ACCOUNT,
     job: overrides.job ?? JOB,
     fetchImpl: w.fetchImpl,
     runAws: overrides.runAws ?? w.runAws,
-    workDir: mkdtempSync(join(tmpdir(), "afar-publish-test-")),
+    workDir: overrides.workDir ?? mkdtempSync(join(tmpdir(), "afar-publish-test-")),
     sleep: async () => {},
     limits: overrides.limits ?? FAST,
     now: overrides.now ?? (() => 0)
@@ -202,6 +203,7 @@ test("the committed contract pins the exact blank DMG and its recorded clean-GUI
   assert.equal(c.sha256, "9957bf67a5677ca9a23fdcfe1c80fe7335ae050e8ccf11c625108402f9f445a8");
   assert.equal(c.size, 41118073);
   assert.equal(c.draftReleaseTag, "afar-mac-0.1.14");
+  assert.equal(c.accountId, ACCOUNT);
   assert.equal(c.publicUrl, "https://downloads.burnbar.ai/mission-control/0.1.14/MissionControl-blank-0.1.14-universal-release.dmg");
   assert.deepEqual(committed.cleanGuiAcceptance, {
     accepted: true,
@@ -302,6 +304,52 @@ test("publishes one conditional object, streams in chunks and verifies it public
   assert.deepEqual(w.calls.awsTimeouts, [FAST.awsProbeTimeoutMs, FAST.awsPutTimeoutMs]);
   assert.deepEqual([...w.calls.authOrigins], ["https://api.github.com"]);
   assert.equal(w.objects.get("latest-macos.json"), FEEDS["latest-macos.json"]);
+});
+
+test("missing, malformed or different contract accounts refuse before any effects", async () => {
+  for (const accountId of ["f".repeat(32), undefined, null, "", 123, ACCOUNT.toUpperCase(), "g".repeat(32)]) {
+    const w = world();
+    const workDir = mkdtempSync(join(tmpdir(), "afar-account-contract-test-"));
+    await assert.rejects(run(w, { contractRaw: contract({ accountId }), accountId, workDir }), {
+      name: "Error",
+      message: "accountId must match the reviewed Cloudflare account"
+    });
+    assert.equal(w.calls.fetch.length, 0);
+    assert.equal(w.calls.aws.length, 0);
+    assert.deepEqual(readdirSync(workDir), []);
+  }
+});
+
+test("missing, malformed or different runtime accounts refuse without effects or value disclosure", async () => {
+  for (const accountId of ["f".repeat(32), undefined, null, "", 123, ACCOUNT.toUpperCase(), "g".repeat(32)]) {
+    const w = world();
+    const workDir = mkdtempSync(join(tmpdir(), "afar-account-runtime-test-"));
+    await assert.rejects(run(w, { accountId, workDir }), {
+      name: "Error",
+      message: "CLOUDFLARE_ACCOUNT_ID does not match the reviewed accountId; refusing to publish"
+    });
+    assert.equal(w.calls.fetch.length, 0);
+    assert.equal(w.calls.aws.length, 0);
+    assert.deepEqual(readdirSync(workDir), []);
+  }
+});
+
+test("the CLI refuses an account mismatch before creating its work directory or preparing credentials", () => {
+  const dir = mkdtempSync(join(tmpdir(), "afar-account-cli-test-"));
+  const contractPath = join(dir, "contract.json");
+  writeFileSync(contractPath, JSON.stringify(committed));
+  const result = spawnSync(process.execPath, [
+    fileURLToPath(new URL("./afar-mac-artifact-publish.mjs", import.meta.url)),
+    "publish", "--contract", contractPath
+  ], {
+    encoding: "utf8",
+    timeout: 5000,
+    env: { RUNNER_TEMP: dir, CLOUDFLARE_ACCOUNT_ID: "f".repeat(32) }
+  });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "CLOUDFLARE_ACCOUNT_ID does not match the reviewed accountId; refusing to publish\n");
+  assert.deepEqual(readdirSync(dir), ["contract.json"]);
 });
 
 test("refuses without acceptance before any network or bucket access", async () => {

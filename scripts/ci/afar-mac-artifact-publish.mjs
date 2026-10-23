@@ -43,6 +43,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 
+export const EXPECTED_ACCOUNT_ID = "095eddce7b747dab5ebc806e353e92a6";
 export const EXPECTED_BUCKET = "openburnbar-downloads";
 export const EXPECTED_PUBLIC_BASE_URL = "https://downloads.burnbar.ai";
 export const CONSISTENCY_PROBE_KEY = "latest-macos.json";
@@ -57,7 +58,6 @@ const GITHUB_ASSET_STORAGE_ORIGINS = Object.freeze([
 const MAX_SINGLE_PUT_BYTES = 5 * 1024 ** 3;
 const HEX64 = /^[a-f0-9]{64}$/u;
 const VERSION = /^\d+\.\d+\.\d+$/u;
-const ACCOUNT_ID = /^[a-f0-9]{32}$/u;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 
 /**
@@ -142,6 +142,7 @@ export function validateContract(raw, { requireAccepted = false } = {}) {
     fail("artifact.size must be a positive integer within a single PUT");
   }
   if (raw.draftReleaseTag !== `afar-mac-${version}`) fail(`draftReleaseTag must be afar-mac-${version}`);
+  if (raw.accountId !== EXPECTED_ACCOUNT_ID) fail("accountId must match the reviewed Cloudflare account");
   if (raw.bucket !== EXPECTED_BUCKET) fail(`bucket must be ${EXPECTED_BUCKET}`);
   if (raw.publicBaseUrl !== EXPECTED_PUBLIC_BASE_URL) fail(`publicBaseUrl must be ${EXPECTED_PUBLIC_BASE_URL}`);
   if (raw.objectKey !== `mission-control/${version}/${fileName}`) {
@@ -168,11 +169,16 @@ export function validateContract(raw, { requireAccepted = false } = {}) {
     sha256: artifact.sha256,
     size: artifact.size,
     draftReleaseTag: raw.draftReleaseTag,
+    accountId: raw.accountId,
     bucket: raw.bucket,
     publicBaseUrl: raw.publicBaseUrl,
     objectKey: raw.objectKey,
     publicUrl: `${raw.publicBaseUrl}/${raw.objectKey}`
   });
+}
+
+function validateRuntimeAccount(contract, accountId) {
+  if (accountId !== contract.accountId) fail("CLOUDFLARE_ACCOUNT_ID does not match the reviewed accountId; refusing to publish");
 }
 
 /** HTTPS, default port, no userinfo, and an origin from the allow-list for this hop. */
@@ -468,14 +474,14 @@ export function awsCommands({ contract, endpoint, artifactPath, probePath }) {
 /** The full guarded publication. Every external effect goes through injected functions. */
 export async function publish({ contractRaw, repository, token, accountId, job, fetchImpl, runAws, workDir, sleep, limits = DEFAULT_LIMITS, now = () => performance.now() }) {
   const contract = validateContract(contractRaw, { requireAccepted: true });
-  if (!ACCOUNT_ID.test(accountId ?? "")) fail("CLOUDFLARE_ACCOUNT_ID must be 32 lowercase hex characters");
+  validateRuntimeAccount(contract, accountId);
   const clock = await resolveJobClock({ repository, token, job, fetchImpl, limits, now });
   // The write window closes once the post-write reserve is no longer left in the budget.
   const writeWindowOpen = () => clock.elapsedMs() <= limits.totalBudgetMs - limits.postWriteReserveMs;
   if (!writeWindowOpen()) {
     fail("the job's time since GitHub created it already closed the write window; refusing before the draft download or any bucket access");
   }
-  const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+  const endpoint = `https://${contract.accountId}.r2.cloudflarestorage.com`;
   const io = { fetchImpl, limits, sleep };
 
   const bytes = await downloadDraftAsset({ contract, repository, token, fetchImpl, limits });
@@ -560,6 +566,8 @@ async function main(argv) {
     return;
   }
   if (command !== "publish") fail("usage: afar-mac-artifact-publish.mjs check|publish --contract <path>");
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  validateRuntimeAccount(validateContract(contractRaw, { requireAccepted: true }), accountId);
   const awsBin = process.env.AWS_BIN;
   if (!awsBin) fail("AWS_BIN is required");
   if (!process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) fail("R2 credentials are required");
@@ -582,7 +590,7 @@ async function main(argv) {
     contractRaw,
     repository: process.env.GITHUB_REPOSITORY,
     token: process.env.GH_TOKEN,
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    accountId,
     job: {
       runId: process.env.GITHUB_RUN_ID,
       runAttempt: process.env.GITHUB_RUN_ATTEMPT,
