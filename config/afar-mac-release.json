@@ -1,21 +1,21 @@
 {
   "schemaVersion": 1,
   "product": "Afar",
-  "version": "0.1.12",
+  "version": "0.1.14",
   "artifact": {
-    "fileName": "MissionControl-blank-0.1.12-universal-release.dmg",
-    "sha256": "9e46f299de73cb6510ed8b49f9a32cb7758b98e593fe51b8e568b06bd68aa272",
-    "size": 40624316
+    "fileName": "MissionControl-blank-0.1.14-universal-release.dmg",
+    "sha256": "9957bf67a5677ca9a23fdcfe1c80fe7335ae050e8ccf11c625108402f9f445a8",
+    "size": 41118073
   },
-  "draftReleaseTag": "afar-mac-0.1.12",
+  "draftReleaseTag": "afar-mac-0.1.14",
   "bucket": "openburnbar-downloads",
   "publicBaseUrl": "https://downloads.burnbar.ai",
-  "objectKey": "mission-control/0.1.12/MissionControl-blank-0.1.12-universal-release.dmg",
+  "objectKey": "mission-control/0.1.14/MissionControl-blank-0.1.14-universal-release.dmg",
   "consistencyProbeKey": "latest-macos.json",
   "cleanGuiAcceptance": {
-    "accepted": false,
-    "installedArtifactSha256": null,
-    "evidenceSha256": null,
-    "acceptedAt": null
+    "accepted": true,
+    "installedArtifactSha256": "9957bf67a5677ca9a23fdcfe1c80fe7335ae050e8ccf11c625108402f9f445a8",
+    "evidenceSha256": "6e8fc61d5916aa15b455c19ea24850c0dfbe108119fea6fa3875bc57ba1e899f",
+    "acceptedAt": "2026-10-21T19:23:37Z"
   }
 }
