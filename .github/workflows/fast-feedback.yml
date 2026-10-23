@@ -1143,7 +1143,7 @@ jobs:
             crates
             tests/fixtures/domain-core
 
-      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1, pinned via toolchain below
         with:
           # Match crates/openburnbar-iroh/rust-toolchain.toml so fmt/clippy/test
           # run under the same rustc the crate is pinned to (and its components
