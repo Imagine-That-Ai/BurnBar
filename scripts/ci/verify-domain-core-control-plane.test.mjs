@@ -44,6 +44,7 @@ test("control-plane manifest exhaustively covers workflow executables and local 
   assert.deepEqual(Object.keys(MANIFEST.files).sort(), discovered);
   assert.ok(discovered.includes("scripts/test-openburnbar-swift.sh"));
   assert.ok(discovered.includes("scripts/test-openburnbar-app.sh"));
+  assert.ok(discovered.includes("scripts/security/verify-deployed-ttl.sh"));
   assert.ok(
     discovered.includes("scripts/ci/write_burnbar_source_provenance.py"),
   );
@@ -56,6 +57,32 @@ test("control-plane manifest exhaustively covers workflow executables and local 
     "config/domain-core-ci-paths.json",
   ]) {
     assert.ok(discovered.includes(path), path);
+  }
+});
+
+test("JSON artifact paths are not executable JavaScript prefixes", (context) => {
+  const root = candidateCopy(context);
+  const workflow = resolve(root, ".github/workflows/domain-core.yml");
+  writeFileSync(
+    workflow,
+    `${readFileSync(workflow, "utf8")}\n# artifact: tools/diagnostics/package-receipt.json\n`,
+  );
+  const discovered = discoverDomainCoreControlPlane(root);
+  assert.ok(!discovered.includes("tools/diagnostics/package-receipt.js"));
+});
+
+test("missing complete executable references still fail closed", (context) => {
+  const root = candidateCopy(context);
+  const workflow = resolve(root, ".github/workflows/domain-core.yml");
+  const original = readFileSync(workflow, "utf8");
+  for (const extension of ["js", "mjs", "py", "sh"]) {
+    const path = `scripts/ci/missing-diagnostic.${extension}`;
+    writeFileSync(workflow, `${original}\n# executable: ${path}\n`);
+    assert.throws(
+      () => discoverDomainCoreControlPlane(root),
+      (error) => error.message.includes(path) && error.message.includes("missing"),
+      path,
+    );
   }
 });
 

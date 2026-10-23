@@ -193,6 +193,7 @@ jobs:
             10.0.x
 
       - name: Check Rust core
+        id: rust-core
         working-directory: crates/openburnbar-domain-core
         env:
           OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
@@ -223,11 +224,6 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/rust-performance-smoke.log"
           test -s "$DOMAIN_CORE_BENCHMARK_REPORT"
 
-      - name: Test and verify union ABI manifest
-        run: |
-          python3 tests/test_domain_core_union_gate.py
-          python3 scripts/ci/domain-core-union-gate.py --check-abi
-
       - name: Cache pinned uniffi-bindgen-cs
         id: domain-bindgen-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -236,11 +232,17 @@ jobs:
           key: domain-core-uniffi-bindgen-cs-${{ runner.os }}-v0.9.2+v0.28.3
 
       - name: Install pinned uniffi-bindgen-cs
+        id: domain-bindgen-install
         if: steps.domain-bindgen-cache.outputs.cache-hit != 'true'
         run: >-
           cargo install uniffi-bindgen-cs
           --git https://github.com/NordSecurity/uniffi-bindgen-cs
           --tag v0.9.2+v0.28.3
+
+      - name: Test and verify union ABI manifest
+        run: |
+          python3 tests/test_domain_core_union_gate.py
+          python3 scripts/ci/domain-core-union-gate.py --check-abi
 
       - name: Reject C# domain-core binding drift
         env:
@@ -331,6 +333,68 @@ jobs:
           path: ${{ runner.temp }}/rust-and-csharp.json
           if-no-files-found: error
           retention-days: 14
+
+      - name: Export genuine C# regeneration after a failed check
+        id: csharp-rebuild
+        if: >-
+          ${{ failure() && !cancelled() &&
+              steps.candidate.outcome == 'success' &&
+              steps.rust-core.outcome == 'success' &&
+              steps.domain-bindgen-cache.outcome == 'success' &&
+              (steps.domain-bindgen-cache.outputs.cache-hit == 'true' ||
+               steps.domain-bindgen-install.outcome == 'success') }}
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: |
+          test "$(uniffi-bindgen-cs --version)" = 'uniffi-bindgen 0.9.2+v0.28.3'
+          if command -v csharpier >/dev/null 2>&1; then
+            echo 'ERROR: csharpier would change the pinned raw C# output' >&2
+            exit 1
+          fi
+          crates/openburnbar-domain-core/bindings/csharp/regenerate.sh
+          python3 scripts/ci/domain-core-union-gate.py --check-provenance csharp
+          python3 - <<'PYCS'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+
+          root = pathlib.Path.cwd()
+          source = subprocess.check_output([
+              "python3", "scripts/ci/domain-core-union-gate.py", "--source-fingerprint"
+          ], text=True).strip()
+          candidate = os.environ["OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT"]
+          paths = [
+              "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs",
+              "crates/openburnbar-domain-core/artifact-provenance/csharp.sha256",
+              "crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so",
+          ]
+          native = (root / paths[2]).read_bytes()
+          assert source.encode() in native and candidate.encode() in native
+          receipt = {
+              "candidateCommit": candidate,
+              "sourceSha256": source,
+              "generator": subprocess.check_output(["uniffi-bindgen-cs", "--version"], text=True).strip(),
+              "diagnosticOnly": True,
+              "files": {path: hashlib.sha256((root / path).read_bytes()).hexdigest() for path in paths},
+          }
+          output = pathlib.Path(os.environ["RUNNER_TEMP"]) / "domain-core-csharp-rebuild.json"
+          output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+          PYCS
+
+      - name: Upload genuine C# regeneration
+        if: ${{ !cancelled() && steps.csharp-rebuild.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: domain-core-csharp-rebuilt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs
+            crates/openburnbar-domain-core/artifact-provenance/csharp.sha256
+            crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so
+            ${{ runner.temp }}/domain-core-csharp-rebuild.json
+          if-no-files-found: error
+          retention-days: 3
 
   windows-native:
     name: windows-native-${{ matrix.rid }}
@@ -1273,6 +1337,7 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check pytest cryptography
 
       - name: Build package and run local MCP CloudVault contracts
+        id: python-contracts
         env:
           DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/python-mcp-observed-identity.json
@@ -1320,6 +1385,25 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload genuine rebuilt Python MCP package
+        if: ${{ !cancelled() && steps.python-contracts.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: domain-core-python-mcp-rebuilt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py
+            tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/libopenburnbar_domain_ffi.so
+            tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256
+            tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/openburnbar-domain-core-package-receipt.json
+            tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py
+            tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/libopenburnbar_domain_ffi.so
+            tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256
+            tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar-domain-core-package-receipt.json
+            crates/openburnbar-domain-core/artifact-provenance/python.sha256
+            ${{ runner.temp }}/python-mcp-observed-identity.json
+          if-no-files-found: error
+          retention-days: 3
+
   python-hermes-contracts:
     name: python-hermes-contracts
     needs: classify
@@ -1345,6 +1429,7 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check pytest cryptography
 
       - name: Build package and run external Hermes plugin contracts
+        id: python-contracts
         env:
           DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/python-hermes-observed-identity.json
@@ -1393,6 +1478,25 @@ jobs:
           path: ${{ runner.temp }}/python-hermes-contracts.json
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload genuine rebuilt Hermes Python package
+        if: ${{ !cancelled() && steps.python-contracts.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: domain-core-python-hermes-rebuilt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py
+            tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/libopenburnbar_domain_ffi.so
+            tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256
+            tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/openburnbar-domain-core-package-receipt.json
+            tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py
+            tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/libopenburnbar_domain_ffi.so
+            tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256
+            tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar-domain-core-package-receipt.json
+            crates/openburnbar-domain-core/artifact-provenance/python.sha256
+            ${{ runner.temp }}/python-hermes-observed-identity.json
+          if-no-files-found: error
+          retention-days: 3
 
   rollback-drill:
     name: rollback-drill

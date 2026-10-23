@@ -113,7 +113,7 @@ const SEED_PATHS = Object.freeze([
   "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs",
 ]);
 const EXECUTABLE_REFERENCE =
-  /(?:^|[\s"'(])((?:\.\/)?(?:scripts|tools)\/[A-Za-z0-9_./-]+\.(?:js|mjs|py|sh))/gmu;
+  /(?:^|[\s"'(])((?:\.\/)?(?:scripts|tools)\/[A-Za-z0-9_./-]+\.(?:js|mjs|py|sh))\b/gmu;
 const LOCAL_IMPORT = /(?:from\s+|import\s*\()(["'])(\.{1,2}\/[^"']+)\1/gmu;
 const DYNAMIC_PYTHON_CI_MODULE =
   /load_ci_module\([^,]+,\s*(["'])([A-Za-z_][A-Za-z0-9_]*)\1\s*\)/gmu;
