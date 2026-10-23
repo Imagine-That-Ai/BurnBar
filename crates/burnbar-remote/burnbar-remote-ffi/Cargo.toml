@@ -19,8 +19,5 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uniffi.workspace = true
 
-[build-dependencies]
-uniffi = { version = "0.28", features = ["build"] }
-
 [lints]
 workspace = true
