@@ -188,13 +188,48 @@ async function run(w, overrides = {}) {
 
 const puts = (w) => w.calls.aws.filter((args) => args[1] === "put-object");
 
-test("the committed contract pins the exact blank DMG and stays unaccepted", () => {
-  const c = validateContract(committed);
-  assert.equal(c.sha256, "9e46f299de73cb6510ed8b49f9a32cb7758b98e593fe51b8e568b06bd68aa272");
-  assert.equal(c.size, 40624316);
-  assert.equal(c.publicUrl, "https://downloads.burnbar.ai/mission-control/0.1.12/MissionControl-blank-0.1.12-universal-release.dmg");
-  assert.equal(committed.cleanGuiAcceptance.accepted, false);
-  assert.throws(() => validateContract(committed, { requireAccepted: true }), /acceptance is not recorded/);
+// The committed contract's acceptance binds to this frozen in-repo record.
+const EVIDENCE_RECORD = "docs/archive/evidence/2026-10-21-afar-mac-0.1.14-clean-install/README.md";
+/** The committed contract with its acceptance withdrawn. */
+const unaccepted = (raw) => ({
+  ...raw,
+  cleanGuiAcceptance: { accepted: false, installedArtifactSha256: null, evidenceSha256: null, acceptedAt: null }
+});
+
+test("the committed contract pins the exact blank DMG and its recorded clean-GUI acceptance", () => {
+  const c = validateContract(committed, { requireAccepted: true });
+  assert.equal(c.version, "0.1.14");
+  assert.equal(c.sha256, "9957bf67a5677ca9a23fdcfe1c80fe7335ae050e8ccf11c625108402f9f445a8");
+  assert.equal(c.size, 41118073);
+  assert.equal(c.draftReleaseTag, "afar-mac-0.1.14");
+  assert.equal(c.publicUrl, "https://downloads.burnbar.ai/mission-control/0.1.14/MissionControl-blank-0.1.14-universal-release.dmg");
+  assert.deepEqual(committed.cleanGuiAcceptance, {
+    accepted: true,
+    installedArtifactSha256: "9957bf67a5677ca9a23fdcfe1c80fe7335ae050e8ccf11c625108402f9f445a8",
+    evidenceSha256: "6e8fc61d5916aa15b455c19ea24850c0dfbe108119fea6fa3875bc57ba1e899f",
+    acceptedAt: "2026-10-21T19:23:37Z"
+  });
+  // Withdrawing the acceptance still refuses.
+  assert.throws(() => validateContract(unaccepted(committed), { requireAccepted: true }), /acceptance is not recorded/);
+});
+
+test("the acceptance binds to the durable in-repo evidence record, byte for byte", () => {
+  const bytes = readFileSync(new URL(EVIDENCE_RECORD, root));
+  assert.equal(sha256Hex(bytes), committed.cleanGuiAcceptance.evidenceSha256, `${EVIDENCE_RECORD} changed; it is a frozen record`);
+  const text = bytes.toString("utf8");
+  for (const pinned of [
+    committed.artifact.fileName,
+    committed.artifact.sha256,
+    committed.cleanGuiAcceptance.acceptedAt,
+    `${committed.publicBaseUrl}/${committed.objectKey}`,
+    "17d12c406d83b1ae7d044cc0fffebae3db44693f1cfb7da04e99bff198e9158f",
+    "dc2392d17896e3f77edc36dc5c5a495254d6bb1811a1a827c64a7ca54141b4a2",
+    "f86eb1c43b7c2e0ac43d3c7714756562d260fabba1068625c89c3d5cf8567420"
+  ]) {
+    assert.ok(text.includes(pinned), `the evidence record does not name ${pinned}`);
+  }
+  // A public frozen record: no private workstation paths.
+  assert.doesNotMatch(text, /\/Users\/|\/Volumes\/|[A-Z]:\\Users\\/);
 });
 
 test("acceptance must name the exact artifact and carry evidence", () => {
@@ -271,7 +306,7 @@ test("publishes one conditional object, streams in chunks and verifies it public
 
 test("refuses without acceptance before any network or bucket access", async () => {
   const w = world();
-  await assert.rejects(run(w, { contractRaw: committed }), /acceptance is not recorded/);
+  await assert.rejects(run(w, { contractRaw: unaccepted(committed) }), /acceptance is not recorded/);
   assert.equal(w.calls.fetch.length, 0);
   assert.equal(w.calls.aws.length, 0);
 });
