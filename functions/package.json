@@ -74,7 +74,7 @@
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.1.0",
-    "@google-cloud/tasks": "7.2.0",
+    "@google-cloud/tasks": "7.3.0",
     "@openburnbar/domain-core-wasm": "file:vendor/openburnbar/domain-core-wasm",
     "@openburnbar/entitlements": "file:vendor/openburnbar/entitlements",
     "@openburnbar/functions-shared": "file:vendor/openburnbar/functions-shared",
@@ -86,19 +86,19 @@
     "stripe": "22.6.2"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^5.0.2",
-    "@types/node": "^26.6.2",
-    "@typescript-eslint/eslint-plugin": "8.70.1",
-    "@typescript-eslint/parser": "8.70.1",
-    "@vitest/coverage-v8": "5.0.3",
-    "eslint": "10.11.0",
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "@types/node": "^26.6.5",
+    "@typescript-eslint/eslint-plugin": "8.72.0",
+    "@typescript-eslint/parser": "8.72.0",
+    "@vitest/coverage-v8": "5.0.5",
+    "eslint": "10.13.0",
     "eslint-config-prettier": "10.1.8",
-    "firebase": "12.19.0",
-    "firebase-tools": "15.31.0",
-    "knip": "6.38.0",
-    "prettier": "3.9.9",
-    "typescript": "^5.9.3",
-    "vitest": "5.0.3"
+    "firebase": "13.1.0",
+    "firebase-tools": "15.34.0",
+    "knip": "6.42.1",
+    "prettier": "3.9.10",
+    "typescript": "^7.0.2",
+    "vitest": "5.0.5"
   },
   "overrides": {
     "@tootallnate/once": "^3.0.1",
