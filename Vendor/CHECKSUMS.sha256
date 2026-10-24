@@ -4,5 +4,5 @@
 # after re-vendoring an AAR; scripts/supply-chain/verify-vendor-checksums.sh
 # fails on any binary without an entry, any entry without a binary, and any drift.
 20fae552ede6c5d785ebd3b1b3f8f1236eb50817a16a7f1b804070cc65d0ad9e  burnbar-remote.aar
-0d4a64d2ee18d1687db57eec43f4c24ec5a015f5af0647e338c0ca92ba4f3304  openburnbar-domain-core.aar
+8a7bc89c50a361e91947fd6acd56ca4221402ddb32e17a3e4a3846ebced1495d  openburnbar-domain-core.aar
 ba0d8279e886515debca37fe1baea863c4bbe5d145b9b3f1f544b301558f0cdb  openburnbar-iroh.aar
