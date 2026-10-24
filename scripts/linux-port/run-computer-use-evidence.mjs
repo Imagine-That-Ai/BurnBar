@@ -13,10 +13,10 @@ const outDir = path.resolve(
 const runDir = path.join(outDir, 'current-product-run');
 const preservedDir = path.join(outDir, 'preserved-qemu-portal-mobile');
 const preservedTmpDir = '/private/tmp/openburnbar-cu-evidence-portal-20260704-1054';
-const defaultMissionBundle = path.join(
-  '/Users/albertonunez/.zenith/projects',
-  '20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l',
-  '.zenith/missions/mission-001/evidence/worker-cu-qemu-mobile-sec-pass-20260704-1002'
+// Checked-in copy of the real-surface bundle; the original out-of-repo mission bundle was retired.
+const checkedInBundle = path.join(
+  root,
+  'docs/linux-port/evidence/mission-001-computer-use-media-mobile/preserved-qemu-portal-mobile'
 );
 const image = process.env.OPENBURNBAR_LINUX_TOOLCHAIN_IMAGE || 'openburnbar-linux-toolchain:mission-001';
 
@@ -164,7 +164,7 @@ function chooseSourceBundle() {
     process.env.OB_CU_REAL_SURFACE_BUNDLE,
     process.env.OB_CU_SOURCE_BUNDLE,
     preservedTmpDir,
-    defaultMissionBundle
+    checkedInBundle
   ].filter(Boolean);
 
   for (const candidate of candidates) {
@@ -188,7 +188,10 @@ function preserveSourceBundle(sourceBundle) {
     copyDirectory(sourceBundle, preservedTmpDir);
   }
   const sourceForCheckout = hasRequiredBundleFiles(preservedTmpDir) ? preservedTmpDir : sourceBundle;
-  copyDirectory(sourceForCheckout, preservedDir);
+  // Copying a directory onto itself would delete it first, so skip when the source is the checkout copy.
+  if (path.resolve(sourceForCheckout) !== path.resolve(preservedDir)) {
+    copyDirectory(sourceForCheckout, preservedDir);
+  }
   return {
     selectedSourceBundle: sourceBundle,
     preservedTmpDir,
