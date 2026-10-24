@@ -71,28 +71,28 @@
     "test:integration": "vitest run test/integration"
   },
   "dependencies": {
-    "@amplitude/analytics-browser": "2.47.0",
-    "@astrojs/check": "^0.9.10",
-    "@astrojs/mdx": "^8.0.2",
-    "@chenglou/pretext": "0.0.9",
+    "@amplitude/analytics-browser": "2.48.1",
+    "@astrojs/check": "^0.9.12",
+    "@astrojs/mdx": "^8.1.1",
+    "@chenglou/pretext": "1.0.0",
     "@fontsource-variable/fraunces": "^5.3.0",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
-    "astro": "^7.3.5",
-    "firebase": "12.19.0",
-    "typescript": "^5.9.3"
+    "astro": "^7.4.2",
+    "firebase": "13.1.0",
+    "typescript": "^7.0.2"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "8.70.1",
-    "@typescript-eslint/parser": "8.70.1",
+    "@typescript-eslint/eslint-plugin": "8.72.0",
+    "@typescript-eslint/parser": "8.72.0",
     "esbuild": "0.28.2",
-    "eslint": "10.11.0",
+    "eslint": "10.13.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-astro": "3.2.1",
     "lightningcss": "^1.33.0",
-    "prettier": "3.9.9",
-    "prettier-plugin-astro": "^1.1.0",
-    "vitest": "5.0.3"
+    "prettier": "3.9.10",
+    "prettier-plugin-astro": "^1.1.1",
+    "vitest": "5.0.5"
   },
   "overrides": {
     "yaml": "^2.8.3",
