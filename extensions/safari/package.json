@@ -48,7 +48,8 @@
     "minimatch": "^10.0.3",
     "postcss": "^8.5.10",
     "serialize-javascript": "^7.0.0",
-    "vite": "8.3.3"
+    "vite": "8.3.3",
+    "undici": "8.12.2"
   },
   "size-limit": [
     {
