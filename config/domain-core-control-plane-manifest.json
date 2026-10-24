@@ -331,7 +331,7 @@
     "tools/hermes-platform-burnbar/legacy/__init__.py": ["34ba142381379559","d7388ad2febec384","ff32d1b8429e0477","874a74be09766520"],
     "tools/hermes-platform-burnbar/legacy/hermes_ratchet_legacy.py": ["900e178434f15f49","fd99441a44759b6d","8d14dbeb9be49c04","79ab5b0f239a9aab"],
     "tools/hermes-platform-burnbar/smoke_local.py": ["8988f4a1b02cf161","74779f6b44643f30","ea6d4dd53f00fd35","aba6a343600d562f"],
-    "tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256": ["fa382a148f9651ad","165b9c517fc6a463","43615d5b4742b87f","985decc48328f3b7"],
+    "tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256": ["a2eee63a45ebc348","2dd326a27a621c26","0a4db065b7c0bcbb","57910192b2ef87bd"],
     "tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py": ["efbdabbc699a288a","766f78754f074ab2","67d92c0d000aca12","4aa9bd63eb2b1577"],
     "tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py": ["efbdabbc699a288a","766f78754f074ab2","67d92c0d000aca12","4aa9bd63eb2b1577"],
     "windows/Directory.Build.props": ["1df761dd69643e57","7505bbec7b280944","e0a1d1e68d89b905","59dfbde5b713d774"],
