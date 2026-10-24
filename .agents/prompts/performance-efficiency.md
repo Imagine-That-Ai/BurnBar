@@ -1,6 +1,6 @@
 # BurnBar performance mission prompt
 
-Paste the **Mission brief** below into Cursor, Claude Code, Codex, or Zenith. Load [`.agents/skills/performance-efficiency/SKILL.md`](../skills/performance-efficiency/SKILL.md) as the operating method.
+Paste the **Mission brief** below into Cursor, Claude Code, or Codex. Load [`.agents/skills/performance-efficiency/SKILL.md`](../skills/performance-efficiency/SKILL.md) as the operating method.
 
 ---
 

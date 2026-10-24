@@ -118,10 +118,9 @@ Plans already written (execute through the factory):
   + winget publisher — external lead-times; start now, gates G5.
 
 ## 5. Execution model (how to keep running it)
-- **Vehicle:** BurnBar software factory PR loop (`docs/SOFTWARE_FACTORY_PR_LOOP.md`) + the Zenith mission
-  `20260703T010700Z-windows-port-zenith-mission-brief` (state in `~/.zenith/projects/…/.zenith/`: `mission.md`
-  scope charter, `missions/mission-001/contract/` = sealed Phase-0 VAL-*, `pending-contract/` = the 13
-  Windows/dev-host assertions to activate, `decisions/` = the Option-A bind + evidence).
+- **Vehicle:** BurnBar software factory PR loop (`docs/SOFTWARE_FACTORY_PR_LOOP.md`). The original Zenith
+  mission (`20260703T010700Z-windows-port-zenith-mission-brief`) is retired and its local state was deleted
+  on 2026-10-24; decisions live in [`decisions/`](decisions/README.md) and status in the parity ledger.
 - **Worker discipline (critical):** small green PR → **VERIFY → next.** VERIFY = a fresh `swift build`
   recompile (touch the changed files), NOT a claim and NOT SourceKit. **SourceKit "no such module" /
   "invalid redeclaration" diagnostics are routinely STALE after a refactor — trust `swift build`.** Keep each
@@ -189,9 +188,6 @@ Each is a Droid one-liner (Swift/.NET/sqlcipher already installed there). The fl
 - Spec: `docs/WINDOWS_PORT_MASTER_PLAN.md` (v2.1) · Brief: `docs/WINDOWS_PORT_MISSION_BRIEF.md`
 - Plans: [`docs/windows-port/PHASE1_CORE_SPLIT_PLAN.md`](PHASE1_CORE_SPLIT_PLAN.md) · `PHASE3_UI_PARITY_PLAN.md` ·
   [`CORE_ENGINE_SPLIT_FEASIBILITY.md`](CORE_ENGINE_SPLIT_FEASIBILITY.md) · `PARSER_OUTPUT_CONTRACT.md` · `STREAM_JSON_MAC_GOLDEN.md`
-- Zenith bucket: `~/.zenith/projects/20260703T010700Z-windows-port-zenith-mission-brief/.zenith/` (mission.md,
-  contract/, pending-contract/, decisions/G0-stack-bind-OPTION-A-2026-07-03.md +
-  dev-host-windows-evidence-2026-07-03.md, AGENTS.md, MEMORY.md)
 - Windows tree: `windows/` (WinUI app + PAL/ipc + tests). CI: `.github/workflows/*windows*.yml`.
 - PR stack: #1170 (foundation, fork), #1177/#1178/#1179/#1181 (Phase-1, origin), + walking skeleton.
 - Progress board: the 14-task list (Phase 1 PRs → G1 → Phases 2–5 → W0).
