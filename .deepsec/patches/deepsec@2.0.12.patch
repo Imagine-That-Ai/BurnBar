@@ -1,0 +1,227 @@
+--- a/dist/cli.mjs
++++ b/dist/cli.mjs
+@@ -37333,7 +37333,7 @@
+   } catch (err) {
+     throw new Error(`Sandbox.create failed: ${err?.message ?? String(err)}`);
+   }
+-  opts.onLog(`Bootstrap sandbox ${sandbox.sandboxId} created.`);
++  opts.onLog(`Bootstrap sandbox ${sandbox.currentSession().sessionId} created.`);
+   trackSandbox(sandbox);
+   try {
+     await runAndLog(sandbox, "npm", ["install", "-g", "pnpm@8"], "/vercel/sandbox", opts.onLog, {
+@@ -37380,7 +37380,7 @@
+     } catch {
+     }
+     untrackSandbox(sandbox);
+-    opts.onLog(`Bootstrap sandbox ${sandbox.sandboxId} stopped.`);
++    opts.onLog(`Bootstrap sandbox ${sandbox.currentSession().sessionId} stopped.`);
+   }
+ }
+ async function spawnFromSnapshot(opts) {
+@@ -38028,6 +38028,33 @@
+ import crypto6 from "node:crypto";
+ import fs23 from "node:fs";
+ import path28 from "node:path";
++var SANDBOX_RUN_CHECKPOINT_VERSION = 2;
++var SANDBOX_RUN_IDENTITY_KIND = "vercel-named-sandbox";
++function assertNamedSandboxRunState(state) {
++  if (!state || typeof state !== "object" || Array.isArray(state)) {
++    throw new Error("DEEPSEC_INVALID_SANDBOX_CHECKPOINT: expected a checkpoint object; saved state is unchanged.");
++  }
++  if (state.schemaVersion === void 0 || state.schemaVersion === 1) {
++    throw new Error("DEEPSEC_UNSUPPORTED_LEGACY_CHECKPOINT: this checkpoint contains session IDs, not named sandbox identities. Saved state is unchanged. Preserve the file; do not relaunch it or pass session IDs as names. Recovery requires an independently verified, officially supported session-ID-to-name mapping, which this tool does not provide.");
++  }
++  if (state.schemaVersion !== SANDBOX_RUN_CHECKPOINT_VERSION || state.sandboxIdentity !== SANDBOX_RUN_IDENTITY_KIND) {
++    throw new Error("DEEPSEC_UNSUPPORTED_SANDBOX_CHECKPOINT: unsupported checkpoint version or identity type; saved state is unchanged.");
++  }
++  if (
++    !Array.isArray(state.sandboxes) ||
++    state.sandboxes.some((entry) =>
++      !entry || typeof entry !== "object" || "sandboxId" in entry ||
++      typeof entry.sandboxName !== "string" || entry.sandboxName.trim() === "" ||
++      typeof entry.sessionId !== "string" || entry.sessionId.trim() === "" ||
++      typeof entry.cmdId !== "string" || entry.cmdId.trim() === "" ||
++      !Number.isInteger(entry.index) || entry.index < 0 ||
++      !Array.isArray(entry.manifest) || entry.manifest.some((file) => typeof file !== "string")
++    )
++  ) {
++    throw new Error("DEEPSEC_INVALID_SANDBOX_CHECKPOINT: expected typed sandboxName/sessionId/command entries; saved state is unchanged.");
++  }
++  return state;
++}
+ var RUNS_DIR = "sandbox-runs";
+ function runsDir2(projectId) {
+   return path28.join(dataDir(projectId), RUNS_DIR);
+@@ -38041,6 +38068,7 @@
+   return `sbx-${ts2}-${suffix}`;
+ }
+ function saveRunState(state) {
++  assertNamedSandboxRunState(state);
+   const dir = runsDir2(state.projectId);
+   fs23.mkdirSync(dir, { recursive: true });
+   const dest = runPath(state.projectId, state.runId);
+@@ -38053,7 +38081,7 @@
+ }
+ function loadRunState(projectId, runId) {
+   const p2 = runPath(projectId, runId);
+-  return JSON.parse(fs23.readFileSync(p2, "utf-8"));
++  return assertNamedSandboxRunState(JSON.parse(fs23.readFileSync(p2, "utf-8")));
+ }
+ function deleteRunState(projectId, runId) {
+   try {
+@@ -38212,11 +38240,11 @@
+         allowedHosts: config.allowedHosts,
+         onLog: (msg) => onLog(`[sandbox-${idx}] ${msg}`)
+       });
+-      onLog(`[sandbox-${idx}] Ready (${sandbox.sandboxId}, ${partition.length} files)`);
++      onLog(`[sandbox-${idx}] Ready (${sandbox.currentSession().sessionId}, ${partition.length} files)`);
+       return {
+         sandbox,
+         index: idx,
+-        sandboxId: sandbox.sandboxId,
++        sandboxId: sandbox.currentSession().sessionId,
+         status: "setup",
+         manifest: partition
+       };
+@@ -38281,7 +38309,8 @@
+     const cmdId = await dispatchOnSandbox(inst, config, mode, onLog);
+     if (cmdId) {
+       sandboxEntries.push({
+-        sandboxId: inst.sandboxId,
++        sandboxName: inst.sandbox.name,
++        sessionId: inst.sandbox.currentSession().sessionId,
+         cmdId,
+         index: inst.index,
+         manifest: inst.manifest
+@@ -38289,6 +38318,8 @@
+     }
+   }
+   const state = {
++    schemaVersion: SANDBOX_RUN_CHECKPOINT_VERSION,
++    sandboxIdentity: SANDBOX_RUN_IDENTITY_KIND,
+     runId,
+     projectId: config.projectId,
+     command: config.command,
+@@ -38306,6 +38337,13 @@
+   );
+   return runId;
+ }
++async function getCheckpointSandbox(entry) {
++  const sandbox = await Sandbox2.get({ name: entry.sandboxName, resume: false });
++  if (sandbox.currentSession().sessionId !== entry.sessionId) {
++    throw new Error("DEEPSEC_SANDBOX_SESSION_MISMATCH: the named sandbox no longer points to this checkpoint's session; no command, download, or stop was attempted and saved state is unchanged.");
++  }
++  return sandbox;
++}
+ async function checkStatus(projectId, runId, onLog = console.log) {
+   if (!runId) {
+     const runs = listRunStates(projectId);
+@@ -38325,22 +38363,22 @@
+   onLog(`Run ${runId}: ${state.command} (launched ${state.launchedAt})`);
+   for (const entry of state.sandboxes) {
+     try {
+-      const sandbox = await Sandbox2.get({ sandboxId: entry.sandboxId });
++      const sandbox = await getCheckpointSandbox(entry);
+       const cmd = await sandbox.getCommand(entry.cmdId);
+       if (cmd.exitCode === null) {
+         onLog(
+-          `  sandbox-${entry.index} (${entry.sandboxId}): RUNNING (${entry.manifest.length} files)`
++          `  sandbox-${entry.index} (${entry.sessionId}): RUNNING (${entry.manifest.length} files)`
+         );
+       } else if (cmd.exitCode === 0) {
+         onLog(
+-          `  sandbox-${entry.index} (${entry.sandboxId}): COMPLETE (exit 0, ${entry.manifest.length} files)`
++          `  sandbox-${entry.index} (${entry.sessionId}): COMPLETE (exit 0, ${entry.manifest.length} files)`
+         );
+       } else {
+-        onLog(`  sandbox-${entry.index} (${entry.sandboxId}): FAILED (exit ${cmd.exitCode})`);
++        onLog(`  sandbox-${entry.index} (${entry.sessionId}): FAILED (exit ${cmd.exitCode})`);
+       }
+     } catch (err) {
+       onLog(
+-        `  sandbox-${entry.index} (${entry.sandboxId}): UNREACHABLE (${err instanceof Error ? err.message : err})`
++        `  sandbox-${entry.index} (${entry.sessionId}): UNREACHABLE (${err instanceof Error ? err.message : err})`
+       );
+     }
+   }
+@@ -38350,7 +38388,7 @@
+   onLog(`Collecting run ${runId}: ${state.command} (${state.sandboxes.length} sandboxes)`);
+   const resultPromises = state.sandboxes.map(async (entry) => {
+     try {
+-      const sandbox = await Sandbox2.get({ sandboxId: entry.sandboxId });
++      const sandbox = await getCheckpointSandbox(entry);
+       const cmd = await sandbox.getCommand(entry.cmdId);
+       if (cmd.exitCode === null) {
+         onLog(`[sandbox-${entry.index}] Still running, waiting...`);
+@@ -38375,7 +38413,7 @@
+           }
+           return {
+             sandboxIndex: entry.index,
+-            sandboxId: entry.sandboxId,
++            sandboxId: entry.sessionId,
+             success: false,
+             filesProcessed: 0,
+             error: `Exit ${finished.exitCode}: ${stderr.slice(0, 500)}`
+@@ -38390,7 +38428,7 @@
+         }
+         return {
+           sandboxIndex: entry.index,
+-          sandboxId: entry.sandboxId,
++          sandboxId: entry.sessionId,
+           success: false,
+           filesProcessed: 0,
+           error: `Exit ${cmd.exitCode}: ${stderr.slice(0, 500)}`
+@@ -38404,7 +38442,7 @@
+         onLog(`[sandbox-${entry.index}] Download failed: ${errMsg}`);
+         return {
+           sandboxIndex: entry.index,
+-          sandboxId: entry.sandboxId,
++          sandboxId: entry.sessionId,
+           success: false,
+           filesProcessed: 0,
+           error: `Download failed: ${errMsg}`
+@@ -38418,7 +38456,7 @@
+       onLog(`[sandbox-${entry.index}] Stopped.`);
+       return {
+         sandboxIndex: entry.index,
+-        sandboxId: entry.sandboxId,
++        sandboxId: entry.sessionId,
+         success: true,
+         filesProcessed: entry.manifest.length
+       };
+@@ -38427,7 +38465,7 @@
+       onLog(`[sandbox-${entry.index}] Unreachable: ${errMsg}`);
+       return {
+         sandboxIndex: entry.index,
+-        sandboxId: entry.sandboxId,
++        sandboxId: entry.sessionId,
+         success: false,
+         filesProcessed: 0,
+         error: errMsg
+@@ -38610,7 +38648,7 @@
+       onLog(`[sandbox-${index}] ${config.command} failed (exit ${result.exitCode})`);
+       return {
+         sandboxIndex: index,
+-        sandboxId: sandbox.sandboxId,
++        sandboxId: sandbox.currentSession().sessionId,
+         success: false,
+         filesProcessed: 0,
+         error: instance.error
+@@ -38620,7 +38658,7 @@
+     onLog(`[sandbox-${index}] ${config.command} complete.`);
+     return {
+       sandboxIndex: index,
+-      sandboxId: sandbox.sandboxId,
++      sandboxId: sandbox.currentSession().sessionId,
+       success: true,
+       filesProcessed: manifest.length
+     };
+@@ -38631,7 +38669,7 @@
+     onLog(`[sandbox-${index}] Error: ${errMsg}`);
+     return {
+       sandboxIndex: index,
+-      sandboxId: sandbox.sandboxId,
++      sandboxId: sandbox.currentSession().sessionId,
+       success: false,
+       filesProcessed: 0,
+       error: errMsg

@@ -108,9 +108,9 @@
     "uuid": "11.1.1",
     "@opentelemetry/core": "2.8.0",
     "@hono/node-server": "2.0.10",
-    "fast-uri": "3.1.8",
+    "fast-uri": "3.1.9",
     "hono": "4.13.11",
-    "qs": "6.16.0",
+    "qs": "6.16.1",
     "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
     "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3",
@@ -119,8 +119,8 @@
       "minimatch@^6.1.6": "3.1.5"
     },
     "ip-address": "10.7.4",
-    "undici@^6.19.0": "6.28.1",
-    "undici@^8.4.1": "8.10.2",
+    "undici@^6.19.0": "6.29.1",
+    "undici@^8.4.1": "8.12.2",
     "@grpc/grpc-js@~1.9.0": "1.13.6",
     "google-gax": {
       "@grpc/grpc-js": "1.14.5"

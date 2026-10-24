@@ -97,12 +97,13 @@
   "overrides": {
     "yaml": "^2.8.3",
     "esbuild": "0.28.2",
-    "fast-uri": "3.1.8",
+    "fast-uri": "3.1.9",
     "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3",
     "devalue": "5.9.3",
     "@grpc/grpc-js@~1.9.0": "1.13.6",
-    "vite": "8.3.3"
+    "vite": "8.3.3",
+    "undici@^8.0.0": "8.12.2"
   },
   "engines": {
     "node": "^22.22.3 || ^24.16.0 || >=26.3.0"
