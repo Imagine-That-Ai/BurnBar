@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "generator": "website/scripts/build-afar-icons.py",
+  "source": {
+    "receipt": "website/brand/afar/import-receipt.json",
+    "masterSHA256": "27a6b3b9788375bb5b630647c3e84a1471ccd875768002f3c03d58cd2ac069dc",
+    "rasterSHA256": "83806cb557a76d15d02bdc52bf37ccde212b4a9ac8fd70045bf4cf11283e4214"
+  },
+  "alt": "Afar app icon: a clear glass crescent holding a pink, orange and yellow glow, with a small chrome sphere beside it",
+  "intrinsicSize": 1024,
+  "formats": {
+    "avif": [
+      {
+        "width": 32,
+        "path": "/afar/afar-icon-32.avif",
+        "bytes": 716,
+        "sha256": "0eb9e910a8ab287c4bd1e10d479d2e790ab938ada8e7b2098a6ed37d8ba559a4"
+      },
+      {
+        "width": 64,
+        "path": "/afar/afar-icon-64.avif",
+        "bytes": 1181,
+        "sha256": "0f69928b931e79ea42439e81e46e1d46a89888473b54bda600dcc5e5957cee7c"
+      },
+      {
+        "width": 96,
+        "path": "/afar/afar-icon-96.avif",
+        "bytes": 1969,
+        "sha256": "87c8ef7b6456a0438cb49da2f5305ac8c5a4e874b040fbddb9fb5bf881b7708a"
+      },
+      {
+        "width": 128,
+        "path": "/afar/afar-icon-128.avif",
+        "bytes": 2550,
+        "sha256": "783c856696d42687097ac2c9f9adc62e7202165f57e286614ae049488946b1e4"
+      },
+      {
+        "width": 192,
+        "path": "/afar/afar-icon-192.avif",
+        "bytes": 4111,
+        "sha256": "39f44940b5928cb45ec6d11d8b3880890a9d4b8c7f1a5727109ff3dc5c71c42f"
+      },
+      {
+        "width": 256,
+        "path": "/afar/afar-icon-256.avif",
+        "bytes": 5838,
+        "sha256": "dabb87348487d1a606b6856ee8098891f21c888cb8eaa9409dc2cbcc31542cd9"
+      },
+      {
+        "width": 384,
+        "path": "/afar/afar-icon-384.avif",
+        "bytes": 10044,
+        "sha256": "418518d720487ddae2927ead12bc13c699a0eac32da1fbe95c1f962c7cfbca3b"
+      },
+      {
+        "width": 512,
+        "path": "/afar/afar-icon-512.avif",
+        "bytes": 14329,
+        "sha256": "9e2ebe2927194664cbab07293ab189ef99bbf6ccbbeba6631c51b1de2a96f372"
+      }
+    ],
+    "webp": [
+      {
+        "width": 32,
+        "path": "/afar/afar-icon-32.webp",
+        "bytes": 530,
+        "sha256": "ec3fce68b1003129616a1097f21616d671c84016db2d3c788108304866f06ef8"
+      },
+      {
+        "width": 64,
+        "path": "/afar/afar-icon-64.webp",
+        "bytes": 1130,
+        "sha256": "018b65a09aea3a5dc7d69deb0d7a12a1687c2ed951301ea4a7e79ce6832a1dee"
+      },
+      {
+        "width": 96,
+        "path": "/afar/afar-icon-96.webp",
+        "bytes": 1848,
+        "sha256": "6f47e43cf092bf8ac0c81e8dd39616776df8e338e69fe322453b386fb2832b7e"
+      },
+      {
+        "width": 128,
+        "path": "/afar/afar-icon-128.webp",
+        "bytes": 2626,
+        "sha256": "d233ce31968d66a94abddb7763a8cf296396ac950272b4efb8e34e78cccee1a5"
+      },
+      {
+        "width": 192,
+        "path": "/afar/afar-icon-192.webp",
+        "bytes": 4490,
+        "sha256": "eeeea0d4d256ad3e0a0422533a1b3dabd25fa34dee8a99df18e8b8a6b2f605e7"
+      },
+      {
+        "width": 256,
+        "path": "/afar/afar-icon-256.webp",
+        "bytes": 6528,
+        "sha256": "9ad42a2bece3a0c7b3891f6d1acaf85b90e2677d1b81bd788ee2d0a200d7643c"
+      },
+      {
+        "width": 384,
+        "path": "/afar/afar-icon-384.webp",
+        "bytes": 11610,
+        "sha256": "5a23fc46985a5e9c13057237524a2bcf826e86747ea6faac70825b54bb60fc42"
+      },
+      {
+        "width": 512,
+        "path": "/afar/afar-icon-512.webp",
+        "bytes": 17658,
+        "sha256": "e937ba5a3099399283d53d1ac019337dd3d546f8d60a110da4067c43dffbb94f"
+      }
+    ]
+  },
+  "fallback": {
+    "width": 256,
+    "path": "/afar/afar-icon-256.png",
+    "bytes": 61200,
+    "sha256": "aa0661da8ec51da329fdc3e407f6c1dd28137e2e7d42f215775c65057e6754b1"
+  }
+}

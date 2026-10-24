@@ -1,0 +1,1525 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import ControlRoomPreview from "@components/mission-control/ControlRoomPreview.astro";
+import AfarLogo from "@components/mission-control/AfarLogo.astro";
+import {
+  describeArchitectures,
+  MISSION_CONTROL_DOWNLOAD_READY as downloadReady,
+  MISSION_CONTROL_EVIDENCE as evidence,
+  MISSION_CONTROL_META as meta,
+  MISSION_CONTROL_RELEASE as release,
+  MISSION_CONTROL_STYLE
+} from "@data/mission-control";
+import afarIcons from "@data/afar-icons.json";
+import setupBrief from "../../public/mission-control/agent-setup.md?raw";
+
+const architectures = describeArchitectures(release.architectures) || "Not yet published";
+const macRequirement = release.minimumMacOS
+  ? `macOS ${release.minimumMacOS} or later`
+  : "Not yet published";
+const evidenceDone = evidence.filter((check) => check.done).length;
+
+// The first sentences of the real setup brief's prompt, verbatim, so the
+// excerpt on the page can never drift from the file people download.
+const briefPrompt = (setupBrief.match(/^> (.+)$/m)?.[1] ?? "").trim();
+const briefExcerpt = briefPrompt
+  .split(/(?<=\.)\s+/)
+  .slice(0, 4)
+  .join(" ");
+
+const principles = [
+  {
+    title: "One place for your environments",
+    body: "Your Mac and the remote machines you choose sit side by side, each with its own connection, actions and results."
+  },
+  {
+    title: "Setup that you review",
+    body: "An agent you already trust drafts the profile. You read the machines and permissions before anything is imported."
+  },
+  {
+    title: "Only actions you named",
+    body: "Every action is a specific program with fixed arguments and a time limit. Diagnostic checks and task actions stay separate."
+  },
+  {
+    title: "State and results that are real",
+    body: "Configured, reachable, authenticated and ready to run are reported separately, and results come from tasks that actually ran."
+  }
+];
+
+const steps = [
+  { title: "Open the app", body: "It starts blank. No one else’s machines, tokens or sessions." },
+  {
+    title: "Hand over the brief",
+    body: "Give the setup brief to an agent you already trust on your own computer."
+  },
+  {
+    title: "Review the profile",
+    body: "Read the proposed machines and actions, then import only what you approve."
+  },
+  {
+    title: "Connect, then see results",
+    body: "Run a real check and one approved action. Afar shows what actually happened."
+  }
+];
+
+const verifiedDate = release.verifiedAt
+  ? new Date(release.verifiedAt).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: "UTC"
+    })
+  : null;
+---
+
+<BaseLayout
+  title="Afar — your environments, one control room"
+  description="A native control room for your Mac and the remote machines you choose. Agent-assisted setup you review, explicit actions, and real connection state and results."
+  ambientEffects={false}
+>
+  <link slot="head" rel="stylesheet" href="/mission-control/fonts/fonts.css" />
+  <div class="mission-control" style={MISSION_CONTROL_STYLE}>
+    <nav class="product-nav" aria-label="Afar">
+      <div class="product-nav__inner">
+        <a class="wordmark" href="#mission-control">
+          <AfarLogo size={28} eager />
+          <span class="wordmark__text">
+            {meta.wordmark}
+            <small>{meta.provenance}</small>
+          </span>
+        </a>
+        <div class="product-nav__links">
+          <a href="#setup">Setup</a>
+          <a href="#editions">Editions</a>
+          <a href="#iphone">iPhone</a>
+          <a class="product-nav__cta" href="#release">
+            {downloadReady ? "Download" : "Release status"}
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <section class="hero" id="mission-control" aria-labelledby="mc-title">
+      <div class="hero__glow" aria-hidden="true"></div>
+      <div class="mc-container hero__copy">
+        <AfarLogo
+          size={120}
+          sizes="(max-width: 640px) 88px, 120px"
+          alt={afarIcons.alt}
+          eager
+          class="hero__icon"
+        />
+        <p class="mc-eyebrow">Afar for Mac, by BurnBar</p>
+        <h1 id="mc-title">
+          Your environments.
+          <span class="hero__accent">One control room.</span>
+        </h1>
+        <p class="mc-lead">
+          Your Mac and the remote machines you choose, in one calm native app. You decide what can
+          run, and you see what actually happened.
+        </p>
+        <div class="actions">
+          {downloadReady ? (
+            <a class="button button--primary" href={release.artifact?.url}>
+              Download for Mac <span aria-hidden="true">↓</span>
+            </a>
+          ) : (
+            <a class="button button--primary" href="#release">
+              See release status <span aria-hidden="true">→</span>
+            </a>
+          )}
+          <a class="button button--quiet" href="/mission-control/agent-setup.md">
+            Read the setup brief
+          </a>
+        </div>
+        <p class="availability">
+          {downloadReady
+            ? `Version ${release.version} · ${macRequirement} · ${architectures}`
+            : `Public Mac release in preparation${release.minimumMacOS ? ` · macOS ${release.minimumMacOS}+ build target` : ""}`}
+        </p>
+      </div>
+      <div class="mc-container hero__room">
+        <ControlRoomPreview />
+      </div>
+    </section>
+
+    <section class="section charge" aria-labelledby="charge-title">
+      <div class="mc-container charge__grid">
+        <header>
+          <p class="mc-eyebrow">How it works</p>
+          <h2 id="charge-title">
+            Move between your machines.
+            <span class="muted-line">Stay in charge of what runs.</span>
+          </h2>
+          <p class="section-lead">
+            Afar is orchestration for computers you already own and accounts you already have. It
+            does not include an AI subscription, extra cloud capacity or access to anyone else’s
+            accounts.
+          </p>
+        </header>
+        <ol class="principles">
+          {principles.map((item, index) => (
+            <li>
+              <span class={`principle-index tone-${index}`} aria-hidden="true" />
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+
+    <section class="section setup" id="setup" aria-labelledby="setup-title">
+      <div class="mc-container">
+        <header class="center-head">
+          <p class="mc-eyebrow">First launch</p>
+          <h2 id="setup-title">An empty room, made yours.</h2>
+          <p class="section-lead">
+            The portable edition begins blank. Setup is reviewed data, not a script you have to
+            trust blindly.
+          </p>
+        </header>
+        <ol class="steps">
+          {steps.map((step, index) => (
+            <li>
+              <span class="step-number" aria-hidden="true">
+                {index + 1}
+              </span>
+              <h3>{step.title}</h3>
+              <p>{step.body}</p>
+            </li>
+          ))}
+        </ol>
+        <div class="brief">
+          <div class="brief__copy">
+            <h3>The setup brief</h3>
+            <p>
+              Written for the agent, readable by you. It asks for discovery limited to machines you
+              name, existing SSH aliases with strict host-key checking, explicit actions with finite
+              timeouts, and keys that never leave the machine that owns them.
+            </p>
+            <div class="brief__links">
+              <a class="button button--secondary" href="/mission-control/agent-setup.md" download>
+                Download brief <span aria-hidden="true">↓</span>
+              </a>
+              <a class="text-link" href="/mission-control/agent-setup.md">
+                Read it in the browser
+              </a>
+            </div>
+          </div>
+          <figure class="brief__excerpt">
+            <figcaption>agent-setup.md · excerpt</figcaption>
+            <blockquote>
+              <p>{briefExcerpt}</p>
+            </blockquote>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section editions" id="editions" aria-labelledby="editions-title">
+      <div class="mc-container">
+        <header class="center-head">
+          <p class="mc-eyebrow">Two editions</p>
+          <h2 id="editions-title">Portable by default. Personal by choice.</h2>
+        </header>
+        <div class="editions__grid">
+          <article class="edition edition--portable">
+            <p class="edition__tag">This page</p>
+            <h3>Portable edition</h3>
+            <p>
+              Starts with no environments, no tokens and no copied account sessions. Nothing from
+              the original owner’s infrastructure comes along. Ready to be configured by whoever
+              installs it.
+            </p>
+            <ul>
+              <li>Blank profile at first launch</li>
+              <li>Configured with your own agent and review</li>
+              <li>The edition intended for public download</li>
+            </ul>
+          </article>
+          <article class="edition">
+            <p class="edition__tag">Separate repository</p>
+            <h3>Personal edition</h3>
+            <p>
+              Built around an explicit owner profile for one person’s own setup. It is kept apart
+              from the portable edition and is not the public download.
+            </p>
+            <ul>
+              <li>Explicit owner profile</li>
+              <li>Maintained separately</li>
+              <li>Not offered on this page</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section iphone" id="iphone" aria-labelledby="iphone-title">
+      <div class="mc-container iphone__grid">
+        <div class="devices" aria-hidden="true">
+          <div class="device device--portrait">
+            <span class="device__title"></span>
+            <span class="device__hero"></span>
+            <span class="device__line"></span>
+            <span class="device__line short"></span>
+            <span class="device__bar">
+              <i></i>
+              <i></i>
+              <i></i>
+            </span>
+          </div>
+          <div class="device device--landscape">
+            <span class="device__rail">
+              <i></i>
+              <i></i>
+              <i></i>
+            </span>
+            <span class="device__main">
+              <b></b>
+              <b class="short"></b>
+              <b></b>
+            </span>
+            <span class="device__context">
+              <i></i>
+              <i></i>
+              <i></i>
+              <i></i>
+            </span>
+          </div>
+        </div>
+        <div class="iphone__copy">
+          <p class="mc-eyebrow">iPhone</p>
+          <h2 id="iphone-title">A separate client for your pocket.</h2>
+          <p class="section-lead">
+            Portrait keeps one environment in focus with places in thumb reach. Turn it sideways and
+            navigation, the active environment and its context sit side by side.
+          </p>
+          <dl class="facts">
+            <div>
+              <dt>Build</dt>
+              <dd>Separate iOS 17+ client. A Mac DMG does not install it.</dd>
+            </div>
+            <div>
+              <dt>Pairing</dt>
+              <dd>
+                Connects to your own authenticated HTTPS service with valid TLS. Pairing credentials
+                stay in Keychain.
+              </dd>
+            </div>
+            <div>
+              <dt>Availability</dt>
+              <dd>No App Store release has been announced.</dd>
+            </div>
+          </dl>
+          <p class="art-note">Layout concept, not a screenshot.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section release" id="release" aria-labelledby="release-title">
+      <div class="mc-container">
+        <div class="release-card">
+          <div class="release-card__intro">
+            <AfarLogo size={88} class="release-icon" />
+            <p class="mc-eyebrow">Afar for Mac</p>
+            <h2 id="release-title">
+              {downloadReady
+                ? `Version ${release.version} is ready.`
+                : "Getting ready for your Mac."}
+            </h2>
+            <p class="section-lead">
+              {downloadReady
+                ? "Open the DMG and drag Afar into Applications. The app and its bundled service install together; no separate Python or Node runtime is needed."
+                : "The app and its bundled service are being prepared for public distribution. A download appears here only after every check below is verified."}
+            </p>
+            <dl class="facts">
+              <div>
+                <dt>Requires</dt>
+                <dd>{macRequirement}</dd>
+              </div>
+              <div>
+                <dt>{downloadReady ? "Runs on" : "Build targets"}</dt>
+                <dd>{architectures}</dd>
+              </div>
+              <div>
+                <dt>Includes</dt>
+                <dd>The app and its bundled service. No AI subscription.</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="release-card__status">
+            {downloadReady ? (
+              <>
+                <a class="button button--primary button--block" href={release.artifact?.url}>
+                  Download Afar {release.version} <span aria-hidden="true">↓</span>
+                </a>
+                <ol class="install">
+                  <li>Open the downloaded DMG.</li>
+                  <li>Drag Afar into Applications.</li>
+                  <li>Open it and follow the first-launch setup with your agent.</li>
+                </ol>
+                <a class="text-link" href={release.releaseNotesUrl ?? undefined}>
+                  Release notes <span aria-hidden="true">↗</span>
+                </a>
+                <div class="checksum">
+                  <span>SHA-256</span>
+                  <code>{release.artifact?.sha256}</code>
+                </div>
+              </>
+            ) : (
+              <div class="pending" role="status">
+                <span class="pending__dot" aria-hidden="true" />
+                <div>
+                  <strong>Public release in preparation</strong>
+                  <p>No installation file is offered yet.</p>
+                </div>
+              </div>
+            )}
+            <div class="evidence">
+              <p class="evidence__head">
+                <span>Distribution evidence</span>
+                <span>
+                  {evidenceDone} of {evidence.length} verified
+                </span>
+              </p>
+              <ul>
+                {evidence.map((check) => (
+                  <li class:list={{ done: check.done }}>
+                    <span class="evidence__mark" aria-hidden="true">
+                      {check.done ? "✓" : ""}
+                    </span>
+                    <span>{check.label}</span>
+                    <span class="evidence__state">{check.done ? "Verified" : "Pending"}</span>
+                  </li>
+                ))}
+              </ul>
+              <p class="evidence__foot">
+                {verifiedDate ? `Verified ${verifiedDate}. ` : ""}
+                Each line is read from the{" "}
+                <a class="text-link" href="/mission-control/release.json">
+                  release manifest
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section questions" aria-labelledby="questions-title">
+      <div class="mc-container questions__inner">
+        <header class="center-head">
+          <p class="mc-eyebrow">Good to know</p>
+          <h2 id="questions-title">Before you move in.</h2>
+        </header>
+        <div class="question-list">
+          <details>
+            <summary>Is Afar the same app as Mission Control?</summary>
+            <p>
+              Yes. Afar is the new name for the app previously called Mission Control. A few files,
+              including the current setup brief, still use the earlier name until they are updated,
+              and this page keeps its existing address.
+            </p>
+          </details>
+          <details>
+            <summary>What comes in the Mac app?</summary>
+            <p>
+              The intended DMG contains Afar and its bundled service, so you do not need a separate
+              Python or Node installation. Your own machines, logins and approved connections
+              complete the setup.
+            </p>
+          </details>
+          <details>
+            <summary>Does it include an AI subscription?</summary>
+            <p>
+              No. Afar provides orchestration. Use agents and AI accounts you already have; it does
+              not purchase cloud capacity or add entitlements.
+            </p>
+          </details>
+          <details>
+            <summary>What can it run on my machines?</summary>
+            <p>
+              Only the actions in the profile you imported: each one a named program with fixed
+              arguments and a finite timeout. It is not a remote shell, and it does not copy account
+              sessions or turn every reachable computer into a worker.
+            </p>
+          </details>
+          <details>
+            <summary>Where do my SSH keys go?</summary>
+            <p>
+              Nowhere. Existing SSH identities stay on the machine that owns them, with strict
+              host-key checking. TLS, Keychain and operating-system permission prompts work as
+              usual.
+            </p>
+          </details>
+          <details>
+            <summary>Is a configured machine ready to use?</summary>
+            <p>
+              Not necessarily. Configured, reachable, authenticated and task-ready are separate
+              states, and Afar reports each one on its own.
+            </p>
+          </details>
+          <details>
+            <summary>Where can I get help?</summary>
+            <p>
+              Start with the <a href="/mission-control/agent-setup.md">setup brief</a>, or email{" "}
+              <a href="mailto:support@burnbar.ai">support@burnbar.ai</a>. Include your app version
+              and what happened, never credentials or private keys.
+            </p>
+          </details>
+        </div>
+        <p class="design-note">
+          <AfarLogo size={20} />
+          <span>
+            A member of the BurnBar family, built on the {meta.sourceProduct} design foundation with
+            a warmer palette. <a href="/mission-control/token-provenance.json">Token provenance</a>
+            <br />
+            Type is Space Grotesk and Space Mono, self-hosted under the SIL Open Font License:{" "}
+            <a href="/mission-control/licenses/SpaceGrotesk-OFL.txt">Space Grotesk license</a>
+            <span aria-hidden="true"> · </span>
+            <a href="/mission-control/licenses/SpaceMono-OFL.txt">Space Mono license</a>
+          </span>
+        </p>
+      </div>
+    </section>
+  </div>
+</BaseLayout>
+
+<style>
+  /* ── Theme: semantic roles mapped onto the shared token variables ───── */
+  .mission-control {
+    --font-display: "Mission Space", var(--font-body);
+    --font-body: "Mission Space", sans-serif;
+    --font-mono: "Mission Mono", monospace;
+    --mc-bg: var(--mc-dark-base);
+    --mc-raised: var(--mc-dark-raised);
+    --mc-text: var(--mc-light-raised);
+    --mc-muted: var(--mc-dark-secondary);
+    --mc-border: color-mix(in srgb, var(--mc-dark-hairline) 26%, transparent);
+    --mc-border-strong: color-mix(in srgb, var(--mc-dark-hairline) 48%, transparent);
+    --mc-glass: color-mix(in srgb, var(--mc-dark-raised) 78%, transparent);
+    --mc-glass-edge: color-mix(in srgb, var(--mc-light-base) 8%, transparent);
+    --mc-sidebar-fill: color-mix(in srgb, var(--mc-dark-base) 40%, transparent);
+    --mc-hover: color-mix(in srgb, var(--mc-dark-pearl) 60%, transparent);
+    --mc-selected: var(--mc-dark-pearl);
+    --mc-accent-text: var(--mc-pink);
+    --mc-focus: var(--mc-pink);
+    --mc-on-primary: var(--mc-ink);
+    --mc-primary: var(--mc-light-base);
+    --text-bright: var(--mc-text);
+    --text-base: var(--mc-text);
+    --ember-bright: var(--mc-text);
+
+    font-family: var(--font-body);
+    background: var(--mc-bg);
+    color: var(--mc-text);
+    isolation: isolate;
+    overflow: clip;
+  }
+  :global([data-theme="light"]) .mission-control {
+    --mc-bg: var(--mc-light-base);
+    --mc-raised: var(--mc-light-raised);
+    --mc-text: var(--mc-ink);
+    --mc-muted: var(--mc-light-secondary);
+    --mc-border: color-mix(in srgb, var(--mc-light-hairline) 26%, transparent);
+    --mc-border-strong: color-mix(in srgb, var(--mc-light-hairline) 50%, transparent);
+    --mc-glass: color-mix(in srgb, var(--mc-light-pearl) 72%, transparent);
+    --mc-glass-edge: var(--mc-light-base);
+    --mc-sidebar-fill: color-mix(in srgb, var(--mc-light-raised) 70%, transparent);
+    --mc-hover: color-mix(in srgb, var(--mc-light-raised) 90%, var(--mc-ink));
+    --mc-selected: var(--mc-light-base);
+    --mc-accent-text: var(--mc-pink-deep);
+    --mc-focus: var(--mc-pink-deep);
+    --mc-on-primary: var(--mc-light-base);
+    --mc-primary: var(--mc-ink);
+  }
+  /* The site's global element colors (headings, p, strong, link hover) read
+     these shell variables; point them at Afar's own roles. */
+  .mission-control :global(:is(h1, h2, h3, h4)) {
+    text-shadow: none;
+  }
+  .mission-control :global(code) {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+  }
+  .mission-control :is(a, summary, button):focus-visible {
+    outline: 2px solid var(--mc-focus);
+    outline-offset: 4px;
+    border-radius: var(--mc-r-sm);
+  }
+
+  .mc-container {
+    width: min(1120px, calc(100% - 2 * var(--mc-section)));
+    margin-inline: auto;
+  }
+
+  /* ── Shared type ─────────────────────────────────────────────────────── */
+  .mc-eyebrow {
+    margin: 0 0 var(--mc-inset);
+    font-size: var(--mc-label);
+    letter-spacing: var(--mc-label-track);
+    font-weight: var(--wght-medium);
+    color: var(--mc-accent-text);
+  }
+  h2 {
+    margin: 0 0 var(--mc-page);
+    font-family: var(--font-display);
+    font-size: clamp(32px, 4.2vw, 52px);
+    font-weight: var(--wght-semibold);
+    line-height: 1.06;
+    letter-spacing: -0.035em;
+    text-wrap: balance;
+  }
+  .muted-line {
+    display: block;
+    color: var(--mc-muted);
+  }
+  .section-lead {
+    margin: 0;
+    max-width: 58ch;
+    font-size: clamp(var(--mc-body), 1.4vw, var(--mc-headline));
+    line-height: 1.55;
+    color: var(--mc-muted);
+    text-wrap: pretty;
+  }
+  .center-head {
+    display: grid;
+    justify-items: center;
+    margin: 0 auto var(--mc-empty);
+    text-align: center;
+  }
+  .text-link {
+    color: var(--mc-text);
+    text-decoration: underline;
+    text-decoration-color: var(--mc-border-strong);
+    text-underline-offset: 4px;
+    transition: text-decoration-color var(--mc-snappy) var(--mc-ease);
+  }
+  .text-link:hover {
+    color: var(--mc-text);
+    text-decoration-color: currentColor;
+  }
+
+  /* ── Buttons ─────────────────────────────────────────────────────────── */
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--mc-control);
+    margin-top: var(--mc-empty);
+  }
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--mc-control);
+    min-height: 48px;
+    padding: var(--mc-control) var(--mc-section);
+    border-radius: var(--mc-r-full);
+    border: 1px solid transparent;
+    font-size: var(--mc-body);
+    font-weight: var(--wght-medium);
+    text-decoration: none;
+    transition:
+      transform var(--mc-snappy) var(--mc-ease),
+      background-color var(--mc-snappy) var(--mc-ease),
+      box-shadow var(--mc-snappy) var(--mc-ease);
+  }
+  .button--primary {
+    background: var(--mc-primary);
+    color: var(--mc-on-primary);
+    box-shadow: var(--mc-shadow-2);
+  }
+  .button--primary:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      var(--mc-shadow-2),
+      0 10px 32px -10px color-mix(in srgb, var(--mc-pink) 70%, transparent);
+  }
+  .button--secondary {
+    background: var(--mc-raised);
+    border-color: var(--mc-border-strong);
+    color: var(--mc-text);
+  }
+  .button--secondary:hover {
+    transform: translateY(-1px);
+  }
+  .button--quiet {
+    color: var(--mc-text);
+    border-color: var(--mc-border-strong);
+  }
+  .button--quiet:hover {
+    background: var(--mc-hover);
+  }
+  .button--block {
+    width: 100%;
+  }
+
+  /* ── Product nav ─────────────────────────────────────────────────────── */
+  .product-nav {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    border-bottom: 1px solid var(--mc-border);
+    background: color-mix(in srgb, var(--mc-bg) 72%, transparent);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  }
+  .product-nav__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mc-section);
+    width: min(1120px, calc(100% - 2 * var(--mc-section)));
+    min-height: var(--mc-places-bar);
+    margin: auto;
+  }
+  .wordmark {
+    display: flex;
+    align-items: center;
+    gap: var(--mc-control);
+    color: var(--mc-text);
+    text-decoration: none;
+  }
+  .wordmark__text {
+    display: grid;
+    font-size: var(--mc-body);
+    font-weight: var(--wght-bold);
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+  }
+  .wordmark__text small {
+    font-size: var(--mc-caption);
+    font-weight: var(--wght-regular);
+    letter-spacing: var(--mc-caption-track);
+    color: var(--mc-muted);
+  }
+  .product-nav__links {
+    display: flex;
+    align-items: center;
+    gap: var(--mc-section);
+    font-size: var(--mc-label);
+  }
+  .product-nav__links a {
+    color: var(--mc-muted);
+    text-decoration: none;
+    transition: color var(--mc-snappy) var(--mc-ease);
+  }
+  .product-nav__links a:hover {
+    color: var(--mc-text);
+  }
+  .product-nav__links .product-nav__cta {
+    padding: 6px var(--mc-control);
+    border-radius: var(--mc-r-full);
+    background: var(--mc-primary);
+    color: var(--mc-on-primary);
+    font-weight: var(--wght-medium);
+  }
+  .product-nav__links .product-nav__cta:hover {
+    color: var(--mc-on-primary);
+  }
+
+  /* ── Hero ────────────────────────────────────────────────────────────── */
+  .hero {
+    position: relative;
+    padding: clamp(56px, 9vw, 112px) 0 0;
+  }
+  .hero__glow {
+    position: absolute;
+    z-index: -1;
+    inset: 0 0 auto;
+    height: 1100px;
+    background:
+      radial-gradient(
+        40% 32% at 28% 52%,
+        color-mix(in srgb, var(--mc-pink) 22%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        36% 30% at 74% 46%,
+        color-mix(in srgb, var(--mc-orange) 20%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        30% 24% at 54% 74%,
+        color-mix(in srgb, var(--mc-canary) 16%, transparent),
+        transparent 70%
+      );
+    pointer-events: none;
+  }
+  .hero__copy {
+    display: grid;
+    justify-items: center;
+    text-align: center;
+  }
+  .hero__copy :global(.hero__icon) {
+    margin-bottom: var(--mc-section);
+    filter: drop-shadow(0 18px 32px color-mix(in srgb, var(--mc-orange) 30%, transparent));
+  }
+  .hero h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(44px, 7.4vw, 92px);
+    font-weight: var(--wght-bold);
+    line-height: 1;
+    letter-spacing: -0.045em;
+    text-wrap: balance;
+  }
+  .hero__accent {
+    display: block;
+    padding-bottom: 0.08em;
+    background: var(--mc-gradient);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+  :global([data-theme="light"]) .hero__accent {
+    background-image: linear-gradient(
+      120deg,
+      var(--mc-pink-deep),
+      var(--mc-orange-deep) 60%,
+      var(--mc-canary-deep)
+    );
+  }
+  .mc-lead {
+    max-width: 34em;
+    margin: var(--mc-section) 0 0;
+    font-size: clamp(17px, 1.7vw, 21px);
+    line-height: 1.5;
+    color: var(--mc-muted);
+    text-wrap: balance;
+  }
+  .availability {
+    margin: var(--mc-inset) 0 0;
+    font-size: var(--mc-caption);
+    letter-spacing: var(--mc-caption-track);
+    color: var(--mc-muted);
+  }
+  .hero__room {
+    max-width: 1080px;
+    margin-top: clamp(48px, 7vw, 80px);
+  }
+
+  /* ── Sections ────────────────────────────────────────────────────────── */
+  .section {
+    padding-top: clamp(88px, 11vw, 144px);
+  }
+
+  .charge__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(var(--mc-empty), 6vw, 96px);
+    align-items: start;
+  }
+  .charge header {
+    position: sticky;
+    top: 96px;
+  }
+  .principles {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .principles li {
+    display: grid;
+    grid-template-columns: var(--mc-section) 1fr;
+    gap: var(--mc-inset);
+    padding: var(--mc-section) 0;
+    border-top: 1px solid var(--mc-border);
+  }
+  .principles li:last-child {
+    border-bottom: 1px solid var(--mc-border);
+  }
+  .principle-index {
+    width: 14px;
+    height: 14px;
+    margin-top: 6px;
+    border-radius: 4px;
+    transform: rotate(45deg) scaleY(0.7);
+  }
+  .tone-0 {
+    background: var(--mc-pink);
+  }
+  .tone-1 {
+    background: var(--mc-orange);
+  }
+  .tone-2 {
+    background: var(--mc-assemble);
+  }
+  .tone-3 {
+    background: var(--mc-canary);
+  }
+  .principles h3,
+  .steps h3,
+  .brief h3,
+  .edition h3 {
+    margin: 0 0 var(--mc-cluster);
+    font-size: var(--mc-headline);
+    letter-spacing: var(--mc-headline-track);
+    font-weight: var(--wght-medium);
+    line-height: 1.3;
+  }
+  .principles p,
+  .steps p,
+  .brief p,
+  .edition p {
+    margin: 0;
+    font-size: var(--mc-body);
+    line-height: 1.6;
+    color: var(--mc-muted);
+  }
+
+  /* Setup */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--mc-section);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: step;
+  }
+  .steps li {
+    position: relative;
+    padding-top: var(--mc-section);
+  }
+  .steps li::before {
+    content: "";
+    position: absolute;
+    top: 15px;
+    left: 40px;
+    right: calc(-1 * var(--mc-section));
+    border-top: 1px dashed var(--mc-border-strong);
+  }
+  .steps li:last-child::before {
+    display: none;
+  }
+  .step-number {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid var(--mc-border-strong);
+    background: var(--mc-bg);
+    font-size: var(--mc-label);
+    font-weight: var(--wght-medium);
+  }
+  .steps h3 {
+    margin-top: var(--mc-page);
+  }
+  .brief {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: var(--mc-empty);
+    align-items: center;
+    margin-top: 64px;
+    padding: var(--mc-empty);
+    border: 1px solid var(--mc-border);
+    border-radius: var(--mc-r-xl);
+    background: var(--mc-raised);
+  }
+  .brief__links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mc-page);
+    margin-top: var(--mc-section);
+    font-size: var(--mc-label);
+  }
+  .brief__excerpt {
+    position: relative;
+    margin: 0;
+    padding: var(--mc-section);
+    border-radius: var(--mc-r-lg);
+    border: 1px solid var(--mc-border);
+    background: var(--mc-bg);
+    box-shadow: var(--mc-shadow-1);
+  }
+  .brief__excerpt figcaption {
+    margin-bottom: var(--mc-control);
+    font-family: var(--font-mono);
+    font-size: var(--mc-caption);
+    color: var(--mc-muted);
+  }
+  .brief__excerpt blockquote {
+    margin: 0;
+    padding-left: var(--mc-inset);
+    border-left: 2px solid var(--mc-pink);
+  }
+  .brief__excerpt blockquote p {
+    font-family: var(--font-mono);
+    font-size: var(--mc-code);
+    line-height: 1.7;
+    color: var(--mc-text);
+  }
+
+  /* Editions */
+  .editions__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--mc-page);
+  }
+  .edition {
+    padding: var(--mc-empty);
+    border-radius: var(--mc-r-xl);
+    border: 1px solid var(--mc-border);
+  }
+  .edition--portable {
+    border-color: transparent;
+    background:
+      linear-gradient(var(--mc-raised), var(--mc-raised)) padding-box,
+      var(--mc-gradient) border-box;
+  }
+  .edition .edition__tag {
+    display: inline-block;
+    margin: 0 0 var(--mc-section);
+    padding: var(--mc-row) var(--mc-cluster);
+    border-radius: var(--mc-r-full);
+    border: 1px solid var(--mc-border-strong);
+    font-size: var(--mc-caption);
+  }
+  .edition--portable .edition__tag {
+    border-color: transparent;
+    background: var(--mc-gradient-icon);
+    color: var(--mc-ink);
+    font-weight: var(--wght-medium);
+  }
+  .edition h3 {
+    font-size: var(--mc-title);
+    letter-spacing: var(--mc-title-track);
+    font-weight: var(--wght-semibold);
+  }
+  .edition ul {
+    display: grid;
+    gap: var(--mc-cluster);
+    margin: var(--mc-section) 0 0;
+    padding: var(--mc-section) 0 0;
+    border-top: 1px solid var(--mc-border);
+    list-style: none;
+    font-size: var(--mc-label);
+  }
+  .edition li {
+    display: flex;
+    gap: var(--mc-control);
+    align-items: baseline;
+  }
+  .edition li::before {
+    content: "";
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--mc-border-strong);
+    transform: translateY(-2px);
+  }
+  .edition--portable li::before {
+    background: var(--mc-pink);
+  }
+
+  /* iPhone */
+  .iphone__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(var(--mc-empty), 6vw, 96px);
+    align-items: center;
+  }
+  .devices {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: var(--mc-section);
+    padding: var(--mc-empty) var(--mc-page);
+    border-radius: var(--mc-r-xl);
+    background:
+      radial-gradient(
+        60% 60% at 30% 40%,
+        color-mix(in srgb, var(--mc-pink) 18%, transparent),
+        transparent
+      ),
+      radial-gradient(
+        60% 60% at 80% 70%,
+        color-mix(in srgb, var(--mc-orange) 16%, transparent),
+        transparent
+      ),
+      var(--mc-raised);
+    border: 1px solid var(--mc-border);
+  }
+  .device {
+    flex: none;
+    padding: var(--mc-cluster);
+    border-radius: 26px;
+    border: 1px solid var(--mc-border-strong);
+    background: var(--mc-glass);
+    box-shadow: var(--mc-shadow-2);
+  }
+  .device--portrait {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mc-cluster);
+    width: 132px;
+    height: 268px;
+    padding: var(--mc-inset) var(--mc-cluster) var(--mc-cluster);
+  }
+  .device__title {
+    width: 60%;
+    height: 10px;
+    border-radius: 4px;
+    background: var(--mc-text);
+    opacity: 0.8;
+  }
+  .device__hero {
+    flex: 1;
+    border-radius: var(--mc-r-md);
+    background: linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--mc-pink) 55%, transparent),
+      color-mix(in srgb, var(--mc-orange) 25%, transparent)
+    );
+  }
+  .device__line {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--mc-border-strong);
+  }
+  .device__line.short {
+    width: 60%;
+  }
+  .device__bar {
+    display: flex;
+    gap: var(--mc-row);
+    padding: var(--mc-row);
+    border-radius: var(--mc-r-md);
+    background: var(--mc-sidebar-fill);
+    border: 1px solid var(--mc-border);
+  }
+  .device__bar i {
+    flex: 1;
+    height: 22px;
+    border-radius: var(--mc-r-sm);
+    background: var(--mc-border);
+  }
+  .device__bar i:first-child {
+    background: var(--mc-pink);
+  }
+  .device--landscape {
+    display: grid;
+    grid-template-columns: 26px 1fr 54px;
+    gap: var(--mc-cluster);
+    width: 236px;
+    height: 128px;
+    border-radius: 22px;
+  }
+  .device__rail,
+  .device__context {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+  }
+  .device__rail i {
+    height: 18px;
+    border-radius: 6px;
+    background: var(--mc-border);
+  }
+  .device__rail i:first-child {
+    background: var(--mc-orange);
+  }
+  .device__main {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    padding: var(--mc-cluster);
+    border-radius: var(--mc-r-sm);
+    background: linear-gradient(
+      150deg,
+      color-mix(in srgb, var(--mc-orange) 35%, transparent),
+      color-mix(in srgb, var(--mc-canary) 25%, transparent)
+    );
+  }
+  .device__main b {
+    height: 6px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--mc-text) 40%, transparent);
+  }
+  .device__main b.short {
+    width: 55%;
+  }
+  .device__context {
+    padding-left: 6px;
+    border-left: 1px solid var(--mc-border);
+  }
+  .device__context i {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--mc-border-strong);
+  }
+  .facts {
+    margin: var(--mc-section) 0 0;
+  }
+  .facts > div {
+    display: grid;
+    grid-template-columns: 112px 1fr;
+    gap: var(--mc-inset);
+    padding: var(--mc-control) 0;
+    border-top: 1px solid var(--mc-border);
+  }
+  .facts dt {
+    font-size: var(--mc-label);
+    color: var(--mc-muted);
+  }
+  .facts dd {
+    margin: 0;
+    font-size: var(--mc-label);
+    line-height: 1.5;
+  }
+  .art-note {
+    margin: var(--mc-inset) 0 0;
+    font-size: var(--mc-caption);
+    color: var(--mc-muted);
+  }
+
+  /* Release */
+  .release-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: clamp(var(--mc-empty), 5vw, 72px);
+    padding: clamp(var(--mc-section), 5vw, 64px);
+    border-radius: 32px;
+    border: 1px solid var(--mc-border);
+    background:
+      radial-gradient(
+        70% 60% at 0% 0%,
+        color-mix(in srgb, var(--mc-pink) 14%, transparent),
+        transparent
+      ),
+      radial-gradient(
+        60% 60% at 100% 100%,
+        color-mix(in srgb, var(--mc-orange) 12%, transparent),
+        transparent
+      ),
+      var(--mc-raised);
+  }
+  .release-card__intro :global(.release-icon) {
+    margin-bottom: var(--mc-section);
+    filter: drop-shadow(0 14px 24px color-mix(in srgb, var(--mc-pink) 30%, transparent));
+  }
+  .release-card h2 {
+    font-size: clamp(30px, 3.4vw, 44px);
+  }
+  .release-card__status {
+    display: grid;
+    align-content: start;
+    gap: var(--mc-page);
+  }
+  .pending {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--mc-control);
+    padding: var(--mc-page);
+    border-radius: var(--mc-r-lg);
+    border: 1px solid var(--mc-border-strong);
+    background: var(--mc-bg);
+  }
+  .pending__dot {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    margin-top: 5px;
+    border-radius: 50%;
+    background: var(--mc-orange);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mc-orange) 25%, transparent);
+  }
+  .pending strong {
+    display: block;
+    font-size: var(--mc-body);
+    font-weight: var(--wght-medium);
+  }
+  .pending p {
+    margin: var(--mc-row) 0 0;
+    font-size: var(--mc-label);
+    color: var(--mc-muted);
+  }
+  .evidence {
+    padding: var(--mc-page);
+    border-radius: var(--mc-r-lg);
+    border: 1px solid var(--mc-border);
+    background: color-mix(in srgb, var(--mc-bg) 60%, transparent);
+  }
+  .evidence__head {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--mc-cluster);
+    margin: 0 0 var(--mc-control);
+    font-size: var(--mc-label);
+    font-weight: var(--wght-medium);
+  }
+  .evidence__head span:last-child {
+    color: var(--mc-muted);
+    font-weight: var(--wght-regular);
+  }
+  .evidence ul {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .evidence li {
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
+    align-items: center;
+    gap: var(--mc-control);
+    padding: var(--mc-cluster) 0;
+    border-top: 1px solid var(--mc-border);
+    font-size: var(--mc-label);
+  }
+  .evidence__mark {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1.5px dashed var(--mc-border-strong);
+    font-size: var(--mc-caption);
+  }
+  .evidence li.done .evidence__mark {
+    border: 0;
+    background: var(--mc-mint);
+    color: var(--mc-ink);
+  }
+  .evidence__state {
+    font-size: var(--mc-caption);
+    color: var(--mc-muted);
+  }
+  .evidence__foot {
+    margin: var(--mc-control) 0 0;
+    font-size: var(--mc-caption);
+    color: var(--mc-muted);
+  }
+  .install {
+    display: grid;
+    gap: var(--mc-cluster);
+    margin: 0;
+    padding-left: var(--mc-page);
+    list-style: decimal;
+    font-size: var(--mc-label);
+    color: var(--mc-muted);
+  }
+  .checksum {
+    display: grid;
+    gap: var(--mc-row);
+    font-size: var(--mc-caption);
+    color: var(--mc-muted);
+  }
+  .checksum code {
+    font-family: var(--font-mono);
+    color: var(--mc-text);
+    overflow-wrap: anywhere;
+  }
+
+  /* Questions */
+  .questions {
+    padding-bottom: clamp(72px, 9vw, 120px);
+  }
+  .questions__inner {
+    max-width: var(--mc-measure);
+  }
+  .question-list details {
+    border-top: 1px solid var(--mc-border);
+  }
+  .question-list details:last-child {
+    border-bottom: 1px solid var(--mc-border);
+  }
+  .question-list summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--mc-section);
+    padding: var(--mc-page) 0;
+    font-size: var(--mc-headline);
+    letter-spacing: var(--mc-headline-track);
+    font-weight: var(--wght-medium);
+    list-style: none;
+    cursor: pointer;
+  }
+  .question-list summary::-webkit-details-marker {
+    display: none;
+  }
+  .question-list summary::after {
+    content: "";
+    flex: none;
+    width: 9px;
+    height: 9px;
+    margin-right: var(--mc-row);
+    border-right: 1.5px solid var(--mc-muted);
+    border-bottom: 1.5px solid var(--mc-muted);
+    transform: translateY(-3px) rotate(45deg);
+    transition: transform var(--mc-standard) var(--mc-ease);
+  }
+  .question-list details[open] summary::after {
+    transform: translateY(2px) rotate(-135deg);
+  }
+  .question-list details p {
+    margin: 0 var(--mc-empty) var(--mc-page) 0;
+    font-size: var(--mc-body);
+    line-height: 1.65;
+    color: var(--mc-muted);
+  }
+  .question-list a,
+  .design-note a,
+  .question-list a:hover,
+  .design-note a:hover {
+    color: var(--mc-text);
+    text-underline-offset: 4px;
+  }
+  .design-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--mc-control);
+    margin: var(--mc-empty) 0 0;
+    font-size: var(--mc-caption);
+    line-height: 1.6;
+    color: var(--mc-muted);
+    text-align: left;
+  }
+
+  /* ── Tablet ──────────────────────────────────────────────────────────── */
+  @media (max-width: 960px) {
+    .charge__grid,
+    .iphone__grid,
+    .release-card,
+    .brief {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .charge header {
+      position: static;
+    }
+    .steps {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      row-gap: var(--mc-empty);
+    }
+    .steps li:nth-child(2)::before {
+      display: none;
+    }
+    .iphone__copy {
+      order: -1;
+    }
+  }
+
+  /* ── Phone ───────────────────────────────────────────────────────────── */
+  @media (max-width: 640px) {
+    .mc-container,
+    .product-nav__inner {
+      width: calc(100% - 2 * var(--mc-page));
+    }
+    .product-nav__links {
+      gap: var(--mc-inset);
+    }
+    .product-nav__links a:not(.product-nav__cta) {
+      display: none;
+    }
+    .hero__copy :global(.hero__icon img) {
+      width: 88px;
+    }
+    .actions {
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+      max-width: 360px;
+      margin-top: var(--mc-section);
+    }
+    .center-head {
+      margin-bottom: var(--mc-section);
+    }
+    .steps {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 0;
+    }
+    .steps li {
+      padding: 0 0 var(--mc-section) 48px;
+    }
+    .steps li:not(:last-child)::before {
+      display: block;
+      top: 34px;
+      bottom: 4px;
+      left: 15px;
+      right: auto;
+      border-top: 0;
+      border-left: 1px dashed var(--mc-border-strong);
+    }
+    .steps h3 {
+      margin-top: var(--mc-row);
+    }
+    .brief,
+    .edition {
+      padding: var(--mc-section);
+    }
+    .brief {
+      margin-top: var(--mc-cluster);
+    }
+    .editions__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .devices {
+      gap: var(--mc-inset);
+      padding: var(--mc-section) var(--mc-inset);
+    }
+    .device--portrait {
+      width: 104px;
+      height: 212px;
+    }
+    .device--landscape {
+      width: 180px;
+      height: 100px;
+      grid-template-columns: 20px 1fr 40px;
+    }
+    .facts > div {
+      grid-template-columns: 1fr;
+      gap: var(--mc-row);
+    }
+    .release-card {
+      border-radius: var(--mc-r-xl);
+    }
+    .question-list details p {
+      margin-right: 0;
+    }
+  }
+
+  /* Landscape phone: the room matters more than the hero padding. */
+  @media (orientation: landscape) and (max-height: 520px) {
+    .hero {
+      padding-top: var(--mc-section);
+    }
+    .hero__copy :global(.hero__icon) {
+      display: none;
+    }
+    .hero h1 {
+      font-size: clamp(40px, 6.4vw, 60px);
+    }
+    .hero__room {
+      margin-top: var(--mc-empty);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .button,
+    .text-link,
+    .question-list summary::after,
+    .product-nav__links a {
+      transition: none;
+    }
+    .button:hover {
+      transform: none;
+    }
+  }
+</style>

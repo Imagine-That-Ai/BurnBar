@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Afar Messages card fallback for https://burnbar.ai/c/v1#<fields>. The page is imported byte for byte; only scripts/lib/card-host.mjs and firebase.json describe how BurnBar serves it.",
+  "route": "/c/v1",
+  "source": {
+    "repository": "Ajnunezg/alberto-cloud-mission-control",
+    "commit": "84cb19b46045e2ef9d1de7200f8a660e8b05edb2",
+    "tree": "514a8ad085dbfafb3bf01a173a938dd5eed322ae",
+    "commitSubject": "Harden the card fallback page for hosting; name it Afar",
+    "deployGuide": "docs/imessage-card-web/DEPLOY.md",
+    "upstreamTests": "tools/test_card_fallback.py"
+  },
+  "files": [
+    {
+      "path": "public/c/v1.html",
+      "sourcePath": "docs/imessage-card-web/c/v1/index.html",
+      "gitBlob": "01158d735b88682052c0f56985e21b9a68a74aa6",
+      "sha256": "aa3af149133c22cb81b85f922f1bff863f31b341946c72b44b8865ed812589b0",
+      "bytes": 10125
+    },
+    {
+      "path": "card-host/headers.json",
+      "sourcePath": "docs/imessage-card-web/headers.json",
+      "gitBlob": "67a3eeaf24a8a9d4ef0e91d9613b35bf447d1bd2",
+      "sha256": "e9131fa1f049266e0a9856c863eeda8f158889e6a3616569fd4cb3fe4fe3806a",
+      "bytes": 1426
+    }
+  ],
+  "notImported": {
+    "docs/imessage-card-web/.well-known/apple-app-site-association.example.json": "Universal links stay off. An association file needs the approved team ID and proven entitlement and profile eligibility, and firebase.json's '**/.*' ignore and default appAssociation (AUTO) must be resolved first.",
+    "everyOtherPathReturns404": "DEPLOY.md assumes a dedicated host. On the shared burnbar.ai origin every other path keeps serving its own product."
+  }
+}

@@ -24,6 +24,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert";
+import { isCardFallbackDistFile } from "./lib/card-host.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -42,7 +43,10 @@ function walk(dir, out = []) {
   return out;
 }
 
-const htmlFiles = walk(DIST).filter((f) => f.endsWith(".html"));
+// The Afar card fallback (/c/v1) is imported byte for byte, served no-store
+// and never bundled, so the re-inlining regression this budget polices can't
+// apply to it. The check proves the page is still the imported bytes.
+const htmlFiles = walk(DIST).filter((f) => f.endsWith(".html") && !isCardFallbackDistFile(f));
 assert.ok(htmlFiles.length > 10, `expected a built dist/, found ${htmlFiles.length} HTML files`);
 
 const inlineScript = /<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/gi;

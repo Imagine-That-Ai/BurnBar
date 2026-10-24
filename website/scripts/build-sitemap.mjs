@@ -13,8 +13,9 @@ const SITE = "https://burnbar.ai";
 // exits with "dist/ does not exist" on an otherwise successful build.
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 // Pages we do not want indexed: the 404 page and the noindex'd auth-utility
-// surfaces (device linking + Hermes account connect).
-const EXCLUDE = ["/404", "/link", "/hermes/connect"];
+// surfaces (device linking + Hermes account connect), and the Afar card
+// fallback, which only card links open.
+const EXCLUDE = ["/404", "/link", "/hermes/connect", "/c/v1"];
 
 const now = new Date().toISOString().slice(0, 10);
 

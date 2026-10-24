@@ -1,0 +1,29 @@
+{
+  "comment": "Hosting contract for the card host (see DEPLOY.md). Serve exactly these paths over HTTPS on the default port, without redirects; every other path returns 404. tools/test_card_fallback.py keeps the CSP hashes in step with index.html.",
+  "routes": {
+    "/c/v1": {
+      "file": "c/v1/index.html",
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": "default-src 'none'; script-src 'sha256-7pvWBAN4b/f1BrKHfOsVLJxyf62XUDl5PcSLp3cqc1E='; style-src 'sha256-pmti3sq534Bp5OAhsR3afbZDB27x3cn61sSYJbKEhvY='; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "X-Robots-Tag": "noindex, nofollow",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Strict-Transport-Security": "max-age=31536000"
+      }
+    },
+    "/.well-known/apple-app-site-association": {
+      "file": ".well-known/apple-app-site-association",
+      "generatedFrom": ".well-known/apple-app-site-association.example.json",
+      "headers": {
+        "Content-Type": "application/json",
+        "Cache-Control": "max-age=3600",
+        "X-Content-Type-Options": "nosniff"
+      }
+    }
+  }
+}

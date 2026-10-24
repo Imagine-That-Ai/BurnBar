@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Afar Messages card fallback at `burnbar.ai/c/v1` (source only, not
+  activated)** — the canonical card page is imported byte for byte from
+  `Ajnunezg/alberto-cloud-mission-control@84cb19b4` and pinned by size,
+  SHA-256 and git blob in `website/card-host/import-receipt.json`. It is served
+  from `public/`, so it has no site shell or analytics, and card fields stay
+  in the URL fragment, which never reaches the server. `firebase.json` gives
+  `/c/v1` its own CSP, `no-store` and `no-referrer`; the card's hashes stay
+  out of the site-wide CSP. `/c/v1` is served without a redirect;
+  `/c/v1.html` and `/c/v1/` 301 to it. `npm run test:card-host` (in `verify`)
+  checks the bytes, headers, routing and sitemap and rejects 31 mutations;
+  `npm run test:card-host:emulator` proves the served headers against the
+  Firebase Hosting emulator, including that the route rule overrides `**`.
+  Universal links stay off: no `apple-app-site-association` ships.
+
 ### Changed
 - **Official libsignal pin moved from v0.94.4 to v0.103.0 on every consumer** —
   the `Vendor/libsignal` fork (rebased onto the official v0.103.0 tag; its
@@ -32,6 +47,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/SERVICES_DECOMPOSITION_PROGRAM.md` for the remaining waves.
 
 ### Added
+- **Afar branding on the product page** — the owner renamed Mission Control to
+  Afar and supplied the official logo. The page at `/mission-control` (address
+  unchanged) now uses Afar in its copy and product navigation, and shows the
+  official artwork as pre-rendered AVIF/WebP/PNG tiles (145 KB in total) built
+  by `website/scripts/build-afar-icons.py` from the owner-reviewed render. The
+  5.5 MB master, its reviewed 1024 px render and provenance are imported
+  byte-identical under `website/brand/afar/` with an import receipt pinned to
+  the source commit, and `website/test/afar-icons.test.ts` verifies the hash
+  chain through to every served file. The public download stays gated.
+- **Mission Control product page at `/mission-control`** — a companion page for
+  the native Mac app and separate iOS client, built on the shared Po'dex token
+  foundation with the pink/orange/canary palette. Its control room is a labeled
+  interactive concept with distinct wide, portrait (swipe + thumb-reach places
+  bar) and landscape (icon rail) compositions. The download stays withheld until
+  `website/public/mission-control/release.json` carries every piece of
+  distribution evidence; `releaseEvidence()` renders that checklist and defines
+  the gate, so the page and the gate cannot disagree. Titles use a self-hosted
+  Space Grotesk SemiBold (600), instanced from the upstream variable font by
+  the reproducible `website/scripts/build-mission-control-semibold.py`.
 - **Menu-bar popover layout** — quotas are a tray section like every other
   block, not a pinned 340pt bar that crowds the rest of the drop-down. Users
   can show, hide, collapse, reorder, and size each section (relative weight,
