@@ -25,7 +25,7 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _EXPECTED_CORE_IDENTITY = (
     "0.1.0",
     3,
-    "f110351e40d28f0d9e9901d3a1c0812ee2d01d6acb59a450e6ac437264b24e93",
+    "333603fc54f51690097210b4435fdf29a91277d38695043be7ade597efa7a4d3",
 )
 _RECEIPT_KEYS = {
     "schemaVersion",
