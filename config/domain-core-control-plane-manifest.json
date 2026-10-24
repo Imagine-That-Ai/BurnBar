@@ -41,7 +41,7 @@
     "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/OpenBurnBarDomainCore.Ffi.csproj": ["a5edbdcba46b16ac","35ef64ea7dcf10ba","9d07f4058f3067f3","714efd202684f684"],
     "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs": ["158031de1fe842f3","f5c338d5aad990e8","72233b3af0f94902","ac58399f6b3cd2c6"],
     "crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs": ["c78e1808423db20a","05d3a9f508ab0e0f","214f6a042f160275","eb2ce12c7adc9654"],
-    "crates/openburnbar-domain-core/union-abi-manifest.json": ["7d9b245f2036add6","a91896d2797cdb42","a6f0049013fd9986","28b96cc377b028d3"],
+    "crates/openburnbar-domain-core/union-abi-manifest.json": ["61ed25906c0adb4f","065c219cfe433881","133874771e96b91a","64c7444b6144c833"],
     "functions/package-lock.json": ["83a4ba27a853cdb6","88fef8c78bdcaae1","5e82b862dcdfdea3","2afd85d569e65c96"],
     "functions/package.json": ["96afd78cf79aac67","10dcd1de72365c04","2f55910642a4adb9","be43df58f731391c"],
     "functions/src/__tests__/pricing.test.ts": ["b7a6fc32b40e73f9","e7787deb0be427ba","212709b655cf5005","ba691d58de9aa292"],
