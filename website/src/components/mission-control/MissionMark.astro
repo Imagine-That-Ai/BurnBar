@@ -1,0 +1,91 @@
+---
+/**
+ * Mission Control mark: four environment planes settling into one stack.
+ * Plane count, order and the mid-assemble tone come from the shared token
+ * foundation (`mark.planes`, `gradients.stack`, `mark.assembleMid`), so the
+ * same drawing can scale to the app icon, DMG background and first launch.
+ *
+ * variant="mark"  bare planes, for wordmarks and inline use.
+ * variant="icon"  planes on the dark launch tile (`launch.appearance`), the
+ *                 shape an app icon would take. Always decorative here.
+ */
+interface Props {
+  variant?: "mark" | "icon";
+  size?: number;
+  class?: string;
+}
+
+const { variant = "mark", size = 32, class: className } = Astro.props;
+
+// Top → bottom: pink, orange, assemble, canary (tokens.gradients.stack with the
+// assemble midpoint between orange and canary).
+const planes = ["pink", "orange", "assemble", "canary"] as const;
+const step = 6;
+const top = 9;
+---
+
+<svg
+  class:list={["mc-mark", `mc-mark--${variant}`, className]}
+  width={size}
+  height={size}
+  viewBox="0 0 40 40"
+  aria-hidden="true"
+  focusable="false"
+>
+  {variant === "icon" && <rect class="mc-mark__tile" x="0" y="0" width="40" height="40" rx="9" />}
+  {variant === "icon" && <rect class="mc-mark__wash" x="0" y="0" width="40" height="40" rx="9" />}
+  <g
+    class="mc-mark__planes"
+    transform={variant === "icon" ? "translate(6 6) scale(0.7)" : undefined}
+  >
+    {planes
+      .map((tone, index) => {
+        const y = top + index * step;
+        return (
+          <path
+            class={`mc-mark__plane mc-mark__plane--${tone}`}
+            d={`M20 ${y - 7} L34 ${y} L20 ${y + 7} L6 ${y} Z`}
+          />
+        );
+      })
+      .reverse()}
+  </g>
+</svg>
+
+<style>
+  .mc-mark {
+    display: block;
+    flex: none;
+    overflow: visible;
+  }
+  .mc-mark__plane {
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+  .mc-mark__plane--pink {
+    fill: var(--mc-pink);
+    stroke: var(--mc-pink);
+  }
+  .mc-mark__plane--orange {
+    fill: var(--mc-orange);
+    stroke: var(--mc-orange);
+  }
+  .mc-mark__plane--assemble {
+    fill: var(--mc-assemble);
+    stroke: var(--mc-assemble);
+  }
+  .mc-mark__plane--canary {
+    fill: var(--mc-canary);
+    stroke: var(--mc-canary);
+  }
+  /* A hairline of the base between planes keeps the stack legible as layers. */
+  .mc-mark__plane:not(.mc-mark__plane--canary) {
+    filter: drop-shadow(0 1.2px 0 color-mix(in srgb, var(--mc-ink) 22%, transparent));
+  }
+  .mc-mark__tile {
+    fill: var(--mc-ink);
+  }
+  .mc-mark__wash {
+    fill: color-mix(in srgb, var(--mc-pink) 16%, transparent);
+  }
+</style>
