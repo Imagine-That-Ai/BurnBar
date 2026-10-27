@@ -107,21 +107,21 @@ tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
 dependencies {
     // Kotlinx-serialization for the HermesRealtimeRelayFrame JSON wire
     // shape. Same data model the iOS side encodes via JSONEncoder.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.12.0")
 
     // Tink — Ed25519 verifier compatible with iOS Curve25519.Signing on
     // every API level from 26 up. The JDK's java.security.Signature
     // Ed25519 algorithm only landed in API 31+, so Tink is the portable
     // primitive across our minSdk range.
-    implementation("com.google.crypto.tink:tink-android:1.23.0")
+    implementation("com.google.crypto.tink:tink-android:1.24.0")
 
     // JNA 5.19.1 ships 16 KB page-size aligned native libjnidispatch slices.
     // UniFFI's generated Kotlin bindings use JNA to load the Rust AAR.
     api("net.java.dev.jna:jna:5.19.1@aar")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.12.0")
     testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("org.json:json:20260814")
     // Ed25519 signer for tests only — production code is verify-only.
