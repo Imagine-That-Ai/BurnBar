@@ -37,7 +37,7 @@ serde = { version = "1", features = ["derive"] }
 # UniFFI surface used by `OpenBurnBarIroh` Swift package. The proc-macro
 # attribute path (`#[uniffi::export]`) is the modern, scaffolding-free way to
 # expose Rust APIs — no .udl file required.
-uniffi = { version = "0.28", default-features = false }
+uniffi = { version = "0.32", default-features = false }
 
 # Ed25519 pairing signatures live in OpenBurnBarCore (Swift CryptoKit). The
 # Rust side only needs the iroh secret-key representation, which iroh exposes
