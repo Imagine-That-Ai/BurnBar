@@ -63,6 +63,9 @@ make_fixture() {
   cat >"$root/fake-bin/xcodebuild" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${FAKE_MODE}" == "hard-failure-after-peer-drift" || "${FAKE_MODE}" == "drift-then-wait-for-peer" ]]; then
+  set -x
+fi
 
 if [[ "${FIREBASE_SOURCE_FIRESTORE:-}" != "1" ]]; then
   echo "lockfile verifier did not force the source-built Firestore graph" >&2
