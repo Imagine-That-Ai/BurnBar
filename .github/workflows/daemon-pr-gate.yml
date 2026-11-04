@@ -128,35 +128,16 @@ jobs:
 
       - name: Build daemon executable in release mode
         run: |
-          cd OpenBurnBarDaemon && swift build -c release --target OpenBurnBarDaemonExecutable
+          swift build --package-path OpenBurnBarDaemon --configuration release --product OpenBurnBarDaemon
+
+      - name: Test release verifier failure paths
+        run: python3 scripts/ci/verify-daemon-release.test.py
 
       - name: Verify debug-only escape hatches are absent from release binary
         run: |
           set -euo pipefail
-          BINARY="OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon"
-          HELP_OUTPUT="$("$BINARY" --help 2>&1 || true)"
-
-          # The unauthenticated-loopback flag must NOT appear in release help.
-          if echo "$HELP_OUTPUT" | grep -q "gateway-allow-unauthenticated-loopback"; then
-            echo "::error::Release binary help output contains --gateway-allow-unauthenticated-loopback (should be compiled out)"
-            exit 1
-          fi
-
-          # The debugOnlyArgument error message must NOT appear in release help.
-          if echo "$HELP_OUTPUT" | grep -q "debugOnlyArgument"; then
-            echo "::error::Release binary help output contains debugOnlyArgument text"
-            exit 1
-          fi
-
-          # The Wave 2.4 force-no-codec test hatch must be compiled out of the
-          # release binary entirely (a hostile launch environment must not be
-          # able to trip the startup gate, nor observe the override string).
-          if strings "$BINARY" | grep -q "OPENBURNBAR_DAEMON_FORCE_NO_CODEC"; then
-            echo "::error::Release binary still references OPENBURNBAR_DAEMON_FORCE_NO_CODEC (should be compiled out)"
-            exit 1
-          fi
-
-          echo "Release build verification passed: debug-only escape hatches are compiled out."
+          BINARY_DIRECTORY="$(swift build --package-path OpenBurnBarDaemon --configuration release --show-bin-path)"
+          bash scripts/ci/verify-daemon-release.sh "$BINARY_DIRECTORY/OpenBurnBarDaemon"
 
   daemon-pr-gate:
     name: Daemon PR Gate
