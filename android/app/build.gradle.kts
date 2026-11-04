@@ -686,7 +686,7 @@ dependencies {
     // kotlinx-coroutines-guava bridge provides `.await()`.
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
     implementation("androidx.concurrent:concurrent-futures-ktx:1.2.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.11.0")
     // Auth — Credential Manager is the single Google sign-in path; the
     // googleid bridge returns the ID token that Firebase Auth exchanges.
     implementation("androidx.credentials:credentials:1.6.0")
@@ -709,8 +709,8 @@ dependencies {
     implementation("com.patrykandpatrick.vico:compose-m3:3.3.1")
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
 
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
@@ -743,7 +743,7 @@ dependencies {
 
     // Testing
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.12.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("org.signal:libsignal-client:0.106.1")
     // Android's JNA AAR supplies only device JNI slices. Activated Rust-mode
