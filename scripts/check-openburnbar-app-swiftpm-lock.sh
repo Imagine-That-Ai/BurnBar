@@ -174,4 +174,9 @@ if (( resolve_status != 0 )); then
   exit "$resolve_status"
 fi
 
+if ! python3 "$repo_root/scripts/ci/verify-openburnbar-app-swiftpm-graph.py" "$lockfile_path"; then
+  restore_lockfile
+  exit 1
+fi
+
 git -C "$repo_root" diff --exit-code -- "$lockfile_path"

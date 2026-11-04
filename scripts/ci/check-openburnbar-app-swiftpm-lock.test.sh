@@ -20,6 +20,18 @@ write_lockfile() {
 {
   "pins": [
     {
+      "identity": "firebase-ios-sdk",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/firebase/firebase-ios-sdk",
+      "state": { "version": "12.19.3", "revision": "42cf1417c51c5e3bfbae5d3ab89b778f8fdc4bb8" }
+    },
+    {
+      "identity": "grpc-ios",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/grpc/grpc-ios.git",
+      "state": { "version": "1.69.0", "revision": "93a0694c01ff51d7a897492aec9dc58f486e7cfd" }
+    },
+    {
       "identity": "googlesignin-ios",
       "state": {
         "version": "${google_sign_in_version}"
@@ -49,9 +61,11 @@ make_fixture() {
   local root="$fixture_root/$name"
   mkdir -p \
     "$root/scripts" \
+    "$root/scripts/ci" \
     "$root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm" \
     "$root/fake-bin"
   cp "$script_under_test" "$root/scripts/check-openburnbar-app-swiftpm-lock.sh"
+  cp "$repo_root/scripts/ci/verify-openburnbar-app-swiftpm-graph.py" "$root/scripts/ci/verify-openburnbar-app-swiftpm-graph.py"
   write_lockfile \
     "$root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
   git -C "$root" init -q
@@ -90,6 +104,9 @@ case "$FAKE_MODE" in
     ;;
   successful-drift)
     cp "$FAKE_DRIFTED_LOCKFILE_PATH" "$FAKE_LOCKFILE_PATH"
+    ;;
+  invalid-graph)
+    cp "$FAKE_BAD_LOCKFILE_PATH" "$FAKE_LOCKFILE_PATH"
     ;;
   hard-failure)
     printf 'partial-hard-failure-lockfile\n' >"$FAKE_LOCKFILE_PATH"
@@ -153,6 +170,7 @@ run_fixture() {
     FAKE_LOCKFILE_PATH="$lockfile" \
     FAKE_EXPECTED_LOCKFILE_PATH="$expected" \
     FAKE_DRIFTED_LOCKFILE_PATH="$root/drifted.Package.resolved" \
+    FAKE_BAD_LOCKFILE_PATH="$root/bad.Package.resolved" \
     FAKE_ATTEMPT_FILE="$attempts" \
     OPENBURNBAR_LOCK_CHECK_MAX_ATTEMPTS=2 \
     bash "$root/scripts/check-openburnbar-app-swiftpm-lock.sh"
@@ -184,6 +202,60 @@ if run_fixture "$drift_root" successful-drift >/dev/null 2>&1; then
   echo "Expected successful resolver drift to fail the lockfile check" >&2
   exit 1
 fi
+
+for variant in binary missing-grpc old-firebase missing-firebase malformed null-grpc-state null-firebase-state empty-identity duplicate-pin firebase-revision-mismatch firebase-revision-missing grpc-revision-empty firebase-location-mismatch grpc-location-mismatch grpc-version-malformed grpc-kind-invalid firebase-kind-invalid; do
+  invalid_root="$(make_fixture "invalid-${variant}")"
+  invalid_lockfile="$invalid_root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+  python3 - "$invalid_lockfile" "$invalid_root/bad.Package.resolved" "$variant" <<'PYGRAPH'
+import json
+import sys
+from pathlib import Path
+
+source, destination, variant = sys.argv[1:]
+document = json.loads(Path(source).read_text())
+if variant == "binary":
+    document["pins"].append({"identity": "grpc-binary", "state": {"version": "1.69.1"}})
+elif variant == "missing-grpc":
+    document["pins"] = [pin for pin in document["pins"] if pin["identity"] != "grpc-ios"]
+elif variant == "old-firebase":
+    next(pin for pin in document["pins"] if pin["identity"] == "firebase-ios-sdk")["state"]["version"] = "12.15.0"
+elif variant == "missing-firebase":
+    document["pins"] = [pin for pin in document["pins"] if pin["identity"] != "firebase-ios-sdk"]
+elif variant == "null-grpc-state":
+    next(pin for pin in document["pins"] if pin["identity"] == "grpc-ios")["state"] = None
+elif variant == "null-firebase-state":
+    next(pin for pin in document["pins"] if pin["identity"] == "firebase-ios-sdk")["state"] = None
+elif variant == "empty-identity":
+    document["pins"].append({"identity": "", "state": {}})
+elif variant == "duplicate-pin":
+    document["pins"].append(dict(next(pin for pin in document["pins"] if pin["identity"] == "grpc-ios")))
+elif variant == "firebase-revision-mismatch":
+    next(pin for pin in document["pins"] if pin["identity"] == "firebase-ios-sdk")["state"]["revision"] = "0" * 40
+elif variant == "firebase-revision-missing":
+    del next(pin for pin in document["pins"] if pin["identity"] == "firebase-ios-sdk")["state"]["revision"]
+elif variant == "grpc-revision-empty":
+    next(pin for pin in document["pins"] if pin["identity"] == "grpc-ios")["state"]["revision"] = ""
+elif variant == "firebase-location-mismatch":
+    next(pin for pin in document["pins"] if pin["identity"] == "firebase-ios-sdk")["location"] = "https://example.invalid/firebase-ios-sdk"
+elif variant == "grpc-location-mismatch":
+    next(pin for pin in document["pins"] if pin["identity"] == "grpc-ios")["location"] = "https://example.invalid/grpc-ios"
+elif variant == "grpc-version-malformed":
+    next(pin for pin in document["pins"] if pin["identity"] == "grpc-ios")["state"]["version"] = []
+elif variant == "grpc-kind-invalid":
+    next(pin for pin in document["pins"] if pin["identity"] == "grpc-ios")["kind"] = "localSourceControl"
+elif variant == "firebase-kind-invalid":
+    next(pin for pin in document["pins"] if pin["identity"] == "firebase-ios-sdk")["kind"] = None
+if variant == "malformed":
+    Path(destination).write_text('{ "pins": [')
+else:
+    Path(destination).write_text(json.dumps(document))
+PYGRAPH
+  if run_fixture "$invalid_root" invalid-graph >/dev/null 2>&1; then
+    echo "Expected invalid resolved graph ${variant} to fail" >&2
+    exit 1
+  fi
+  cmp -s "$invalid_root/expected.Package.resolved" "$invalid_lockfile"
+done
 
 failure_root="$(make_fixture failure)"
 set +e

@@ -203,6 +203,7 @@ jobs:
               -destination 'platform=macOS,arch=x86_64' \
               -derivedDataPath .codeql-derived-data \
               -resolvePackageDependencies; then
+              python3 scripts/ci/verify-openburnbar-app-swiftpm-graph.py OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved || exit $?
               exit 0
             fi
             if [ "$attempt" = "3" ]; then
