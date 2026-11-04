@@ -2,6 +2,6 @@
   "abiVersion": 3,
   "coreVersion": "0.1.0",
   "schemaVersion": 1,
-  "sourceSha256": "333603fc54f51690097210b4435fdf29a91277d38695043be7ade597efa7a4d3",
-  "wasmSha256": "ac97dee0b2e4c6bf5b25caf14ed40eec2932cfdae149f709809f5ee530b3072e"
+  "sourceSha256": "7a929eaf79da5ec62000219557fdd3b195daa8372e895dfdfc1dc79001e2f22e",
+  "wasmSha256": "33e6ba182f51b74deac4bccafb45e1e8e1e65556a24d185649e917b7e301e334"
 }
