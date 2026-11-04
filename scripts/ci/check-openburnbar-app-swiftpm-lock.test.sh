@@ -137,6 +137,7 @@ case "$FAKE_MODE" in
     cp "$FAKE_EXPECTED_LOCKFILE_PATH" "$FAKE_LOCKFILE_PATH"
     ;;
   hard-failure-after-peer-drift)
+    touch "$FAKE_HOLDER_STARTED_FLAG"
     for _ in $(seq 1 50); do
       if [[ -f "$FAKE_DRIFT_WRITTEN_FLAG" ]]; then
         break
@@ -308,9 +309,11 @@ cp "$concurrent_lockfile" "$concurrent_root/expected.Package.resolved"
 write_drifted_lockfile "$concurrent_root/drifted.Package.resolved"
 drift_written_flag="$concurrent_root/drift-written"
 peer_done_flag="$concurrent_root/peer-done"
+holder_started_flag="$concurrent_root/holder-started"
 
 PATH="$concurrent_root/fake-bin:$PATH" \
   FAKE_MODE="hard-failure-after-peer-drift" \
+  FAKE_HOLDER_STARTED_FLAG="$holder_started_flag" \
   FAKE_LOCKFILE_PATH="$concurrent_lockfile" \
   FAKE_EXPECTED_LOCKFILE_PATH="$concurrent_root/expected.Package.resolved" \
   FAKE_DRIFTED_LOCKFILE_PATH="$concurrent_root/drifted.Package.resolved" \
@@ -318,9 +321,22 @@ PATH="$concurrent_root/fake-bin:$PATH" \
   FAKE_DRIFT_WRITTEN_FLAG="$drift_written_flag" \
   FAKE_PEER_DONE_FLAG="$peer_done_flag" \
   OPENBURNBAR_LOCK_CHECK_MAX_ATTEMPTS=2 \
-  bash "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
-  >/dev/null 2>&1 &
+  bash -x "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
+  >"$concurrent_root/hard-failure.trace" 2>&1 &
 hard_failure_pid=$!
+
+for _ in $(seq 1 100); do
+  if [[ -f "$holder_started_flag" ]]; then
+    break
+  fi
+  sleep 0.05
+done
+if [[ ! -f "$holder_started_flag" ]]; then
+  echo "Expected the hard-failure resolver to hold the lock before its contender started" >&2
+  kill "$hard_failure_pid" 2>/dev/null || true
+  wait "$hard_failure_pid" 2>/dev/null || true
+  exit 1
+fi
 
 PATH="$concurrent_root/fake-bin:$PATH" \
   FAKE_MODE="drift-then-wait-for-peer" \
@@ -331,8 +347,8 @@ PATH="$concurrent_root/fake-bin:$PATH" \
   FAKE_DRIFT_WRITTEN_FLAG="$drift_written_flag" \
   FAKE_PEER_DONE_FLAG="$peer_done_flag" \
   OPENBURNBAR_LOCK_CHECK_MAX_ATTEMPTS=2 \
-  bash "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
-  >/dev/null 2>&1 &
+  bash -x "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
+  >"$concurrent_root/drift.trace" 2>&1 &
 concurrent_drift_pid=$!
 
 set +e
@@ -350,6 +366,7 @@ concurrent_drift_status=$?
 set -e
 if (( concurrent_drift_status == 0 )); then
   echo "Expected the concurrent drift check to fail; a hard-failure peer's snapshot restore masked legitimate resolver drift" >&2
+  cat "$concurrent_root/hard-failure.trace" "$concurrent_root/drift.trace" >&2
   exit 1
 fi
 cmp -s "$concurrent_root/drifted.Package.resolved" "$concurrent_lockfile"
