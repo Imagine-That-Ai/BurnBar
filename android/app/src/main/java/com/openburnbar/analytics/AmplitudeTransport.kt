@@ -29,6 +29,7 @@ class AmplitudeTransport(
     private val apiKey: String?,
     private val deviceId: String,
     private val serverZone: ServerZone = ServerZone.US,
+    private val createAmplitude: (Configuration) -> Amplitude = ::Amplitude,
 ) : AnalyticsTransport {
 
     private var amplitude: Amplitude? = null
@@ -72,7 +73,7 @@ class AmplitudeTransport(
             useAdvertisingIdForDeviceId = false,
             useAppSetIdForDeviceId = false,
         )
-        amplitude = Amplitude(configuration)
+        amplitude = createAmplitude(configuration)
     }
 
     override fun stop() {

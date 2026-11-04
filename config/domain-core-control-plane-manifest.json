@@ -69,7 +69,7 @@
     "scripts/build-iroh-xcframework.sh": ["6b2f0aa378306786","07c0b754f255148b","76f0780670946f10","d0e10704a834e116"],
     "scripts/build-macos-website-release.sh": ["39eb929403347d2d","85b0e4cda8f287f4","308156b2e42839b6","8f65a4fb0f7271e0"],
     "scripts/build-signal-envelope-contracts.sh": ["8c7b036adf8d064f","989cf476a28d4f94","989a78d4064b72c0","03a4d433a52c624e"],
-    "scripts/check-openburnbar-app-swiftpm-lock.sh": ["7f6151f72cbcc3d6","3e77d7d8ad910b41","dd9fd3b02f83f37f","43f102fb492b18a8"],
+    "scripts/check-openburnbar-app-swiftpm-lock.sh": ["a9921c364c6428e5","2191f35ec45485f5","4faada149597974e","5dc44851e1f7f9d7"],
     "scripts/check-signing-identity-coherence.sh": ["bb7683258e416756","41575517866bf43b","56c4b1262ee6da1e","c8ab3723c4a7c423"],
     "scripts/ci/await-burnbar-ci-gate.mjs": ["3cdac041a817edcc","38202f2564654536","a5aef52612e7597d","6fc085f4e36523b4"],
     "scripts/ci/build-corresponding-source-archive.sh": ["5230387c630b59bd","ff0f62c93074d3eb","87dfed46bdd81309","cd4812a7f9820cb2"],
