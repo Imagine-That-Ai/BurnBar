@@ -703,7 +703,7 @@ dependencies {
     // is com.openburnbar.analytics.AmplitudeTransport (constructed solely after
     // affirmative opt-in). Autocapture is fully disabled; key is BuildConfig-
     // injected and never committed (absent key ⇒ recorder stays dark).
-    implementation("com.amplitude:analytics-android:1.36.0")
+    implementation("com.amplitude:analytics-android:1.32.0")
 
     // Vico 2.x — Compose-first chart library for Insights
     implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")

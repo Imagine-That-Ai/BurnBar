@@ -48,6 +48,7 @@ class AmplitudeTransport(
             flushIntervalMillis = FLUSH_INTERVAL_MILLIS,
             instanceName = INSTANCE_NAME,
             optOut = false,
+            enableDiagnostics = false,
             serverZone = serverZone,
             // Empty set = autocapture OFF (no sessions, lifecycle, screen views,
             // deep links, or element interactions). Everything is manual and
