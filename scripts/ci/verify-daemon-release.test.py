@@ -73,7 +73,9 @@ class DaemonReleaseProofTests(unittest.TestCase):
         self.assert_rejected()
 
     def test_unauthenticated_loopback_flag_fails(self):
-        self.write_binary(output="Usage: OpenBurnBarDaemon --gateway-allow-unauthenticated-loopback")
+        self.write_binary(
+            output="Usage: OpenBurnBarDaemon --gateway-allow-unauthenticated-loopback"
+        )
         self.assert_rejected()
 
     def test_debug_argument_error_fails(self):
@@ -90,7 +92,9 @@ class DaemonReleaseProofTests(unittest.TestCase):
         self.assert_rejected()
 
     def test_large_strings_output_cannot_hide_forbidden_prefix(self):
-        self.fake_strings("printf '%s\\n' OPENBURNBAR_DAEMON_FORCE_NO_CODEC\nprintf '%0200000d\\n' 0")
+        self.fake_strings(
+            "printf '%s\\n' OPENBURNBAR_DAEMON_FORCE_NO_CODEC\nprintf '%0200000d\\n' 0"
+        )
         self.assert_rejected()
 
     def test_workflow_links_the_product_and_runs_the_verifier(self):
@@ -98,7 +102,10 @@ class DaemonReleaseProofTests(unittest.TestCase):
         self.assertIn("--product OpenBurnBarDaemon", workflow)
         self.assertNotIn("--target OpenBurnBarDaemonExecutable", workflow)
         self.assertIn("--show-bin-path", workflow)
-        self.assertIn('bash scripts/ci/verify-daemon-release.sh "$BINARY_DIRECTORY/OpenBurnBarDaemon"', workflow)
+        self.assertIn(
+            'bash scripts/ci/verify-daemon-release.sh "$BINARY_DIRECTORY/OpenBurnBarDaemon"',
+            workflow,
+        )
         self.assertIn("python3 scripts/ci/verify-daemon-release.test.py", workflow)
 
 
