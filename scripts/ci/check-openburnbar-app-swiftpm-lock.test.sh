@@ -245,8 +245,8 @@ PATH="$concurrent_root/fake-bin:$PATH" \
   FAKE_DRIFT_WRITTEN_FLAG="$drift_written_flag" \
   FAKE_PEER_DONE_FLAG="$peer_done_flag" \
   OPENBURNBAR_LOCK_CHECK_MAX_ATTEMPTS=2 \
-  bash "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
-  >/dev/null 2>&1 &
+  bash -x "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
+  >"$concurrent_root/hard-failure.trace" 2>&1 &
 hard_failure_pid=$!
 
 PATH="$concurrent_root/fake-bin:$PATH" \
@@ -258,8 +258,8 @@ PATH="$concurrent_root/fake-bin:$PATH" \
   FAKE_DRIFT_WRITTEN_FLAG="$drift_written_flag" \
   FAKE_PEER_DONE_FLAG="$peer_done_flag" \
   OPENBURNBAR_LOCK_CHECK_MAX_ATTEMPTS=2 \
-  bash "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
-  >/dev/null 2>&1 &
+  bash -x "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
+  >"$concurrent_root/drift.trace" 2>&1 &
 concurrent_drift_pid=$!
 
 set +e
@@ -277,6 +277,7 @@ concurrent_drift_status=$?
 set -e
 if (( concurrent_drift_status == 0 )); then
   echo "Expected the concurrent drift check to fail; a hard-failure peer's snapshot restore masked legitimate resolver drift" >&2
+  cat "$concurrent_root/hard-failure.trace" "$concurrent_root/drift.trace" >&2
   exit 1
 fi
 cmp -s "$concurrent_root/drifted.Package.resolved" "$concurrent_lockfile"
