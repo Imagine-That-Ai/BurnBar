@@ -179,4 +179,8 @@ if ! python3 "$repo_root/scripts/ci/verify-openburnbar-app-swiftpm-graph.py" "$l
   exit 1
 fi
 
-git -C "$repo_root" diff --exit-code -- "$lockfile_path"
+if ! git -C "$repo_root" show "HEAD:OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved" | cmp -s - "$lockfile_path"; then
+  echo "Resolved SwiftPM lockfile differs from the committed graph" >&2
+  git -C "$repo_root" diff -- "$lockfile_path" >&2
+  exit 1
+fi

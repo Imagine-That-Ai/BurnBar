@@ -203,6 +203,15 @@ if run_fixture "$drift_root" successful-drift >/dev/null 2>&1; then
   exit 1
 fi
 
+cached_root="$(make_fixture cached-index-drift)"
+cached_lockfile="OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+git -C "$cached_root" update-index --assume-unchanged -- "$cached_lockfile"
+if run_fixture "$cached_root" successful-drift >/dev/null 2>&1; then
+  echo "Expected resolver drift to fail even when Git skips its worktree metadata check" >&2
+  exit 1
+fi
+cmp -s "$cached_root/drifted.Package.resolved" "$cached_root/$cached_lockfile"
+
 for variant in binary missing-grpc old-firebase missing-firebase malformed null-grpc-state null-firebase-state empty-identity duplicate-pin firebase-revision-mismatch firebase-revision-missing grpc-revision-empty firebase-location-mismatch grpc-location-mismatch grpc-version-malformed grpc-kind-invalid firebase-kind-invalid; do
   invalid_root="$(make_fixture "invalid-${variant}")"
   invalid_lockfile="$invalid_root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
