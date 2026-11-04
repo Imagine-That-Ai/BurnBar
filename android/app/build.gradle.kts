@@ -621,7 +621,7 @@ dependencies {
     "baselineProfile"(project(":macrobenchmark"))
 
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -648,7 +648,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.10.2")
+    implementation("androidx.navigation:navigation-compose:2.8.5")
 
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
@@ -697,7 +697,7 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:9.1.0")
 
     // OkHttp + WebSocket for Hermes
-    implementation("com.squareup.okhttp3:okhttp:5.5.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.1")
 
     // Amplitude — opt-in, consent-gated analytics. The only caller of this SDK
     // is com.openburnbar.analytics.AmplitudeTransport (constructed solely after
@@ -706,7 +706,7 @@ dependencies {
     implementation("com.amplitude:analytics-android:1.36.0")
 
     // Vico 2.x — Compose-first chart library for Insights
-    implementation("com.patrykandpatrick.vico:compose-m3:3.3.1")
+    implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
@@ -727,7 +727,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.12.0")
 
     // DataStore for preferences
-    implementation("androidx.datastore:datastore-preferences:1.3.0")
+    implementation("androidx.datastore:datastore-preferences:1.2.1")
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
@@ -759,7 +759,7 @@ dependencies {
     testImplementation("net.i2p.crypto:eddsa:0.3.0")
     // DataStore Preferences test helpers — the partner-save preference
     // store materialises a Preferences DataStore on a temp dir.
-    testImplementation("androidx.datastore:datastore-preferences:1.3.0")
+    testImplementation("androidx.datastore:datastore-preferences:1.2.1")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
