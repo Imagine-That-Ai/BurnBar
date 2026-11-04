@@ -1,7 +1,7 @@
 {
   "name": "@openburnbar/website",
   "version": "1.0.0",
-  "description": "OpenBurnBar launch website — burnbar.ai",
+  "description": "OpenBurnBar launch website \u2014 burnbar.ai",
   "private": true,
   "type": "module",
   "scripts": {
@@ -99,11 +99,12 @@
     "esbuild": "0.28.2",
     "fast-uri": "3.1.9",
     "brace-expansion": "^5.0.9",
-    "minimatch": "^10.0.3",
+    "minimatch": "11.0.1",
     "devalue": "5.9.3",
     "@grpc/grpc-js@~1.9.0": "1.13.6",
     "vite": "8.3.3",
-    "undici@^8.0.0": "8.12.2"
+    "undici@^8.0.0": "8.12.2",
+    "re2js": "2.8.7"
   },
   "engines": {
     "node": "^22.22.3 || ^24.16.0 || >=26.3.0"

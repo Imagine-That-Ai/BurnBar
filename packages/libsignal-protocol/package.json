@@ -33,6 +33,6 @@
   },
   "overrides": {
     "brace-expansion": "^5.0.9",
-    "minimatch": "^10.0.3"
+    "minimatch": "11.0.1"
   }
 }
