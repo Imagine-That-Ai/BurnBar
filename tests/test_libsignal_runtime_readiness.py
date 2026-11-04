@@ -20,7 +20,7 @@ from scripts.ci.check_libsignal_runtime_readiness import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RUST_CORE_BRIDGE_EVIDENCE = Path("launch-evidence/libsignal-rust-core-bridge-v1.0.34.json")
+RUST_CORE_BRIDGE_EVIDENCE = Path("launch-evidence/libsignal-rust-core-bridge-aligned-20261104.json")
 
 # Directories whose every source file the matching binding's verified command
 # compiles and drives. Swept rather than listed so adding an implementation file

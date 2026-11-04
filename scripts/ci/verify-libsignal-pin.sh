@@ -81,6 +81,11 @@ const androidArtifacts = manifest.artifacts?.android;
 if (!Array.isArray(androidArtifacts) || androidArtifacts.length === 0) {
   fail('manifest.artifacts.android must list official Signal Maven artifacts');
 }
+const androidGradle = fs.readFileSync('android/app/build.gradle.kts', 'utf8');
+const androidDependencies = Array.from(
+  androidGradle.matchAll(/^[ \t]*(?:implementation|testImplementation)\(\s*"(org\.signal:[^"]+)"\s*\)/gm),
+  (match) => match[1],
+);
 for (const artifact of androidArtifacts) {
   requireString(artifact.group, 'android artifact group');
   requireString(artifact.artifact, 'android artifact id');
@@ -88,6 +93,11 @@ for (const artifact of androidArtifacts) {
   requireString(artifact.repository, 'android artifact repository');
   if (artifact.version !== nodeVersion) {
     fail(`${artifact.group}:${artifact.artifact} version ${artifact.version} != node ${nodeVersion}`);
+  }
+  const coordinate = `${artifact.group}:${artifact.artifact}`;
+  const declarations = androidDependencies.filter((dependency) => dependency.startsWith(`${coordinate}:`));
+  if (declarations.length !== 1 || declarations[0] !== `${coordinate}:${artifact.version}`) {
+    fail(`android/app/build.gradle.kts must declare exactly one pinned ${coordinate}:${artifact.version}`);
   }
 }
 

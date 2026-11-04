@@ -29,6 +29,7 @@ class AmplitudeTransport(
     private val apiKey: String?,
     private val deviceId: String,
     private val serverZone: ServerZone = ServerZone.US,
+    private val createAmplitude: (Configuration) -> Amplitude = ::Amplitude,
 ) : AnalyticsTransport {
 
     private var amplitude: Amplitude? = null
@@ -48,6 +49,7 @@ class AmplitudeTransport(
             flushIntervalMillis = FLUSH_INTERVAL_MILLIS,
             instanceName = INSTANCE_NAME,
             optOut = false,
+            enableDiagnostics = false,
             serverZone = serverZone,
             // Empty set = autocapture OFF (no sessions, lifecycle, screen views,
             // deep links, or element interactions). Everything is manual and
@@ -71,7 +73,7 @@ class AmplitudeTransport(
             useAdvertisingIdForDeviceId = false,
             useAppSetIdForDeviceId = false,
         )
-        amplitude = Amplitude(configuration)
+        amplitude = createAmplitude(configuration)
     }
 
     override fun stop() {

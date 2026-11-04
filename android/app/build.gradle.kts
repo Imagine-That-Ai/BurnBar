@@ -45,7 +45,7 @@ plugins {
     // version (not in the root plugins block) so the mapping-upload + native
     // gradle config stays scoped to :app. Upload is auth-token gated below so
     // local/offline builds without Sentry credentials still succeed.
-    id("io.sentry.android.gradle") version "6.23.0"
+    id("io.sentry.android.gradle") version "6.25.0"
     // Baseline-profile consumer: wires the :macrobenchmark producer so
     // `./gradlew :app:generateBaselineProfile` captures an app-specific
     // profile (library profiles for Compose/activity already ship via the
@@ -597,7 +597,7 @@ dependencies {
     implementation(project(":burnbar-remote"))
     // Computer Use phone-control intents are signed on Android with the
     // same portable Ed25519 primitive used by the relay pairing verifier.
-    implementation("com.google.crypto.tink:tink-android:1.23.0")
+    implementation("com.google.crypto.tink:tink-android:1.24.0")
     val irohAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/openburnbar-iroh.aar")
     if (irohAar.exists()) {
         implementation(files(irohAar))
@@ -651,7 +651,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
     // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
     // The debug provider is compiled only into debuggable developer builds.
@@ -669,7 +669,7 @@ dependencies {
     // ANR detection, breadcrumbs, and release health metrics. Captures
     // errors via the sentry-issue-sync CI workflow → GitHub issues pipeline.
     // Gracefully no-ops when SENTRY_DSN meta-data value is empty.
-    implementation("io.sentry:sentry-android:8.58.0")
+    implementation("io.sentry:sentry-android:8.62.0")
     // Mercury Media — high-priority FCM data messages for incoming calls.
     implementation("com.google.firebase:firebase-messaging")
 
@@ -697,7 +697,7 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:9.1.0")
 
     // OkHttp + WebSocket for Hermes
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.1")
 
     // Amplitude — opt-in, consent-gated analytics. The only caller of this SDK
     // is com.openburnbar.analytics.AmplitudeTransport (constructed solely after
@@ -713,7 +713,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
 
     // Serialization
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
 
     // Official Signal libsignal at-rest HPKE identity seal (v0.103.0 pin).
     implementation("org.signal:libsignal-android:0.103.0")
@@ -739,7 +739,7 @@ dependencies {
     kapt("androidx.room:room-compiler:$roomVersion")
     // room-compiler bundles a kotlin-metadata-jvm that only reads metadata up to
     // Kotlin 2.3; pin the reader to the compiler version so kapt can parse 2.4 classes.
-    kapt("org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.20")
+    kapt("org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.21")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
@@ -752,7 +752,7 @@ dependencies {
     // Real org.json on the JVM test classpath so parsers can run without an
     // emulator (Android's bundled JSONObject is stubbed in unit tests).
     testImplementation("org.json:json:20260814")
-    testImplementation("com.google.code.gson:gson:2.14.0")
+    testImplementation("com.google.code.gson:gson:2.15.0")
     // Ed25519 signer for the Hermes iroh transport tests only — production
     // code is verify-only via Tink. Same lib + version the relay module's
     // test classpath uses.

@@ -174,4 +174,8 @@ if (( resolve_status != 0 )); then
   exit "$resolve_status"
 fi
 
-git -C "$repo_root" diff --exit-code -- "$lockfile_path"
+if ! git -C "$repo_root" show "HEAD:OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved" | cmp -s - "$lockfile_path"; then
+  echo "Resolved SwiftPM lockfile differs from the committed graph" >&2
+  git -C "$repo_root" diff -- "$lockfile_path" >&2
+  exit 1
+fi
