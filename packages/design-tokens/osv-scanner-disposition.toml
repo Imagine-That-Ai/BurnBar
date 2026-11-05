@@ -1,0 +1,4 @@
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+ignoreUntil = 2026-11-11T00:00:00Z
+reason = "CVE authority rejected CVE-2026-93753 on 2026-11-02 because it does not describe a security vulnerability. GitHub advisory remains unwithdrawn. Temporary record-discrepancy disposition for the separately hash-checked design-token lockfile only; review or remove by 2026-11-11."
