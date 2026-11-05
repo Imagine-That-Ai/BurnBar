@@ -80,7 +80,7 @@ packages:
     # channel on iOS 27, which forced a Firestore-network kill switch on
     # mobile (AppDelegate.disableFirestoreNetworkOnIncompatibleOSIfNeeded).
     # Keep >= 12 so that shim never has to come back.
-    from: "12.15.0"
+    exactVersion: "12.19.3"
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: "9.2.0"

@@ -22,11 +22,15 @@ jobs:
           submodules: recursive
 
       - name: Refresh app SwiftPM lockfile
+        env:
+          FIREBASE_SOURCE_FIRESTORE: "1"
         run: |
+          set -euo pipefail
           xcodebuild -resolvePackageDependencies \
             -project OpenBurnBar.xcodeproj \
             -scheme OpenBurnBar \
             >/dev/null
+          python3 scripts/ci/verify-openburnbar-app-swiftpm-graph.py OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
       - name: Create pull request when lockfile changes
         env:

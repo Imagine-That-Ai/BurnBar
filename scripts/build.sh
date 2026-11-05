@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_PATH="$ROOT_DIR/OpenBurnBar.xcodeproj"
+export FIREBASE_SOURCE_FIRESTORE=1
 SCHEME="OpenBurnBar"
 CONFIGURATION="Debug"
 DESTINATION="platform=macOS"
@@ -107,6 +108,8 @@ xcodebuild -resolvePackageDependencies \
   -scheme "$SCHEME" \
   -clonedSourcePackagesDirPath "$CACHE_DIR" \
   -derivedDataPath "$DERIVED_DATA_DIR"
+
+python3 "$ROOT_DIR/scripts/ci/verify-openburnbar-app-swiftpm-graph.py" "$PROJECT_PATH/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 
 if [[ "$MODE" == "resolve" ]]; then
   echo "Package resolution complete."

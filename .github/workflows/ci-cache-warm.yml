@@ -374,12 +374,16 @@ jobs:
               status=0
               rm -rf "${derived}"
               mkdir -p "${derived}"
-              xcodebuild -resolvePackageDependencies \
+              if xcodebuild -resolvePackageDependencies \
                 -project OpenBurnBar.xcodeproj \
                 -scheme "${scheme}" \
                 -clonedSourcePackagesDirPath .spm-cache-new \
-                -derivedDataPath "${derived}" \
-                && return 0 || status=$?
+                -derivedDataPath "${derived}"; then
+                python3 scripts/ci/verify-openburnbar-app-swiftpm-graph.py OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved || return $?
+                return 0
+              else
+                status=$?
+              fi
               # Exit 134 == SIGABRT: known transient Xcode IDE model-graph crash
               # (see scripts/check-openburnbar-app-swiftpm-lock.sh).
               if (( status != 134 )); then

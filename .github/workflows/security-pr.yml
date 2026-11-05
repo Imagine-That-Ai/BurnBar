@@ -412,7 +412,6 @@ jobs:
             --lockfile=functions-identity/package-lock.json
             --lockfile=functions-media/package-lock.json
             --lockfile=functions-sync/package-lock.json
-            --lockfile=packages/design-tokens/package-lock.json
             --lockfile=packages/entitlements/package-lock.json
             --lockfile=packages/functions-shared/package-lock.json
             --lockfile=packages/libsignal-bridge/package-lock.json
@@ -427,6 +426,17 @@ jobs:
             --lockfile=tools/openburnbar-mcp-remote/package-lock.json
             --lockfile=tools/schema-sync/package-lock.json
             --lockfile=website/package-lock.json
+
+      - name: Verify reviewed design-token lockfile
+        run: |
+          printf '%s\n' '84aefadd61e01cf5bdc72aecd44b3350b72a35072b2b91f8881950126dedabb0  packages/design-tokens/package-lock.json' | sha256sum --check --strict
+
+      - name: Scan reviewed design-token lockfile
+        uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc
+        with:
+          scan-args: |-
+            --config=packages/design-tokens/osv-scanner-disposition.toml
+            --lockfile=packages/design-tokens/package-lock.json
 
   hosted-mcp-security-smoke:
     name: Hosted MCP Security Smoke

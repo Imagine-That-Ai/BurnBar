@@ -65,6 +65,17 @@ rules when you add, move, or correct a doc.
 | `docs/plans/`, `docs/superpowers/`, `docs/product-focus/`, `docs/fleet/`, `docs/signalification/` | Program plans, specs, and handoffs | Primary operator | Freshness ratchet; archive when shipped |
 | `docs/analytics/`, `docs/api/`, `docs/ci/`, `docs/contracts/`, `docs/schemas/`, `docs/qa/`, `docs/analysis/` | Reference material for one subsystem each | Primary operator | Freshness ratchet |
 
+## Mobile operation references
+
+- [Agent reply notifications](AGENT_REPLY_NOTIFICATIONS.md) describes the shared
+  Firestore and push-notification paths that a mobile update must preserve.
+- [Android parity guide](ANDROID_NATIVE_PARITY_GOAL.md) records the companion's
+  product surfaces; validate behavior against current sources and device tests.
+- [Android release credentials](ANDROID_RELEASE_CREDENTIALS.md) inventories the
+  existing signing route. A dependency patch does not authorize rotating keys or
+  creating credentials; current signer and Firebase certificate parity still
+  require live verification before an internal-track upload.
+
 ## Platform guides and proof contracts
 
 These pages collect platform implementation notes and validation requirements.

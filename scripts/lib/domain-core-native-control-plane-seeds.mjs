@@ -71,6 +71,7 @@ export const NATIVE_RELEASE_CONTROL_PLANE_SEEDS = Object.freeze([
   "scripts/ci/verify-domain-core-observed-identity.mjs",
   "scripts/ci/verify-libsignal-pin.sh",
   "scripts/ci/verify-libsignal-submodule-delta.sh",
+  "scripts/ci/verify-openburnbar-app-swiftpm-graph.py",
   "scripts/ci/verify-sqlcipher-codec.sh",
   "scripts/ci/verify-vendored-agent-source.sh",
   "scripts/ci/verify-windows-release-signing-preflight.sh",

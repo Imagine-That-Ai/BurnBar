@@ -69,17 +69,18 @@ bootstrap: ## Fresh-clone setup: init submodules, preflight Rust/protoc, build t
 build: bootstrap preflight
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
 	@echo "==> Resolving packages…"
-	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild -resolvePackageDependencies \
+	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK FIREBASE_SOURCE_FIRESTORE=1 xcodebuild -resolvePackageDependencies \
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-clonedSourcePackagesDirPath $(CACHE_DIR) \
 		-derivedDataPath $(DERIVED_DATA) \
 		-quiet
+	python3 scripts/ci/verify-openburnbar-app-swiftpm-graph.py "$(PROJECT)/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 	@echo "==> Building daemon…"
 	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release --product $(DAEMON_BIN)
 	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release --product $(DAEMON_CLI_BIN)
 	@echo "==> Building $(SCHEME) ($(CONFIG))…"
-	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild \
+	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK FIREBASE_SOURCE_FIRESTORE=1 xcodebuild \
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-configuration $(CONFIG) \
@@ -144,12 +145,13 @@ build-signed: bootstrap preflight
 	@bash scripts/ci/verify-iroh-release-artifact.sh
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
 	@echo "==> Resolving packages…"
-	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild -resolvePackageDependencies \
+	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK FIREBASE_SOURCE_FIRESTORE=1 xcodebuild -resolvePackageDependencies \
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-clonedSourcePackagesDirPath $(CACHE_DIR) \
 		-derivedDataPath $(DERIVED_DATA) \
 		-quiet
+	python3 scripts/ci/verify-openburnbar-app-swiftpm-graph.py "$(PROJECT)/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 	@echo "==> Building daemon…"
 	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release --product $(DAEMON_BIN)
 	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release --product $(DAEMON_CLI_BIN)
@@ -163,7 +165,7 @@ build-signed: bootstrap preflight
 	fi; \
 	if [ -n "$$TEAM" ]; then \
 		echo "    Using development team $$TEAM (set OPENBURNBAR_DEVELOPMENT_TEAM to override)."; \
-		/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild \
+		/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK FIREBASE_SOURCE_FIRESTORE=1 xcodebuild \
 			-project $(PROJECT) \
 			-scheme $(SCHEME) \
 			-configuration $(CONFIG) \
@@ -179,7 +181,7 @@ build-signed: bootstrap preflight
 	else \
 		echo "    No OPENBURNBAR_DEVELOPMENT_TEAM set and no Apple Development identity found —"; \
 		echo "    building unsigned; the bundle will be ad-hoc signed for local use."; \
-		/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild \
+		/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK FIREBASE_SOURCE_FIRESTORE=1 xcodebuild \
 			-project $(PROJECT) \
 			-scheme $(SCHEME) \
 			-configuration $(CONFIG) \

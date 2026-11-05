@@ -1621,6 +1621,7 @@ jobs:
             -scheme "$SCHEME" \
             -clonedSourcePackagesDirPath "$CACHE_DIR" \
             -derivedDataPath "$DERIVED_DATA"
+          python3 scripts/ci/verify-openburnbar-app-swiftpm-graph.py OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
       - name: Build Release .app (unsigned)
         env:
